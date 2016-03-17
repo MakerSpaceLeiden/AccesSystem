@@ -287,7 +287,7 @@ class ACNode:
 
     secret = self.secret(node)
     if not secret:
-       self.logger.error("No secret defined for '{}' - ignored".format(dstnode))
+       self.logger.error("No secret defined for '{}' - ignored".format(node))
        return None
 
     if delta > self.cnf.leeway:
