@@ -9,6 +9,7 @@ import logging
 import logging.handlers
 import os
 import hmac
+import daemon
 
 import configargparse
 
@@ -40,6 +41,7 @@ class ACNode:
   beatoff = 0
   beatsseen = 0
   forever = 0
+  default_pidfile = "/var/run/master.pid"
 
   def __init__(self,description='ACNode', cnf_file=None):
 
@@ -80,15 +82,21 @@ class ACNode:
          help='Debuging on; implies verbose (default off)')
     self.parser.add('--no-mqtt-log', action='count',
          help='Disable logging to MQTT log channel (default on)'),
-    self.parser.add('--no-syslog', 
+    self.parser.add('--no-syslog',  action='count',
         help='Disable syslogging (defautl on)'),
     self.parser.add('-l','--logfile', type=configargparse.FileType('w+'), 
         help='Append log entries to specified file (default: none)'),
 
-    self.parser.add('--ignorebeat',
+    self.parser.add('--ignorebeat', action='count',
          help='Ignore the beat (default is to follow)')
     self.parser.add('--leeway', action='store', default=default_leeway, type=int,
          help='Beat leeway, in seconds (default: '+str(default_leeway)+' seconds).')
+
+    self.parser.add('--pidfile', action='store', default = self.default_pidfile,
+         help='File to write PID to, (Default: '+self.default_pidfile+').')
+    self.parser.add('--daemonize', '-b', action='count',
+         help='Deamonize into the background after startup (default is to stay in the foreground).')
+
     self.cnf = self.parser.parse_args()
 
     self.cnf.follower = not self.cnf.ignorebeat
@@ -376,6 +384,9 @@ class ACNode:
     self.initialize()
 
     self.forever = 1
+
+    if self.cnf.daemonize:
+        daemon.daemonize(self.cnf.pidfile)
 
     self.logger.debug("Entering main forever loop.")
     while(self.forever): 

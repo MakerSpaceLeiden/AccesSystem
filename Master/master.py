@@ -5,6 +5,7 @@ import sys
 import time
 import hmac
 import hashlib
+import setproctitle
 
 sys.path.append('.')
 import db
@@ -117,12 +118,12 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
 
 
 master = Master()
+setproctitle.setproctitle('master')
 
 if not master:
   sys.exit(1)
 
 exitcode = master.run()
-
 sys.exit(exitcode)
 
 
