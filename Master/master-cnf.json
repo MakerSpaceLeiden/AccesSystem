@@ -1,0 +1,13 @@
+{
+
+	"alert_email_from" : "spacelog@makerspaceleiden.nl",
+	"alert_email_to" : [ "boss@bossman.com" ],
+	
+	"smtp": {
+		"host" : "smtp.xs4all.nl",
+		"_": "Additionally 'port', 'username' and 'password' can be set."
+	}
+}
+	
+
+
