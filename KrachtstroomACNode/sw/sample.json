@@ -1,0 +1,35 @@
+{
+	"_": "This minimal set is normally used to learn all",
+	"_": "other config data from the master node.",
+	
+	"node" : "krachtstroom",
+	"mqtt" : {
+		"host":	"127.0.0.1",
+		"sub": "acnode/test"
+	},
+
+	"_": "Everything below this line is a backup in case fetching",
+	"_": "the config of the day is not working (or when you are",
+	"_": "testing something",
+
+	"machines" : {
+		"circelzaag": {
+			"name" : "Circelzaag",
+			"tag" : [ 1,2,3,4,5 ],
+        		"users" : [ "fred" ]
+		}
+	},
+        "users" : {
+            "fred" : [ 5,6,7,8,9 ],
+        },
+	"name":	"Krachstroom AC Node",
+
+	"alert_email_from" : "krachtstroomnode@demo.nl",
+	"alert_email_to" : "fred@demo.org",
+	
+	"smtp": {
+		"host" : "smtp.isp.net"
+		"_": "Additionally 'port', 'username' and 'password' can be set."
+	}
+}
+	
