@@ -1,11 +1,18 @@
 #!/usr/bin/env python
 
-import paho.mqtt.client as mqtt
 import time
-import paho.mqtt.publish as publish
+import sys
 import logging
+import signal
+import string
+import hmac
+import hashlib
+import json
 
-sys.path.append('../../lib')
+import paho.mqtt.client as mqtt
+import paho.mqtt.publish as publish
+
+sys.path.append('../lib')
 import configRead
 import alertEmail
 
@@ -15,88 +22,144 @@ cnf = configRead.cnf
 node=cnf['node']
 mailsubject="-"
 
-logging.basicConfig(filename='/var/log/" + node + ".log',level=logging.DEBUG)
+logging.basicConfig(filename= node + '.log',level=logging.DEBUG)
 logger = logging.getLogger() 
 
 ACCESS_UKNOWN, ACCESS_DENIED, ACCESS_GRANTED = ('UNKNOWN', 'DENIED', 'GRANTED')
 
 client = mqtt.Client()
 
-def send_email_admin(adminmsg)
-        alertEmailSansCC(adminmsg, 'ERROR msg from space-pi', cnf['alert_email_admin'])
-
 def parse_db(dbfile):
-	userdb = {}
-        try:
-           for row in open(dbfile,'r'):
-		if row.startswith('#'): continue
-		if len(row.split(':')) != 4: continue
-		
-		# Parse keys to valid input
-		tag,access,name,email = row.strip().split(':')
-		
-		# Build static ACL listing
-		if access == 'ok':
-			acl = ACCESS_GRANTED
-		elif access == 'no':
-			acl = ACCESS_DENIED
-		else:
-			acl = ACCESS_UKNOWN
-			logger.info("Unable to parse access=%s", access)
-		# Create database
-		userdb[tag] = { 'tag': 'hidden', 'access': acl, 'name': name, 'email': email }
-           except IOError as e:
-             print "I/O error({0}): {1}".format(e.errno, e.strerror)
-             raise
-           except ValueError:
-             print "Could not convert data to an integer -- some malformed tag ?"
-             raise
-           except:
-             print "Unexpected error:", sys.exc_info()[0]
-             raise
+     userdb = {}
+     try:
+       for row in open(dbfile,'r'):
+          if row.startswith('#'): continue
+          if len(row.split(':')) != 4: continue
+          
+          # Parse keys to valid input
+          tag,access,name,email = row.strip().split(':')
+          tag = '-'.join(map(str.strip, tag.split(',')))
+          
+          # Break access up into the things this user
+          # has access to.          
+          allowed_items = access.split(',')
 
-	return userdb
+          print("-- "+tag+" - "+name+"/"+access)
 
-def process_tag(userdb, tag):
- 	# Variables for email purposes
-       email = userdb[tag]['email'] if tag in userdb else 'none'
-       name = userdb[tag]['name'] if tag in userdb else 'none'
-       access = userdb[tag]['access'] if tag in userdb else ACCESS_UKNOWN
-	
-	# Notify Client
-       spacemsg='tag: %s name: %s email: %s access: %s' % (tag, name, email, access)
-       dbmsg='%s:%s:%s:%s' % (node, tag, name, access)
-       mailmsg='name: %s access: %s' % (name, access)
-       mailsubject='%s  %s %s' % (node, access, name)
-       logger.info(spacemsg)
+          # Create database
+          userdb[tag] = { 'tag': 'hidden', 'access': allowed_items, 'name': name, 'email': email }
+     except IOError as e:
+       print("I/O error %s", e.strerror())
+       raise
+     except ValueError:
+       print("Could not convert data to an integer -- some malformed tag ?")
+       raise
+     except:
+       print("Unexpected error: %s", sys.exc_info()[0])
+       raise
 
-       # Try to see if user exists and is allowed
-       if tag in userdb:
-		if userdb[tag]['access'] == ACCESS_GRANTED:
-                   publish.single(node + "/test/open", "open", hostname="192.168.5.6", protocol="publish.MQTTv311")
-		   logging.info(spacemsg)
-		else:
-		   print userdb[tag]
-		   logging.info("invalid access key '%s'", userdb[tag])
-       		   adminmsg=spacemsg
-		   send_email_admin(adminmsg)
-       else:
-	 	adminmsg=spacemsg
-		logging.info("unknown key '%s'", spacemsg )
+     return userdb
+
+def reply(topic, data, nonce = None):
+   secret = None
+
+   path = topic.split('/')
+   what = path[-1]
+   who = path[-2]
+
+   if who in cnf['secrets']:
+     secret = cnf['secrets'][who]
+   else:
+     print("Legayc no sec "+who)
+
+
+   if data != "open" and secret and nonce:
+     HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+     payload = json.dumps(data)
+     HMAC.update(payload.encode('ASCII'))
+     hexdigest = HMAC.hexdigest()
+ 
+     data = "{ "
+     data +="\"HMAC-SHA256\" : \"" + hexdigest + "\","
+     data +="\"payload\" : " + payload 
+     data += "}"
+     
+   publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
 
 def on_message(client, userdata, message):
-    print message.payload
-    tag=message.payload 
-    process_tag(userdb, tag)
+    print("Payload: %s",message.payload)
+
+    payload = None
+    try:
+      payload = message.payload.decode('ASCII')
+    except:
+      logging.info("Non ascii equest '%s' -- ignored", message.payload)
+      reply(topic, "malformed request", nonce)
+      return
+
+    topic = message.topic
+
+    path = topic.split('/')
+    what = path[-1]
+    who = path[-2]
+     
+    command, tag, nonce = ( payload.split() + [None]*10)[:3]
+
+    if not command == 'request':
+       return
+
+    if not tag:
+       logging.info("Malformed request '%s'", payload)
+       reply(topic, "malformed request", nonce)
+       return
+
+    if not tag in userdb:
+       logging.info("Unknown tag '%s' action: '%s'", tag, topic);
+       reply(topic, "unknown", nonce)
+       return
+
+    email = userdb[tag]['email'];
+    name = userdb[tag]['name'];
+
+    if not who in userdb[tag]['access']:
+       logging.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, who);
+       reply(topic, "denied", nonce)
+       return
+
+    logging.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, what, who);
+    reply(topic, "ok", nonce)
+
+def on_connect(client, userdata, flags, rc):
+    print("(re)Connected with result code "+str(rc))
+    topic = cnf['mqtt']['sub']+"/#"
+
+    if sys.version_info[0] < 3:
+       topic = topic.encode('ASCII')
+
+    mid = client.subscribe(topic)
+    print("Subscription req to {0} with MID={1}".format(cnf['mqtt']['sub'], mid))
+
+def on_subscribe(client, userdata, mid, granted_qos):
+    print("(re)Subscribed confirmed for {0}".format(mid))
+
+continueForever = True
+
+def end_loop(signal,frame):
+    global continueForever
+    print("Ctrl+C captured, ending subscribe, etc")
+    continueForever = False
+
+signal.signal(signal.SIGINT, end_loop)
+signal.signal(signal.SIGQUIT, end_loop)
 
 client.connect(cnf['mqtt']['host'])
-client.subscribe(cnf['mqtt']['sub'],1)
 client.on_message = on_message
+client.on_connect = on_connect
+client.on_subscribe= on_subscribe
 
 userdb = parse_db(cnf['dbfile'])
 
-logger.debug(userdb)
-	
+while continueForever:
+     client.loop()
 
-while ( True ):
-	client.loop()
+client.disconnect()
