@@ -1,5 +1,11 @@
-import RPi.GPIO as GPIO 
+import RPIO 
+from RPIO import PWM
 import time
+
+PWM.setup()
+PWM.init_channel(0)
+
+pin=4 # pin 7 on the board, GPIO4
 
 # Test script for the relay; powers it up
 # at full PWM for a second; drops the voltage
@@ -7,25 +13,19 @@ import time
 # in the 330 ohm resistor) for 5 seconds; and 
 # then switches # it off for a second.
 
-pin=7
-frequency=5000
-holdpwm=10 # down to 2 seems to be reliable.
-
-GPIO.setmode(GPIO.BOARD) 
-GPIO.setup(pin, GPIO.OUT) 
-
-p = GPIO.PWM(pin, frequency)
-
 while True:
+  PWM.add_channel_pulse(0, pin, start=0, width=2000-1)
   print "Full on"
-  p.start(100)
-  time.sleep(0.3)
+  time.sleep(0.2)
 
-  print "Dropping back"
-  p.start(holdpwm)
-  time.sleep(5)
+  print "Dropping back to 25%"
+  PWM.add_channel_pulse(0, pin, start=0, width=500)
+  time.sleep(2)
 
   print "off"
-  p.stop()
-  time.sleep(1)
+  PWM.clear_channel(0)
+  time.sleep(0.5)
 
+print "And done."
+
+PWM.cleanup()
