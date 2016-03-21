@@ -1,0 +1,28 @@
+{
+        "node" : "master",
+        "dbfile" : "sample-keydb.txt",
+
+        "mqtt" : {
+                "host": "127.0.0.1",
+                "sub": "acnode/test"
+        },
+
+	"alert_email_from" : "spacelog@makerspaceleiden.nl",
+	"alert_email_to" : [ "boss@bossman.com" ],
+
+        "secrets" : {
+          "circelzaag" : "NoLooseThemVingers",
+          "vandiktebank" : "VanDikHoutZaagMenPlanken",
+          "vlakbank" : "BeschavingBijbrengen",
+          "lintzaag" : "GolvendeWormen",
+          "draaibank" : "OhNeeNietAlweerEenEierdopje"
+        },
+	
+	"smtp": {
+		"host" : "smtp.xs4all.nl",
+		"_": "Additionally 'port', 'username' and 'password' can be set."
+	}
+}
+	
+
+
