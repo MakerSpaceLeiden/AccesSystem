@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 
-import time
+import os
 import sys
-import logging
+import time
 import signal
+
+import logging
 import string
 import hmac
 import hashlib
 import json
+import argparse
 
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
@@ -16,7 +19,23 @@ sys.path.append('../lib')
 import configRead
 import alertEmail
 
-configRead.load()
+parser = argparse.ArgumentParser(description='ACNode Master server.')
+parser.add_argument('-v', action='count',
+                   help='Verbose')
+parser.add_argument('-c', type=argparse.FileType('r'), metavar='file.json',
+                   help='Configuration file')
+parser.add_argument('-s', type=str, metavar='hostname',
+                   help='MQTT Server (FQDN or IP address)')
+parser.add_argument('-C', nargs=2, metavar=('tag', 'machine'),
+                   help='Client mode - useful for testing')
+
+args = parser.parse_args()
+
+configfile = None
+if args.c:
+  configfile = args.c
+
+configRead.load(configfile)
 cnf = configRead.cnf
 
 node=cnf['node']
@@ -44,7 +63,7 @@ def parse_db(dbfile):
           # has access to.          
           allowed_items = access.split(',')
 
-          print("-- "+tag+" - "+name+"/"+access)
+          # print("-- "+tag+" - "+name+"/"+access)
 
           # Create database
           userdb[tag] = { 'tag': 'hidden', 'access': allowed_items, 'name': name, 'email': email }
@@ -143,7 +162,6 @@ def on_subscribe(client, userdata, mid, granted_qos):
     print("(re)Subscribed confirmed for {0}".format(mid))
 
 continueForever = True
-
 def end_loop(signal,frame):
     global continueForever
     print("Ctrl+C captured, ending subscribe, etc")
@@ -159,7 +177,39 @@ client.on_subscribe= on_subscribe
 
 userdb = parse_db(cnf['dbfile'])
 
-while continueForever:
+if args.C:
+   print("Client mode - one post shot.")
+   tag,machine = args.C
+   topic = cnf['mqtt']['sub']
+
+   data = {
+	'machine' : machine,
+	'tag' : tag,
+	'operation' : 'energize'
+   }
+   data = json.dumps(data)
+
+   if machine in cnf['secrets']:
+     secret = cnf['secrets'][machine]
+     nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
+     payload = data
+
+     HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+     HMAC.update(payload.encode('ASCII'))
+     hexdigest = HMAC.hexdigest()
+
+     data = "{" 
+     data +=   "\"HMAC-SHA256\" : \"" + hexdigest + "\"," 
+     data +=   "\"nonce\" : \"" + nonce + "\"," 
+     data +=   "\"payload\" : " + payload 
+     data += "}"
+
+   else:
+     print("Legayc no secret defined for "+machine)
+     
+   publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
+else:
+   while continueForever:
      client.loop()
 
 client.disconnect()

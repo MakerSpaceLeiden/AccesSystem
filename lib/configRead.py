@@ -1,7 +1,10 @@
 import json
 
-def load(file = 'config.json'):
+def load(file):
   global cnf
+
+  if not file:
+   file = 'config.json'
 
   try:
     fd = open(file, 'r')
