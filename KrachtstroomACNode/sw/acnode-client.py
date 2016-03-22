@@ -6,7 +6,9 @@ import json
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
 
-import RPi.GPIO as GPIO 
+import RPIO 
+from RPIO import PWM
+
 import MFRC522
 
 import sys
@@ -20,38 +22,66 @@ sys.path.append('../../lib')
 import configRead
 import alertEmail
 
-configRead.load()
+configRead.load('config.json')
 cnf = configRead.cnf
 
+time.sleep(5)
+
 # GPIO Wiring
-topLed=16
-bottomLed=18
+topLed=23	# GPIO23, Pin 16
+bottomLed=24	# GPIO24, Pin 18
+relay=4		# GPIO4 (pin 7)
 
 fastFlashFrequency = 8
 slowFlashFrequency = 2
 
-relay=7
-
 # Relay power reduction control
-frequency=10000
-holdpwm=5 # strangely - down to 1 percent duty cycle seems to be fine.
-holdDelay=0.3 # seconds
+frequency=100 	# Hz
+holdpwm=25	# percent
+holdDelay=0.3 	# seconds
 
-alertEmail.send_email("Test", "Test na import", "dirkx@webweaving.org")
+pulseInc = 50 # in Micro Seconds
 
-GPIO.setmode(GPIO.BOARD) 
-for pin in topLed, bottomLed, relay:
-  GPIO.setup(pin,GPIO.OUT) 
-  GPIO.output(pin,False)
+ledChannel = 1
+relayChannel = 0
 
-relayCtrl = GPIO.PWM(relay, frequency)
-relayCtrl.start(0)
+relayFull = int(1e6/frequency/pulseInc - 1)
+relayLow = max(1,int(relayFull * holdpwm / 100 -1))
 
-topLedCtrl = GPIO.PWM(topLed, slowFlashFrequency)
-bottomLedCtrl= GPIO.PWM(bottomLed, slowFlashFrequency)
 
-topLedCtrl.start(50)
-bottomLedCtrl.start(0)
+ledFull = int(1e6/1/pulseInc - 1)
+
+PWM.set_loglevel(PWM.LOG_LEVEL_ERRORS)
+PWM.setup(pulseInc)
+PWM.init_channel(relayChannel, subcycle_time_us=int(1e6/frequency)) 
+PWM.init_channel(ledChannel, subcycle_time_us=int(1e6/1)) # Cycle time in microSeconds == 1 second
+
+topLedTransitionsPerCycle = 0
+bottomLedTransitionsPerCycle = 0
+
+def setLEDs():
+  # global topLedTransitionsPerCycle, bottomLedTransitionsPerCycle
+
+  PWM.clear_channel(ledChannel)
+  for pin, state in { topLed: topLedTransitionsPerCycle, bottomLed: bottomLedTransitionsPerCycle }.iteritems():
+    if state:
+      ds = ledFull / (state*2 - 1)
+      for i in range(0,state):
+        PWM.add_channel_pulse(ledChannel, pin, start=i*ds*2, width=ds)
+  
+def setTopLED( state ):
+   global topLedTransitionsPerCycle
+   topLedTransitionsPerCycle=state
+   setLEDs()
+
+def setBottomLED( state ):
+   global bottomLedTransitionsPerCycle
+   bottomLedTransitionsPerCycle=state
+   setLEDs()
+
+# Flash top LED while we get our bearings.
+#
+setTopLED(20)
 
 def find_usertag(uid=None):
   try:
@@ -71,7 +101,7 @@ def find_machinetag(uid=None):
   return None
 
 # Ready to start - turn top LED full on.
-topLedCtrl.start(100)
+setTopLED(1)
 
 powered = 0
 user = None
@@ -91,7 +121,6 @@ def end_read(signal,frame):
     global forever 
     print "Ctrl+C captured, aborting."
     forever= False
-    GPIO.cleanup()
 
 signal.signal(signal.SIGINT, end_read)
 MIFAREReader = MFRC522.MFRC522()
@@ -120,9 +149,8 @@ while forever:
           powered = 0
           uname = None
           machine = None
-          bottomLedCtrl.start(0)
-          relayCtrl.start(0)
-
+          PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
+          setBottomLED(0)
    else:
        # we are not powered - so waiting for a user tag or device tag.
        #
@@ -131,8 +159,7 @@ while forever:
          if u:
            uname = u
            print "User " + uname +" swiped and known."
-           bottomLedCtrl.start(50)
-           bottomLedCtrl.ChangeFrequency(slowFlashFrequency)
+           setBottomLED(4)
            last_ok = time.time()
 
          m = find_machinetag(uid)
@@ -142,22 +169,32 @@ while forever:
               print "Machine " + machine + " now wired up."
            else:
               print "Ignoring machine tag without user tag."
-              bottomLedCtrl.start(50)
-              bottomLedCtrl.ChangeFrequency(fastFlashFrequency)
+              setBottomLED(8)
               last_ok = time.time() + grace - 0.5
               machine = None
          
        if uname and machine:
-           print "Both fine. Powering up the " + machine
-           bottomLedCtrl.start(100)
-           relayCtrl.start(100)
-           time.sleep(holdDelay)
-           relayCtrl.start(holdpwm)
-           machine_tag = cnf['machines'][machine]['tag']
-           powered = 1
+          print "Both fine. Powering up the " + machine
+          setBottomLED(1)
+
+          PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayFull)
+          time.sleep(holdDelay)
+          PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayLow)
+
+          machine_tag = cnf['machines'][machine]['tag']
+          powered = 1
 
        if time.time() - last_ok > grace:
-           bottomLedCtrl.start(0)
+          setBottomLED(0)
  
 
+# Needed to clear down the GPIO back to input (cleanup() does not do that).
+#
+PWM.clear_channel_gpio(relayChannel,relay)
+PWM.clear_channel_gpio(ledChannel,topLed)
+PWM.clear_channel_gpio(ledChannel,bottomLed)
 
+# Shutdown all PWM and DMA activity
+PWM.cleanup()
+
+# GPIO.cleanup()
