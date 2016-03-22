@@ -91,7 +91,6 @@ def reply(topic, data, nonce = None):
    else:
      print("Legayc no sec "+who)
 
-
    if data != "open" and secret and nonce:
      HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
      payload = json.dumps(data)
@@ -112,35 +111,51 @@ def on_message(client, userdata, message):
     try:
       payload = message.payload.decode('ASCII')
     except:
-      logging.info("Non ascii equest '%s' -- ignored", message.payload)
-      reply(topic, "malformed request", nonce)
+      logging.info("Non ascii equest '{0}' -- ignored".format(message.payload))
       return
 
     topic = message.topic
 
-    path = topic.split('/')
-    what = path[-1]
-    who = path[-2]
-     
-    command, tag, nonce = ( payload.split() + [None]*10)[:3]
+    if payload.startswith("SIG/"):
+      try:
+        hdr, sig, nonce, node, payload = payload.split(' ',4)
+      except:
+        logging.info("Could not parse '{0}' -- ignored".format(payload))
+        raise
+        return
 
-    if not command == 'request':
-       return
+      if not node in cnf['secrets']:
+        logging.info("No secret known for node {0} -- ignored.".format(node))
+        return
 
-    if not tag:
-       logging.info("Malformed request '%s'", payload)
-       reply(topic, "malformed request", nonce)
-       return
+      secret = cnf['secrets'][node]
+      HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+      HMAC.update(payload.encode('ASCII'))
+      hexdigest = HMAC.hexdigest()
 
-    if not tag in userdb:
-       logging.info("Unknown tag '%s' action: '%s'", tag, topic);
-       reply(topic, "unknown", nonce)
-       return
+      if not hexdigest == sig:
+        logging.info("Invalid signatured; ignored.")
+        return
+
+    try:
+      payload = json.loads(payload)
+    except:
+      logging.info("Cannot decode json - ignored")
+      raise
+      return
+
+    if not 'tag' in payload:
+      logging.info("No tag - ignored")
+      return
+
+    tag = payload['tag']
+    who = payload['machine']
+    what = payload['operation']
 
     email = userdb[tag]['email'];
     name = userdb[tag]['name'];
 
-    if not who in userdb[tag]['access']:
+    if not node in userdb[tag]['access']:
        logging.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, who);
        reply(topic, "denied", nonce)
        return
@@ -198,11 +213,7 @@ if args.C:
      HMAC.update(payload.encode('ASCII'))
      hexdigest = HMAC.hexdigest()
 
-     data = "{" 
-     data +=   "\"HMAC-SHA256\" : \"" + hexdigest + "\"," 
-     data +=   "\"nonce\" : \"" + nonce + "\"," 
-     data +=   "\"payload\" : " + payload 
-     data += "}"
+     data = "SIG/1.00 " + hexdigest + " " + nonce + " " + machine + " " + payload
 
    else:
      print("Legayc no secret defined for "+machine)
