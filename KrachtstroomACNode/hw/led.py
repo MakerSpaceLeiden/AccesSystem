@@ -1,22 +1,23 @@
-import RPi.GPIO as GPIO 
+import RPIO 
 import time
 
 # Top and bottom LEDs
 # - Flash alternating.
 #
+# Pin 16 / GPIO23
+# Pin 17 / GPIO24
 
-GPIO.setmode(GPIO.BOARD) 
-
-for pin in 16,18:
+for pin in 23,24:
   print "Now flashing Pin " + str(pin)
 
-  GPIO.setup(pin, GPIO.OUT) 
+  RPIO.setup(pin, RPIO.OUT)
 
   for cnt in range(1,5):
     print "."
-    GPIO.output(pin,True) 
+    RPIO.output(pin, True)
     time.sleep(0.5)
-    GPIO.output(pin,False)
+    RPIO.output(pin, False)
     time.sleep(0.5)
 
+  RPIO.setup(pin, RPIO.IN)
 
