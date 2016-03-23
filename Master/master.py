@@ -223,28 +223,28 @@ def on_message(client, userdata, message):
        logging.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, which);
        acl = 'denied'
 
+    if node != which:
+       if not node in rollingnonces:
+          logging.info("No rolling nonce for node '%s'", node)
+          return
+       nonce = rollingnonces[node]
+
+    topic = cnf['mqtt']['sub']+'/'+node+'/reply'
+
+    msg = None
     if what == 'energize':
       msg = 'energize ' + which + ' ' + acl
-      logging.info(msg)
-      reply(cnf['mqtt']['sub']+'/'+node+'/reply' ,msg, nonce)
-      return
 
     if what == 'open':
-      if not node in rollingnonces:
-        logging.info("No rolling nonce for node '%s'", node)
-        return
-
-      topic = cnf['mqtt']['sub']+'/'+node+'/reply'
       msg = 'open ' + which + ' ' + acl
-      nonce = rollingnonces[node]
 
-      logging.info("@"+topic+": "+msg)
-      logging.debug("Nonce: "+nonce)
-
-      reply(cnf['mqtt']['sub']+'/'+node+'/reply' ,msg, nonce)
+    if not msg:
+      logging.info("Unknown commnad '{0]'- ignored.".format(what))
       return
 
-    logging.info('Unknown commnad - ignored.')
+    logging.info("@"+topic+": "+msg)
+    logging.debug("Nonce: "+nonce)
+    reply(topic, msg, nonce)
     return
 
 
