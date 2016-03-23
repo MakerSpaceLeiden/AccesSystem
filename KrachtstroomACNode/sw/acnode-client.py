@@ -1,14 +1,21 @@
 #!/usr/bin/env python
-
+#
 import time
 import json
 
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
 
-import RPIO 
-from RPIO import PWM
+# We're careful as to not import the 
+# RPIO itself; as it magically claims
+# pin 22; thus conflicting with MFRC522.
+#
+import RPIO.PWM as PWM
 
+# Note: The current MFC522 library claims pin22/GPIO25
+# as the reset pin -- set by the constant NRSTPD near
+# the start of the file.
+#
 import MFRC522
 
 import sys
@@ -28,6 +35,7 @@ cnf = configRead.cnf
 time.sleep(5)
 
 # GPIO Wiring
+#
 topLed=23	# GPIO23, Pin 16
 bottomLed=24	# GPIO24, Pin 18
 relay=4		# GPIO4 (pin 7)
@@ -42,12 +50,15 @@ holdDelay=0.3 	# seconds
 
 pulseInc = 50 # in Micro Seconds
 
+grace = 6	# seconds - timeout between card offer & cable offer.
+
 ledChannel = 1
 relayChannel = 0
 
+# No user maintainable parts beyond this line.
+#
 relayFull = int(1e6/frequency/pulseInc - 1)
 relayLow = max(1,int(relayFull * holdpwm / 100 -1))
-
 
 ledFull = int(1e6/1/pulseInc - 1)
 
@@ -60,14 +71,15 @@ topLedTransitionsPerCycle = 0
 bottomLedTransitionsPerCycle = 0
 
 def setLEDs():
-  # global topLedTransitionsPerCycle, bottomLedTransitionsPerCycle
-
+  global topLedTransitionsPerCycle, bottomLedTransitionsPerCycle
   PWM.clear_channel(ledChannel)
   for pin, state in { topLed: topLedTransitionsPerCycle, bottomLed: bottomLedTransitionsPerCycle }.iteritems():
     if state:
       ds = ledFull / (state*2 - 1)
       for i in range(0,state):
         PWM.add_channel_pulse(ledChannel, pin, start=i*ds*2, width=ds)
+    else:
+        PWM.add_channel_pulse(ledChannel, pin, start=0, width=1)
   
 def setTopLED( state ):
    global topLedTransitionsPerCycle
@@ -109,8 +121,8 @@ machine = None
 machine_tag = None
 last_ok = 0
 uname = None
+last_tag = None
 
-grace = 2
 if 'grace' in cnf:
    grace = cnf['grace']
 
@@ -133,7 +145,9 @@ while forever:
         (status,uid) = MIFAREReader.MFRC522_Anticoll()
         if status == MIFAREReader.MI_OK:
            localtime = time.asctime( time.localtime(time.time()) )
-           print localtime + "	Card UID: "+'-'.join(map(str,uid))
+           if last_tag != uid:
+              print localtime + "	Card UID: "+'-'.join(map(str,uid))
+           last_tag = uid
         else:
            print "Error"
 
@@ -141,7 +155,7 @@ while forever:
        # check that the right plug tag is still being read.
        #
        if machine_tag == uid:
-          print "plug tag still detected."
+          # print "plug tag still detected."
           last_ok = time.time()
 
        if time.time() - last_ok > grace:
@@ -150,6 +164,7 @@ while forever:
           uname = None
           machine = None
           PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
+          PWM.clear_channel(relayChannel)
           setBottomLED(0)
    else:
        # we are not powered - so waiting for a user tag or device tag.
@@ -157,9 +172,14 @@ while forever:
        if uid:
          u = find_usertag(uid)
          if u:
-           uname = u
-           print "User " + uname +" swiped and known."
-           setBottomLED(4)
+           if u != uname:
+              uname = u
+              print "User " + uname +" swiped and known."
+              setBottomLED(4)
+           # Allow the time to move along if the user holds the
+           # card long against the reader. So in effect the grace
+           # period becomes the time between cards.
+           #
            last_ok = time.time()
 
          m = find_machinetag(uid)
@@ -177,8 +197,11 @@ while forever:
           print "Both fine. Powering up the " + machine
           setBottomLED(1)
 
+          PWM.clear_channel(relayChannel)
           PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayFull)
           time.sleep(holdDelay)
+
+          PWM.clear_channel(relayChannel)
           PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayLow)
 
           machine_tag = cnf['machines'][machine]['tag']
@@ -196,5 +219,3 @@ PWM.clear_channel_gpio(ledChannel,bottomLed)
 
 # Shutdown all PWM and DMA activity
 PWM.cleanup()
-
-# GPIO.cleanup()
