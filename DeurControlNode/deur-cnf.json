@@ -1,0 +1,13 @@
+{
+        "node" : "deur",
+        "secret" : "ZeeSecret",
+        "machine" : "deur",
+
+        "mqtt" : {
+                "host": "127.0.0.1",
+                "sub": "acnode/deur"
+        },
+}
+	
+
+

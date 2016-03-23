@@ -50,6 +50,8 @@ ACCESS_UKNOWN, ACCESS_DENIED, ACCESS_GRANTED = ('UNKNOWN', 'DENIED', 'GRANTED')
 
 client = mqtt.Client()
 
+rollingnonces = {}
+
 def parse_db(dbfile):
      userdb = {}
      try:
@@ -117,6 +119,8 @@ def reply(replytopic, data, requestnonce = None):
    else:
      print("No secret defined to reply with - answering in the clear")
 
+   print("Hmac: " + secret + "/" + requestnonce + "/" + replytopic + "/" + data)
+
    if secret and requestnonce:
      HMAC = hmac.new(secret.encode('ASCII'),requestnonce.encode('ASCII'),hashlib.sha256)
      HMAC.update(replytopic.encode('ASCII'))
@@ -163,11 +167,26 @@ def on_message(client, userdata, message):
         logging.info("Invalid signatured; ignored.")
         return
 
+    which = None
+    tag_encoded = None    
     try:
-      what, which, tag_encoded = payload.split()
+      elems = payload.split()
+      what = elems.pop(0)
+      if elems:
+        which = elems.pop(0)
+      if elems:
+        tag_encoded = elems.pop(0)
+      if elems:
+        raise "Too many elements"
     except:
       logging.info("Cannot parse payload; ignored")
+      raise
       return
+
+    if what == 'roll':
+       logging.debug("Updated nonce for node '{0}' to '{1}'".format(node,nonce))
+       rollingnonces[node] = nonce
+       return
 
     tag = None
     for uid in userdb.keys():
@@ -196,21 +215,42 @@ def on_message(client, userdata, message):
     email = userdb[tag]['email'];
     name = userdb[tag]['name'];
 
-    msg = 'energize ' + which + ' ';
-    if not which in userdb[tag]['access']:
-       logging.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, which);
-       msg += 'denied'
-    else:
+    acl = 'error'
+    if which in userdb[tag]['access']:
        logging.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, what, which);
-       msg += 'approved'
+       acl = 'approved'
+    else:
+       logging.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, which);
+       acl = 'denied'
 
-    print("Response: "+msg)
+    if what == 'energize':
+      msg = 'energize ' + which + ' ';
+      logging.info(msg)
+      reply(cnf['mqtt']['sub']+'/'+node+'/reply' ,msg, nonce)
+      return
 
-    reply(cnf['mqtt']['sub']+'/'+node+'/reply' ,msg, nonce)
+    if what == 'open':
+      if not node in rollingnonces:
+        logging.info("No rolling nonce for node '%s'", node)
+        return
+
+      topic = cnf['mqtt']['sub']+'/'+node+'/reply'
+      msg = 'open ' + which + ' ' + acl
+      nonce = rollingnonces[node]
+
+      logging.info("@"+topic+": "+msg)
+      logging.debug("Nonce: "+nonce)
+
+      reply(cnf['mqtt']['sub']+'/'+node+'/reply' ,msg, nonce)
+      return
+
+    logging.info('Unknown commnad - ignored.')
+    return
+
 
 def on_connect(client, userdata, flags, rc):
     print("(re)Connected with result code "+str(rc))
-    topic = cnf['mqtt']['sub']+"/master"
+    topic = cnf['mqtt']['sub']+"/" + cnf['node'] + "/#"
 
     if sys.version_info[0] < 3:
        topic = topic.encode('ASCII')

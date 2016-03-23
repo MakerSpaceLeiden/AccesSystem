@@ -1,0 +1,17 @@
+{
+        "node" : "deurlezer",
+        "secret" : "ZeeSecret",
+
+        "controller" : "deuropener",
+ 	"machine" : "voordeur",
+
+        "rolltime" : 300,
+
+        "mqtt" : {
+                "host": "127.0.0.1",
+                "sub": "acnode"
+        },
+}
+	
+
+
