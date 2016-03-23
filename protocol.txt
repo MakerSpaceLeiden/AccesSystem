@@ -1,3 +1,21 @@
+Conceptual model
+
+-	Node
+
+	Something on the network (wifi, ethernet); to/fro
+	we can talk over MQTT: its messages protected
+ 	by a shared secret.
+
+-	Machine 
+
+	Something connected to a node that is controlled
+	by that node.
+
+For a simple device - node & machine are one and the same (e.g.
+a node controlling just a lathe). For the doors; the rfid
+reader is connected to a node; which can be different from the
+node that controls the stepper motor on the door.
+
 Protocol
 
 Version 1 -- 2015, early 2016
@@ -18,6 +36,7 @@ Version 1 -- 2015, early 2016
 -	Or no reply on error, no access, etc, etc.
 
 Version 2 -- mid 2016
+
 
 -	MQTT message from ACNode to master
 

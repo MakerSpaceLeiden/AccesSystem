@@ -256,6 +256,14 @@ topic = cnf['mqtt']['sub']+"/master"
 while forever:
    client.loop()
 
+   # We are doing this reading 'in' the main loop. This causes two
+   # issues. Firstly it is rather slow; and hence responding to
+   # various events and timeouts can be 0.5-1 second late.
+   # Secondly; once a card is contienously present; we get the
+   # occasional 'no card'; so we should not instantly trigger
+   # on this; and again allow some grace. This makes detecting
+   # the removal of a card slower.
+   #
    (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
    uid = None
 
