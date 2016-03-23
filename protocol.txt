@@ -1,0 +1,111 @@
+Conceptual model
+
+-	Node
+
+	Something on the network (wifi, ethernet); to/fro
+	we can talk over MQTT: its messages protected
+ 	by a shared secret.
+
+-	Machine 
+
+	Something connected to a node that is controlled
+	by that node.
+
+For a simple device - node & machine are one and the same (e.g.
+a node controlling just a lathe). For the doors; the rfid
+reader is connected to a node; which can be different from the
+node that controls the stepper motor on the door.
+
+Protocol
+
+Version 1 -- 2015, early 2016
+
+-	MQTT message from reader to master:
+
+	topic:		PREFIX/deur/rfid
+	payload:	bytes - translated to ASCII
+			in effect the tag in 'python' array format:
+			'[123, 1224, ---- 1234, 234]'
+
+
+-	MQTT reply from master to deur:
+
+	topic:		PREFIX/deur/open
+	payload		open (4 bytes, no termination)
+
+-	Or no reply on error, no access, etc, etc.
+
+Version 2 -- mid 2016
+
+
+-	MQTT message from ACNode to master
+
+	topic:		PREFIX/acnode/master/<node>
+
+	payload:	bytes interpreted as 7-bit safe ASCII
+
+	Payload structure:
+
+	'SIG/1.00'	protocol version.
+	<space>
+	hexdigest	SHA256 based HMAC of topic, nonce, secret, nodename and message
+                        secret and node name are tied to the source.
+	<space>
+	nonce		Nonce; ASCII; no spaces allowed; up to 128 bytes.
+	<space>
+	targetnode	Target Node name; ASCII; no spaces allowed; up to 32 bytes. For
+                        a node that is both a reader and a controller this name will be
+                        the same name of the sending node in the topic. For the doors
+                        it will be the name of the node that controls the door.
+	<space>
+	message		bytes; until the remainder of the message
+
+	Possible message (case sensitive)
+	
+	'energize' <space>  <devicename> <space> <tag-hmac>
+			where device name cannot contain a space; up to 32 bytes and
+			the tag-hmac is that of the secret, nonce and the exact
+			bytes (in network/SPI order) 'as is' read from the card
+			without any terminating 0 or length prefix.
+        'roll'		Roll the nonce (for the device mentioned in the topic)
+        'open' <space> 'devicename' <space> <tag-hmac>
+			Request to open the door 'devicename'
+
+-	MQTT reply from master to (relevant) Target ACNode(s)
+
+	topic:		PREFIX/acnode/<node>/reply
+
+	payload:	bytes interpreted as 7-bit safe ASCII
+
+	'SIG/1.00'	protocol version.
+	<space>
+	hexdigest	SHA256 based HMAC of reply-topic, target-device-nonce, target-secret and message
+	<space>
+	message		bytes; until the remainder of the message
+
+	Possible replies
+
+	'energize' <space> <devicename> <space> 'approved'
+	'energize' <space> <devicename> <space> 'denied'
+	'energize' <space> <devicename> <space> 'error'
+
+	'open' <space> <devicename> <space> 'approved'
+	'open' <space> <devicename> <space> 'denied'
+	'open' <space> <devicename> <space> 'error'
+
+Note:	As the recipient is an embedded device we worry about implementations
+	which are somewhat careless with state and this easily fooled by
+	a replay or similarly.
+
+Note:	we originally used JSON as the payload; as this plays well with
+	browsers. Unfortunately; json serialization is non-trivial; and it
+	turned out to be very hard to get a stable HMAC across two
+	flavours of javascript and python. Even multiple runs of the
+	same json (de)serialization can show different key orders in dicts.
+
+Note:	The digest of the TAG means that one is relatively anonymous
+	on the wire; and one cannot 'track' a user that way. The downside
+	is that this means that the master has a 'userdb' with plaintext
+	tag identifiers (as opposed to tags protected by a crypt or
+	a PBKDF2 like finction.
+
