@@ -21,7 +21,7 @@ Version 2 -- mid 2016
 
 -	MQTT message from ACNode to master
 
-	topic:		PREFIX/acnode/master/request
+	topic:		PREFIX/acnode/master/<node>
 
 	payload:	bytes interpreted as 7-bit safe ASCII
 
@@ -30,13 +30,16 @@ Version 2 -- mid 2016
 	'SIG/1.00'	protocol version.
 	<space>
 	hexdigest	SHA256 based HMAC of topic, nonce, secret, nodename and message
+                        secret and node name are tied to the source.
 	<space>
 	nonce		Nonce; ASCII; no spaces allowed; up to 128 bytes.
 	<space>
-	nodename	Node name; ASCII; no spaces allowed; up to 32 bytes.
+	targetnode	Target Node name; ASCII; no spaces allowed; up to 32 bytes. For
+                        a node that is both a reader and a controller this name will be
+                        the same name of the sending node in the topic. For the doors
+                        it will be the name of the node that controls the door.
 	<space>
 	message		bytes; until the remainder of the message
-
 
 	Possible message (case sensitive)
 	
@@ -45,8 +48,11 @@ Version 2 -- mid 2016
 			the tag-hmac is that of the secret, nonce and the exact
 			bytes (in network/SPI order) 'as is' read from the card
 			without any terminating 0 or length prefix.
+        'roll'		Roll the nonce (for the device mentioned in the topic)
+        'open' <space> 'devicename' <space> <tag-hmac>
+			Request to open the door 'devicename'
 
--	MQTT reply from master to (relevant) ACNode(s)
+-	MQTT reply from master to (relevant) Target ACNode(s)
 
 	topic:		PREFIX/acnode/<node>/reply
 
@@ -54,7 +60,7 @@ Version 2 -- mid 2016
 
 	'SIG/1.00'	protocol version.
 	<space>
-	hexdigest	SHA256 based HMAC of reply-topic, request-nonce, secret and message
+	hexdigest	SHA256 based HMAC of reply-topic, target-device-nonce, target-secret and message
 	<space>
 	message		bytes; until the remainder of the message
 
@@ -64,6 +70,9 @@ Version 2 -- mid 2016
 	'energize' <space> <devicename> <space> 'denied'
 	'energize' <space> <devicename> <space> 'error'
 
+	'open' <space> <devicename> <space> 'approved'
+	'open' <space> <devicename> <space> 'denied'
+	'open' <space> <devicename> <space> 'error'
 
 Note:	As the recipient is an embedded device we worry about implementations
 	which are somewhat careless with state and this easily fooled by
