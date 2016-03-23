@@ -1,7 +1,13 @@
 #!/usr/bin/env python
 #
-import time
+import time 
+import hashlib
 import json
+import sys
+import signal
+import logging
+import os
+import hmac
 
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
@@ -18,12 +24,7 @@ import RPIO.PWM as PWM
 #
 import MFRC522
 
-import sys
-import time
-import signal
-
-import time
-import logging
+logging.basicConfig(level=logging.DEBUG)
 
 sys.path.append('../../lib')
 import configRead
@@ -31,8 +32,6 @@ import alertEmail
 
 configRead.load('config.json')
 cnf = configRead.cnf
-
-time.sleep(5)
 
 # GPIO Wiring
 #
@@ -51,6 +50,7 @@ holdDelay=0.3 	# seconds
 pulseInc = 50 # in Micro Seconds
 
 grace = 6	# seconds - timeout between card offer & cable offer.
+graceOff = 2	# seconds -- timeout between removal of card and powerdown.
 
 ledChannel = 1
 relayChannel = 0
@@ -116,15 +116,16 @@ def find_machinetag(uid=None):
 setTopLED(1)
 
 powered = 0
-user = None
 machine = None
 machine_tag = None
 last_ok = 0
-uname = None
+user_tag = None
 last_tag = None
 
 if 'grace' in cnf:
    grace = cnf['grace']
+if 'graceOff' in cnf:
+   graceOff = cnf['graceOff']
 
 forever= True
 
@@ -135,9 +136,126 @@ def end_read(signal,frame):
     forever= False
 
 signal.signal(signal.SIGINT, end_read)
+signal.signal(signal.SIGQUIT, end_read)
+
 MIFAREReader = MFRC522.MFRC522()
 
+def on_connect(client, userdata, flags, rc):
+    print("(re)Connected with result code "+str(rc))
+    topic = cnf['mqtt']['sub']+"/" + cnf['node'] + "/reply"
+
+    if sys.version_info[0] < 3:
+       topic = topic.encode('ASCII')
+
+    mid = client.subscribe(topic)
+    print("Subscription req to {0} with MID={1}".format(cnf['mqtt']['sub'], mid))
+
+def on_subscribe(client, userdata, mid, granted_qos):
+    print("(re)Subscribed confirmed for {0}".format(mid))
+
+
+def on_message(client, userdata, message):
+    print("Payload: %s",message.payload)
+
+    payload = None
+    try:
+      payload = message.payload.decode('ASCII')
+    except:
+      logging.info("Non ascii equest '{0}' -- ignored".format(message.payload))
+      return
+
+    topic = message.topic
+
+    if payload.startswith("SIG/"):
+      try:
+	# 'SIG/1.00 27b1f...498c40d1cb85173de8e6026604bea234107d energize circelzaag approved' 
+        hdr, sig, payload = payload.split(' ',2)
+      except:
+        logging.info("Could not parse '{0}' -- ignored".format(payload))
+        raise
+        return
+
+      if not 'secret' in cnf:
+        logging.critical("No secret configured for this node.")
+        return
+
+      secret = cnf['secret']
+      global nonce
+
+      HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+      HMAC.update(topic.encode('ASCII'))
+      HMAC.update(payload.encode('ASCII'))
+      hexdigest = HMAC.hexdigest()
+
+      if not hexdigest == sig:
+        logging.warning("Invalid signatured; ignored.")
+        return
+
+    try:
+      what, which, result = payload.split()
+    except:
+      logging.info("Cannot parse payload; ignored")
+      return
+ 
+    global user_tag, machine
+
+    if machine != which:
+      logging.info("Unexpected machine; ignored")
+      return
+
+    if what != 'energize':
+      logging.info("Unexpected command; ignored")
+      return
+
+    if result == 'denied':
+      logging.info("Denied XS")
+      setBottomLED(5)
+      return
+
+    if result != 'approved':
+      logging.info("Unexpected result; ignored")
+      return
+
+
+    if not user_tag or not machine:
+      logging.info("Lost my mind - ignored the ok.")
+      return
+ 
+    print "Got the OK - Powering up the " + machine
+    setBottomLED(1)
+
+    PWM.clear_channel(relayChannel)
+    PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayFull)
+    time.sleep(holdDelay)
+
+    PWM.clear_channel(relayChannel)
+    PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayLow)
+
+    global machine_tag, powered, last_ok
+    machine_tag = cnf['machines'][machine]['tag']
+    powered = 1
+    last_ok = time.time()
+
+if not 'secret' in cnf:
+    logger.critical("No secret for this node defined. aborting.")
+    sys.exit(1)
+
+if not 'node' in cnf:
+    logger.critical("No node name defined. aborting.")
+    sys.exit(1)
+
+client = mqtt.Client()
+
+client.connect(cnf['mqtt']['host'])
+client.on_message = on_message
+client.on_connect = on_connect
+client.on_subscribe= on_subscribe
+
+topic = cnf['mqtt']['sub']+"/master"
+
 while forever:
+   client.loop()
+
    (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
    uid = None
 
@@ -158,10 +276,10 @@ while forever:
           # print "plug tag still detected."
           last_ok = time.time()
 
-       if time.time() - last_ok > grace:
+       if time.time() - last_ok > graceOff:
           print "Power down."
           powered = 0
-          uname = None
+          user_tag = None
           machine = None
           PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
           PWM.clear_channel(relayChannel)
@@ -170,43 +288,49 @@ while forever:
        # we are not powered - so waiting for a user tag or device tag.
        #
        if uid:
-         u = find_usertag(uid)
-         if u:
-           if u != uname:
-              uname = u
-              print "User " + uname +" swiped and known."
-              setBottomLED(4)
+         m = find_machinetag(uid)
+         if not m:
+           print "Assuming this is a user tag."
+           user_tag = uid
+           setBottomLED(4)
+
            # Allow the time to move along if the user holds the
            # card long against the reader. So in effect the grace
            # period becomes the time between cards.
            #
            last_ok = time.time()
 
-         m = find_machinetag(uid)
          if m:
-           if uname:
-              machine = m
-              print "Machine " + machine + " now wired up."
+           if user_tag:
+             machine = m
+             print "Machine " + machine + " now wired up - requesting permission"
+
+             secret = cnf['secret']
+             nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
+
+             tag_hmac = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+             tag_hmac.update(bytearray(user_tag)) # note - in its original binary glory and order.
+             tag_encoded = tag_hmac.hexdigest()
+
+             data = "energize " + machine + " " + tag_encoded
+
+             HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+             HMAC.update(data.encode('ASCII'))
+             hexdigest = HMAC.hexdigest()
+
+             data = "SIG/1.00 " + hexdigest + " " + nonce + " " + cnf['node'] + " " + data
+
+             publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
+             setBottomLED(50)
            else:
               print "Ignoring machine tag without user tag."
+
+              # flash the led for about a third of the grace time.
+              #
               setBottomLED(8)
-              last_ok = time.time() + grace - 0.5
+              last_ok = time.time() + grace - grace/3
               machine = None
          
-       if uname and machine:
-          print "Both fine. Powering up the " + machine
-          setBottomLED(1)
-
-          PWM.clear_channel(relayChannel)
-          PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayFull)
-          time.sleep(holdDelay)
-
-          PWM.clear_channel(relayChannel)
-          PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayLow)
-
-          machine_tag = cnf['machines'][machine]['tag']
-          powered = 1
-
        if time.time() - last_ok > grace:
           setBottomLED(0)
  
@@ -219,3 +343,6 @@ PWM.clear_channel_gpio(ledChannel,bottomLed)
 
 # Shutdown all PWM and DMA activity
 PWM.cleanup()
+
+client.disconnect()
+
