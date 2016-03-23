@@ -41,7 +41,9 @@ cnf = configRead.cnf
 node=cnf['node']
 mailsubject="-"
 
-logging.basicConfig(filename= node + '.log',level=logging.DEBUG)
+# logging.basicConfig(filename= node + '.log',level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
+
 logger = logging.getLogger() 
 
 ACCESS_UKNOWN, ACCESS_DENIED, ACCESS_GRANTED = ('UNKNOWN', 'DENIED', 'GRANTED')
@@ -79,30 +81,55 @@ def parse_db(dbfile):
 
      return userdb
 
-def reply(topic, data, nonce = None):
+'''
+-       MQTT reply from master to (relevant) ACNode(s)
+
+        topic:          PREFIX/acnode/<node>/reply
+
+        payload:        bytes interpreted as 7-bit safe ASCII
+
+        'SIG/1.00'      protocol version.
+        <space>
+        hexdigest       SHA256 based HMAC of reply-topic, request-nonce, secret and message
+        <space>
+        message         bytes; until the remainder of the message
+
+        Possible replies
+
+        'energize' <space> <devicename> <space> 'approved'
+        'energize' <space> <devicename> <space> 'denied'
+        'energize' <space> <devicename> <space> 'error'
+'''
+
+def reply(replytopic, data, requestnonce = None):
    secret = None
 
-   path = topic.split('/')
-   what = path[-1]
-   who = path[-2]
+   try:
+     path = replytopic.split('/')
+     what = path[-1]
+     which = path[-2]
+   except:
+     logging.error("Cannot parse replytopic '{0}' -- ignoring".format(replytopic))
+     return
 
-   if who in cnf['secrets']:
-     secret = cnf['secrets'][who]
+   if which in cnf['secrets']:
+     secret = cnf['secrets'][which]
    else:
-     print("Legayc no sec "+who)
+     print("No secret defined to reply with - answering in the clear")
 
-   if data != "open" and secret and nonce:
-     HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-     payload = json.dumps(data)
-     HMAC.update(payload.encode('ASCII'))
+   if secret and requestnonce:
+     HMAC = hmac.new(secret.encode('ASCII'),requestnonce.encode('ASCII'),hashlib.sha256)
+     HMAC.update(replytopic.encode('ASCII'))
+     HMAC.update(data.encode('ASCII'))
      hexdigest = HMAC.hexdigest()
  
-     data = "{ "
-     data +="\"HMAC-SHA256\" : \"" + hexdigest + "\","
-     data +="\"payload\" : " + payload 
-     data += "}"
+     data = 'SIG/1.00 ' + hexdigest + ' ' + data.encode('ASCII')
+   else:
+     if data != 'open':
+       print("Legacy mode - can only reply with <open>")
+       return
      
-   publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
+   publish.single(replytopic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
 
 def on_message(client, userdata, message):
     print("Payload: %s",message.payload)
@@ -121,11 +148,10 @@ def on_message(client, userdata, message):
         hdr, sig, nonce, node, payload = payload.split(' ',4)
       except:
         logging.info("Could not parse '{0}' -- ignored".format(payload))
-        raise
         return
 
       if not node in cnf['secrets']:
-        logging.info("No secret known for node {0} -- ignored.".format(node))
+        logging.critical("No secret known for node '{0}' -- ignored.".format(node))
         return
 
       secret = cnf['secrets'][node]
@@ -138,34 +164,53 @@ def on_message(client, userdata, message):
         return
 
     try:
-      payload = json.loads(payload)
+      what, which, tag_encoded = payload.split()
     except:
-      logging.info("Cannot decode json - ignored")
-      raise
+      logging.info("Cannot parse payload; ignored")
       return
 
-    if not 'tag' in payload:
-      logging.info("No tag - ignored")
+    tag = None
+    for uid in userdb.keys():
+      tag_hmac = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+      try:
+        tag_asbytes= ''.join(chr(int(x)) for x in uid.split("-") )
+      except:
+        logging.error("Could not parse tag '{0}' in config file-- skipped".format(uid))
+        continue
+
+      tag_hmac.update(tag_asbytes)
+      tag_db = tag_hmac.hexdigest()
+
+      if tag_encoded == tag_db:
+         tag = uid
+         break
+
+    if not tag in userdb:
+      logging.info("Unknown tag; ignored")
       return
 
-    tag = payload['tag']
-    who = payload['machine']
-    what = payload['operation']
+    if not tag in userdb:
+      logging.info("Tag not in DB; ignored")
+      return
 
     email = userdb[tag]['email'];
     name = userdb[tag]['name'];
 
-    if not node in userdb[tag]['access']:
-       logging.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, who);
-       reply(topic, "denied", nonce)
-       return
+    msg = 'energize ' + which + ' ';
+    if not which in userdb[tag]['access']:
+       logging.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, which);
+       msg += 'denied'
+    else:
+       logging.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, what, which);
+       msg += 'approved'
 
-    logging.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, what, who);
-    reply(topic, "ok", nonce)
+    print("Response: "+msg)
+
+    reply(cnf['mqtt']['sub']+'/'+node+'/reply' ,msg, nonce)
 
 def on_connect(client, userdata, flags, rc):
     print("(re)Connected with result code "+str(rc))
-    topic = cnf['mqtt']['sub']+"/#"
+    topic = cnf['mqtt']['sub']+"/master"
 
     if sys.version_info[0] < 3:
        topic = topic.encode('ASCII')
@@ -195,14 +240,9 @@ userdb = parse_db(cnf['dbfile'])
 if args.C:
    print("Client mode - one post shot.")
    tag,machine = args.C
-   topic = cnf['mqtt']['sub']
+   topic = cnf['mqtt']['sub'] + '/master'
 
-   data = {
-	'machine' : machine,
-	'tag' : tag,
-	'operation' : 'energize'
-   }
-   data = json.dumps(data)
+   data = 'energize ' + machine + ' ' + tag
 
    if machine in cnf['secrets']:
      secret = cnf['secrets'][machine]
@@ -214,7 +254,6 @@ if args.C:
      hexdigest = HMAC.hexdigest()
 
      data = "SIG/1.00 " + hexdigest + " " + nonce + " " + machine + " " + payload
-
    else:
      print("Legayc no secret defined for "+machine)
      
