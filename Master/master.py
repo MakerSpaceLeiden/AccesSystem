@@ -41,10 +41,13 @@ cnf = configRead.cnf
 node=cnf['node']
 mailsubject="-"
 
-# logging.basicConfig(filename= node + '.log',level=logging.DEBUG)
-logging.basicConfig(level=logging.DEBUG)
+loglevel=logging.ERROR
+if args.v:
+  loglevel=logging.INFO
+if args.v> 1:
+  loglevel=logging.DEBUG
 
-logger = logging.getLogger() 
+logging.basicConfig(level=logging.DEBUG)
 
 ACCESS_UKNOWN, ACCESS_DENIED, ACCESS_GRANTED = ('UNKNOWN', 'DENIED', 'GRANTED')
 
@@ -67,19 +70,17 @@ def parse_db(dbfile):
           # has access to.          
           allowed_items = access.split(',')
 
-          # print("-- "+tag+" - "+name+"/"+access)
-
           # Create database
           userdb[tag] = { 'tag': 'hidden', 'access': allowed_items, 'name': name, 'email': email }
      except IOError as e:
-       print("I/O error %s", e.strerror())
-       raise
+       logging.critical("I/O error %s", e.strerror())
+       sys.exit(1)
      except ValueError:
-       print("Could not convert data to an integer -- some malformed tag ?")
+       logging.error("Could not convert data to an integer -- some malformed tag ? ignored. ")
        raise
      except:
-       print("Unexpected error: %s", sys.exc_info()[0])
-       raise
+       logging.critical("Unexpected error: %s", sys.exc_info()[0])
+       sys.exit(1)
 
      return userdb
 
@@ -114,29 +115,28 @@ def reply(replytopic, data, requestnonce = None):
      logging.error("Cannot parse replytopic '{0}' -- ignoring".format(replytopic))
      return
 
-   if which in cnf['secrets']:
-     secret = cnf['secrets'][which]
-   else:
-     print("No secret defined to reply with - answering in the clear")
+   if not which in cnf['secrets']:
+     logging.warning("No secret defined to reply with -- ignoring")
+     return
 
-   print("Hmac: " + secret + "/" + requestnonce + "/" + replytopic + "/" + data)
+   if not requestnonce:
+     logging.warning("No nonce -- ignoring")
+     return
 
-   if secret and requestnonce:
-     HMAC = hmac.new(secret.encode('ASCII'),requestnonce.encode('ASCII'),hashlib.sha256)
-     HMAC.update(replytopic.encode('ASCII'))
-     HMAC.update(data.encode('ASCII'))
-     hexdigest = HMAC.hexdigest()
+   secret = cnf['secrets'][which]
+
+   HMAC = hmac.new(secret.encode('ASCII'),requestnonce.encode('ASCII'),hashlib.sha256)
+   HMAC.update(replytopic.encode('ASCII'))
+   HMAC.update(data.encode('ASCII'))
+   hexdigest = HMAC.hexdigest()
  
-     data = 'SIG/1.00 ' + hexdigest + ' ' + data.encode('ASCII')
-   else:
-     if data != 'open':
-       print("Legacy mode - can only reply with <open>")
-       return
+   data = 'SIG/1.00 ' + hexdigest + ' ' + data.encode('ASCII')
      
    publish.single(replytopic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
+   logging.debug("@"+replytopic+": "+data)
 
 def on_message(client, userdata, message):
-    print("Payload: %s",message.payload)
+    logging.debug("Payload: %s",message.payload)
 
     payload = None
     try:
@@ -224,7 +224,7 @@ def on_message(client, userdata, message):
        acl = 'denied'
 
     if what == 'energize':
-      msg = 'energize ' + which + ' ';
+      msg = 'energize ' + which + ' ' + acl
       logging.info(msg)
       reply(cnf['mqtt']['sub']+'/'+node+'/reply' ,msg, nonce)
       return
@@ -249,22 +249,22 @@ def on_message(client, userdata, message):
 
 
 def on_connect(client, userdata, flags, rc):
-    print("(re)Connected with result code "+str(rc))
+    logging.info("(re)Connected with result code "+str(rc))
     topic = cnf['mqtt']['sub']+"/" + cnf['node'] + "/#"
 
     if sys.version_info[0] < 3:
        topic = topic.encode('ASCII')
 
     mid = client.subscribe(topic)
-    print("Subscription req to {0} with MID={1}".format(cnf['mqtt']['sub'], mid))
+    logging.debug("Subscription req to {0} with MID={1}".format(cnf['mqtt']['sub'], mid))
 
 def on_subscribe(client, userdata, mid, granted_qos):
-    print("(re)Subscribed confirmed for {0}".format(mid))
+    logging.info("(re)Subscribed confirmed for {0}".format(mid))
 
 continueForever = True
 def end_loop(signal,frame):
     global continueForever
-    print("Ctrl+C captured, ending subscribe, etc")
+    logging.info("Ctrl+C captured, ending subscribe, etc")
     continueForever = False
 
 signal.signal(signal.SIGINT, end_loop)
@@ -284,19 +284,21 @@ if args.C:
 
    data = 'energize ' + machine + ' ' + tag
 
-   if machine in cnf['secrets']:
-     secret = cnf['secrets'][machine]
-     nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
-     payload = data
+   if not machine in cnf['secrets']:
+     logging.error("No secret defined, Aborting")
+     sys.exit(1)
 
-     HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-     HMAC.update(payload.encode('ASCII'))
-     hexdigest = HMAC.hexdigest()
+   secret = cnf['secrets'][machine]
+   nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
+   payload = data
 
-     data = "SIG/1.00 " + hexdigest + " " + nonce + " " + machine + " " + payload
-   else:
-     print("Legayc no secret defined for "+machine)
-     
+   HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+   HMAC.update(payload.encode('ASCII'))
+   hexdigest = HMAC.hexdigest()
+
+   data = "SIG/1.00 " + hexdigest + " " + nonce + " " + machine + " " + payload
+    
+   logging.info("@"+topic+": " + data) 
    publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
 else:
    while continueForever:
