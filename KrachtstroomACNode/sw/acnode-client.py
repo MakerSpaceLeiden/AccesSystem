@@ -6,32 +6,84 @@ import json
 import sys
 import signal
 import logging
+import logging.handlers
 import os
 import hmac
+import argparse
 
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
 
-# We're careful as to not import the 
-# RPIO itself; as it magically claims
-# pin 22; thus conflicting with MFRC522.
-#
-import RPIO.PWM as PWM
-
-# Note: The current MFC522 library claims pin22/GPIO25
-# as the reset pin -- set by the constant NRSTPD near
-# the start of the file.
-#
-import MFRC522
-
-logging.basicConfig(level=logging.DEBUG)
-
 sys.path.append('../../lib')
 import configRead
 import alertEmail
+import MqttHandler
 
-configRead.load('config.json')
+parser = argparse.ArgumentParser(description='ACNode RFID Lezer control.')
+parser.add_argument('-v', action='count',
+                   help='Verbose')
+parser.add_argument('-c', type=argparse.FileType('r'), metavar='config.json',
+                   help='Configuration file')
+parser.add_argument('-l', type=argparse.FileType('w+'), metavar='logfile',
+                   help='Log to file, rather than the default syslog')
+parser.add_argument('-s', type=str, metavar='hostname',
+                   help='MQTT Server (FQDN or IP address)')
+parser.add_argument('--offline', action='count',
+                   help='Activate offline/no-hardware needed test mode')
+
+args = parser.parse_args()
+
+configfile = None
+if args.c:
+  configfile = args.c
+
+configRead.load(configfile)
 cnf = configRead.cnf
+
+if args.s:
+  cnf['mqtt']['host'] = s
+
+if args.offline:
+  args.v = 10
+
+loglevel=logging.ERROR
+if args.v:
+  loglevel=logging.INFO
+if args.v> 1:
+  loglevel=logging.DEBUG
+
+logger = logging.getLogger()
+logger.setLevel(loglevel)
+
+logtopic = cnf['mqtt']['sub']+"/log/" + cnf['node']
+logger.addHandler(MqttHandler.MqttHandler(cnf['mqtt']['host'],logtopic))
+
+
+if args.l:
+  logger.addHandler(logging.StreamHandler(stream=args.l))
+else:
+  if args.v:
+    logger.addHandler(logging.StreamHandler())
+  else:
+    logger.addHandler(logging.handlers.SysLogHandler())
+
+
+if args.offline:
+  logger.info("TEST: import PWM")
+  logger.info("TEST: import MFRC522")
+else:
+  # We're careful as to not import the 
+  # RPIO itself; as it magically claims
+  # pin 22; thus conflicting with MFRC522.
+  #
+  import RPIO.PWM as PWM
+
+  # Note: The current MFC522 library claims pin22/GPIO25
+  # as the reset pin -- set by the constant NRSTPD near
+  # the start of the file.
+  #
+  import MFRC522
+  MIFAREReader = MFRC522.MFRC522()
 
 # GPIO Wiring
 #
@@ -62,16 +114,24 @@ relayLow = max(1,int(relayFull * holdpwm / 100 -1))
 
 ledFull = int(1e6/1/pulseInc - 1)
 
-PWM.set_loglevel(PWM.LOG_LEVEL_ERRORS)
-PWM.setup(pulseInc)
-PWM.init_channel(relayChannel, subcycle_time_us=int(1e6/frequency)) 
-PWM.init_channel(ledChannel, subcycle_time_us=int(1e6/1)) # Cycle time in microSeconds == 1 second
+if args.offline:
+   logger.info("TEST: initializing PWM")
+else:
+   PWM.set_loglevel(PWM.LOG_LEVEL_ERRORS)
+   PWM.setup(pulseInc)
+   PWM.init_channel(relayChannel, subcycle_time_us=int(1e6/frequency)) 
+   PWM.init_channel(ledChannel, subcycle_time_us=int(1e6/1)) # Cycle time in microSeconds == 1 second
 
 topLedTransitionsPerCycle = 0
 bottomLedTransitionsPerCycle = 0
 
 def setLEDs():
   global topLedTransitionsPerCycle, bottomLedTransitionsPerCycle
+
+  if args.offline:
+      logger.info("TEST: topled=%d bottomled=%d", topLedTransitionsPerCycle, bottomLedTransitionsPerCycle)
+      return
+
   PWM.clear_channel(ledChannel)
   for pin, state in { topLed: topLedTransitionsPerCycle, bottomLed: bottomLedTransitionsPerCycle }.iteritems():
     if state:
@@ -91,26 +151,32 @@ def setBottomLED( state ):
    bottomLedTransitionsPerCycle=state
    setLEDs()
 
+def power(state):
+    if args.offline:
+        logger.info("TEST: setting power=%d", state)
+        return
+
+    if state:
+        PWM.clear_channel(relayChannel)
+        PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayFull)
+        time.sleep(holdDelay)
+        PWM.clear_channel(relayChannel)
+        PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayLow)
+    else:
+        PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
+        PWM.clear_channel(relayChannel)
+
 # Flash top LED while we get our bearings.
 #
 setTopLED(20)
-
-def find_usertag(uid=None):
-  try:
-     idx = cnf['users'].values().index(uid)
-     return cnf['users'].keys()[ idx ]
-  except:
-     return None
-
-  return None
 
 def find_machinetag(uid=None):
   m = cnf['machines']
   for key in m.keys():
     if m[key]['tag'] == uid:
        return key
-
   return None
+
 
 # Ready to start - turn top LED full on.
 setTopLED(1)
@@ -132,36 +198,34 @@ forever= True
 # Capture SIGINT for cleanup when the script is aborted
 def end_read(signal,frame):
     global forever 
-    print "Ctrl+C captured, aborting."
+    logger.debug("Ctrl+C captured, aborting.")
     forever= False
 
 signal.signal(signal.SIGINT, end_read)
 signal.signal(signal.SIGQUIT, end_read)
 
-MIFAREReader = MFRC522.MFRC522()
 
 def on_connect(client, userdata, flags, rc):
-    print("(re)Connected with result code "+str(rc))
+    logger.info(("(re)Connected with result code "+str(rc)))
     topic = cnf['mqtt']['sub']+"/" + cnf['node'] + "/reply"
 
     if sys.version_info[0] < 3:
        topic = topic.encode('ASCII')
 
     mid = client.subscribe(topic)
-    print("Subscription req to {0} with MID={1}".format(cnf['mqtt']['sub'], mid))
+    logger.info("Subscription req to {0} with MID={1}".format(cnf['mqtt']['sub'], mid))
 
 def on_subscribe(client, userdata, mid, granted_qos):
-    print("(re)Subscribed confirmed for {0}".format(mid))
-
+    logger.info("(re)Subscribed confirmed for {0}".format(mid))
 
 def on_message(client, userdata, message):
-    print("Payload: %s",message.payload)
+    logger.info("Payload: %s",message.payload)
 
     payload = None
     try:
       payload = message.payload.decode('ASCII')
     except:
-      logging.info("Non ascii equest '{0}' -- ignored".format(message.payload))
+      logger.info("Non ascii equest '{0}' -- ignored".format(message.payload))
       return
 
     topic = message.topic
@@ -171,12 +235,12 @@ def on_message(client, userdata, message):
 	# 'SIG/1.00 27b1f...498c40d1cb85173de8e6026604bea234107d energize circelzaag approved' 
         hdr, sig, payload = payload.split(' ',2)
       except:
-        logging.info("Could not parse '{0}' -- ignored".format(payload))
+        logger.info("Could not parse '{0}' -- ignored".format(payload))
         raise
         return
 
       if not 'secret' in cnf:
-        logging.critical("No secret configured for this node.")
+        logger.critical("No secret configured for this node.")
         return
 
       secret = cnf['secret']
@@ -188,53 +252,48 @@ def on_message(client, userdata, message):
       hexdigest = HMAC.hexdigest()
 
       if not hexdigest == sig:
-        logging.warning("Invalid signatured; ignored.")
+        logger.warning("Invalid signatured; ignored.")
         return
 
     try:
       what, which, result = payload.split()
     except:
-      logging.info("Cannot parse payload; ignored")
+      logger.info("Cannot parse payload; ignored")
       return
  
     global user_tag, machine
 
     if machine != which:
-      logging.info("Unexpected machine; ignored")
+      logger.info("Unexpected machine; ignored")
       return
 
     if what != 'energize':
-      logging.info("Unexpected command; ignored")
+      logger.info("Unexpected command; ignored")
       return
 
     if result == 'denied':
-      logging.info("Denied XS")
+      logger.info("Denied XS")
       setBottomLED(5)
       return
 
     if result != 'approved':
-      logging.info("Unexpected result; ignored")
+      logger.info("Unexpected result; ignored")
       return
 
 
     if not user_tag or not machine:
-      logging.info("Lost my mind - ignored the ok.")
+      logger.info("Lost my mind - ignored the ok.")
       return
  
-    print "Got the OK - Powering up the " + machine
+    logger.info("Got the OK - Powering up the " + machine)
     setBottomLED(1)
 
-    PWM.clear_channel(relayChannel)
-    PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayFull)
-    time.sleep(holdDelay)
-
-    PWM.clear_channel(relayChannel)
-    PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayLow)
-
+    power(1)
     global machine_tag, powered, last_ok
     machine_tag = cnf['machines'][machine]['tag']
     powered = 1
     last_ok = time.time()
+
 
 if not 'secret' in cnf:
     logger.critical("No secret for this node defined. aborting.")
@@ -257,6 +316,7 @@ if 'master' in cnf:
 
 topic = cnf['mqtt']['sub'] + "/" + master + "/" + cnf['node']
 
+logger.info("Operational")
 while forever:
    client.loop()
 
@@ -268,33 +328,36 @@ while forever:
    # on this; and again allow some grace. This makes detecting
    # the removal of a card slower.
    #
-   (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
    uid = None
 
-   if status == MIFAREReader.MI_OK:
+   if args.offline:
+     (status,TagType) = (None, None)
+   else:
+     (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
+
+     if status == MIFAREReader.MI_OK:
         (status,uid) = MIFAREReader.MFRC522_Anticoll()
         if status == MIFAREReader.MI_OK:
            localtime = time.asctime( time.localtime(time.time()) )
            if last_tag != uid:
-              print localtime + "	Card UID: "+'-'.join(map(str,uid))
+              logger.debug(localtime + "	Card UID: "+'-'.join(map(str,uid)))
            last_tag = uid
         else:
-           print "Error"
+           logger.error("Card read error.")
 
    if powered:
        # check that the right plug tag is still being read.
        #
        if machine_tag == uid:
-          # print "plug tag still detected."
+          logger.debug("plug tag still detected.")
           last_ok = time.time()
 
        if time.time() - last_ok > graceOff:
-          print "Power down."
+          logger.info("Power down.")
           powered = 0
           user_tag = None
           machine = None
-          PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
-          PWM.clear_channel(relayChannel)
+          power(powered)
           setBottomLED(0)
    else:
        # we are not powered - so waiting for a user tag or device tag.
@@ -302,7 +365,7 @@ while forever:
        if uid:
          m = find_machinetag(uid)
          if not m:
-           print "Assuming this is a user tag."
+           logger.debug("Assuming this is a user tag.")
            user_tag = uid
            setBottomLED(4)
 
@@ -315,7 +378,7 @@ while forever:
          if m:
            if user_tag:
              machine = m
-             print "Machine " + machine + " now wired up - requesting permission"
+             logger.info("Machine " + machine + " now wired up - requesting permission")
 
              secret = cnf['secret']
              nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
@@ -335,7 +398,7 @@ while forever:
              publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
              setBottomLED(50)
            else:
-              print "Ignoring machine tag without user tag."
+              logger.info("Ignoring machine tag without user tag.")
 
               # flash the led for about a third of the grace time.
               #
@@ -347,14 +410,18 @@ while forever:
           setBottomLED(0)
  
 
-# Needed to clear down the GPIO back to input (cleanup() does not do that).
-#
-PWM.clear_channel_gpio(relayChannel,relay)
-PWM.clear_channel_gpio(ledChannel,topLed)
-PWM.clear_channel_gpio(ledChannel,bottomLed)
-
-# Shutdown all PWM and DMA activity
-PWM.cleanup()
+if args.offline:
+   logger.info("TEST: clearing down PWM")
+else:   
+   # Needed to clear down the GPIO back to input (cleanup() does not do that).
+   #
+   PWM.clear_channel_gpio(relayChannel,relay)
+   PWM.clear_channel_gpio(ledChannel,topLed)
+   PWM.clear_channel_gpio(ledChannel,bottomLed)
+   
+   # Shutdown all PWM and DMA activity
+   PWM.cleanup()
 
 client.disconnect()
-
+logger.info("normal exit")
+sys.exit(0)
