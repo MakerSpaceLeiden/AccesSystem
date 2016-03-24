@@ -136,8 +136,18 @@ def reply(replytopic, data, requestnonce = None):
    logging.debug("@"+replytopic+": "+data)
 
 def on_message(client, userdata, message):
-    logging.debug("Payload: %s",message.payload)
 
+    topic = message.topic
+    logging.debug("@%s: : %s",topic, message.payload)
+
+    path = topic.split('/')
+    moi = path[-2]
+    node = path[-1]
+
+    if moi != cnf['node']:
+      logging.info("Message addressed to '{0}' not to me ('{1}') -- ignored.".format(moi,cnf['node']))
+      return
+      
     payload = None
     try:
       payload = message.payload.decode('ASCII')
@@ -145,11 +155,10 @@ def on_message(client, userdata, message):
       logging.info("Non ascii equest '{0}' -- ignored".format(message.payload))
       return
 
-    topic = message.topic
 
     if payload.startswith("SIG/"):
       try:
-        hdr, sig, nonce, node, payload = payload.split(' ',4)
+        hdr, sig, nonce, dstnode, payload = payload.split(' ',4)
       except:
         logging.info("Could not parse '{0}' -- ignored".format(payload))
         return
@@ -184,7 +193,7 @@ def on_message(client, userdata, message):
       return
 
     if what == 'roll':
-       logging.debug("Updated nonce for node '{0}' to '{1}'".format(node,nonce))
+       logging.debug("Updated nonce for node '{0}' to '{1}'".format(dstnode,nonce))
        rollingnonces[node] = nonce
        return
 
@@ -222,14 +231,15 @@ def on_message(client, userdata, message):
     else:
        logging.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, which);
        acl = 'denied'
-
-    if node != which:
-       if not node in rollingnonces:
+    
+    if dstnode != node:
+       logging.debug("Target node '{1}' not the same as requesting node {0} - using rolling nonce.".format(dstnode,node))
+       if not dstnode in rollingnonces:
           logging.info("No rolling nonce for node '%s'", node)
           return
        nonce = rollingnonces[node]
-
-    topic = cnf['mqtt']['sub']+'/'+node+'/reply'
+    
+    topic = cnf['mqtt']['sub']+'/'+dstnode+'/reply'
 
     msg = None
     if what == 'energize':
