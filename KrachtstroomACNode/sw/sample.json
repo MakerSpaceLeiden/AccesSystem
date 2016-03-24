@@ -16,7 +16,7 @@
 		"circelzaag": {
 			"name" : "Circelzaag",
 			"tag" : [ 1,2,3,4,5 ],
-        		"users" : [ "fred" ]
+        		"offline_users" : [ "fred" ]
 		}
 	},
         "users" : {
