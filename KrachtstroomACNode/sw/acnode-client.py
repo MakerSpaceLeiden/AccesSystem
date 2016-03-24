@@ -251,7 +251,11 @@ client.on_message = on_message
 client.on_connect = on_connect
 client.on_subscribe= on_subscribe
 
-topic = cnf['mqtt']['sub']+"/master"
+master = 'master'
+if 'master' in cnf:
+  master = cnf['masternode']
+
+topic = cnf['mqtt']['sub'] + "/" + master + "/" + cnf['node']
 
 while forever:
    client.loop()
