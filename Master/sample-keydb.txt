@@ -1,2 +1,2 @@
-1, 2, 3, 4, 4:deur:Fred:fred@foobar.com
-1, 2, 3, 4, 6:deur,circelzaag:Vingerloze Pieter:pieter@vlugge.com
+1-2-3-4-4:deur:Fred:fred@foobar.com
+1-2-3-4-6:deur,circelzaag:Vingerloze Pieter:pieter@vlugge.com
