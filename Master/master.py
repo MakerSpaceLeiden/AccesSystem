@@ -199,6 +199,7 @@ def on_message(client, userdata, message):
 
     tag = None
     for uid in userdb.keys():
+
       tag_hmac = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
       try:
         tag_asbytes= ''.join(chr(int(x)) for x in uid.split("-") )

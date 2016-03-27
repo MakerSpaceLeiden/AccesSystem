@@ -1,112 +1,38 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.4
 #
 import time 
-import hashlib
-import json
 import sys
-import signal
-import logging
 import os
-import hmac
-import argparse
 
-import paho.mqtt.client as mqtt
-import paho.mqtt.publish as publish
-
-sys.path.append('../lib')
-import configRead
-import alertEmail
-
-parser = argparse.ArgumentParser(description='ACNode RFID Lezer control.')
-parser.add_argument('-v', action='count',
-                   help='Verbose')
-parser.add_argument('-c', type=argparse.FileType('r'), metavar='config.json',
-                   help='Configuration file')
-parser.add_argument('-s', type=str, metavar='hostname',
-                   help='MQTT Server (FQDN or IP address)')
-parser.add_argument('-C', nargs='+', metavar=('tags'),
-                   help='Client mode - useful for testing')
-parser.add_argument('--offline', action='count',
-                   help='Activate offline/no-hardware needed test mode')
-
-args = parser.parse_args()
-
-configfile = None
-if args.c:
-  configfile = args.c
-
-configRead.load(configfile)
-cnf = configRead.cnf
-
-if args.offline:
-  args.v = 10
-
-loglevel=logging.ERROR
-if args.v:
-  loglevel=logging.INFO
-if args.v> 1:
-  loglevel=logging.DEBUG
-
-logging.basicConfig(level=loglevel)
-
-if args.offline:
-  logging.info("TEST: import MFRC522")
-  logging.info("TEST: import RPI.GPIO")
-else:
-  # Note: The current MFC522 library claims pin22/GPIO25
-  # as the reset pin -- set by the constant NRSTPD near
-  # the start of the file.
-  #
-  import MFRC522
-  MIFAREReader = MFRC522.MFRC522()
-  import RPi.GPIO as GPIO
-
-last_tag = None
-
-master = 'master'
-if 'master' in cnf:
-  master = cnf['masternode']
-renew = 300 # seconds
-
-if not 'node' in cnf:
-    logging.critical("No node name defined. aborting.")
-    sys.exit(1)
-node = cnf['node']
-
-if not 'secret' in cnf:
-    logging.critical("No secret for this node defined. aborting.")
-    sys.exit(1)
-secret = cnf['secret']
-
-machine =node
-if 'machine' in cnf:
-  machine = cnf['machine']
-
-topic = cnf['mqtt']['sub']+"/" + master + "/" + node
-
-nonce_time = 0
-nonce = None
-# enable / disable mosfet
+# Mode (mosfet -or- stepper)
 mosfet=1
-
-# enbale + config stepper / disable stepper
 stepper=0
 steps=350
 
-# In BCM mode
+# in MOSFET mode
+#
+pin = 18
+pin_high_time = 5	# in seconds
+
+# In stepper/BCM mode
 pin_dir=17     
 pin_step =27
 pin_enable=22
 Sleep=0.0001
 
-def init_gpio():
-     if args.offline:
-        logging.info("TEST: init_gpio()")
-        return
+sys.path.append('../lib')
+from ACNode import ACNode
+
+class SimpleACNode(ACNode):
+  last_tag = None
+  nonce_time = 0
+  fake_time = 0
+
+  def init_gpio(self):
      GPIO.setwarnings(False)
      GPIO.setmode(GPIO.BCM)
      if ( stepper == 1 ):
-          logging.debug("setup stepper")
+          logger.debug("setup stepper")
           GPIO.setup(pin_dir, GPIO.OUT)
           GPIO.setup(pin_step, GPIO.OUT)
           GPIO.setup(pin_enable, GPIO.OUT)
@@ -114,20 +40,17 @@ def init_gpio():
           GPIO.output(pin_dir, False)
           GPIO.output(pin_step, False)
      if ( mosfet == 1 ):
-          GPIO.setup(18, GPIO.OUT)
-          GPIO.output(18, False)
+          GPIO.setup(pin, GPIO.OUT)
+          GPIO.output(pin, False)
 
-def open_door():
-     if args.offline:
-        logging.debug("TEST: open_door()")
-        return
+  def open_door(self):
      if ( mosfet == 1 ): 
-          logging.debug("open via mosfet")
-          GPIO.output(18, True)     
-          time.sleep(5)
-          GPIO.output(18, False)
+          logger.debug("open via mosfet")
+          GPIO.output(pin, True)     
+          time.sleep(pin_high_time)
+          GPIO.output(pin, False)
      if (stepper == 1 ):
-          logging.debug("open via stepper")
+          logger.debug("open via stepper")
           GPIO.output(pin_enable,False)
 
           for step in xrange(steps):
@@ -148,155 +71,154 @@ def open_door():
           time.sleep(0.1)
           GPIO.output(pin_enable,True)
 
-init_gpio()
-forever= True
+  # Firstly - we have an 'offline' mode that allows for
+  # testing without the hardware (i.e. on any laptop or
+  # machine with python); without the need for the stepper
+  # motor, mosfet or RFID reader.
+  #
+  # In addition; have one extra argument - which allows us to 'fake'
+  # swipe tags from the command line - and see the effect.
+  #
+  def parseArguments(self):
+    self.parser.add('--offline', action='count',
+                   help='Activate offline/no-hardware needed test mode; implies max-verbose mode.')
+    self.parser.add('tags', nargs='*',
+       help = 'Zero or more test tags to "pretend" offer with 5 seconds pause. Once the last one has been offered the daemon will enter the normal loop.')
 
-def send_request(uid = None):
-      global nonce
-      nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
+    super().parseArguments()
 
-      tag_hmac = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-      tag_hmac.update(bytearray(uid)) # note - in its original binary glory and order.
-      tag_encoded = tag_hmac.hexdigest()
+  # We load the hardware related libraries late and
+  # on demand; this allows for an '--offline' flag.
+  #
+  def setup(self):
+    super().setup()
 
-      data = "open " + machine+ " " + tag_encoded
-   
-      HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-      HMAC.update(data.encode('ASCII'))
-      hexdigest = HMAC.hexdigest()
-   
-      data = "SIG/1.00 " + hexdigest + " " + nonce + " " + node + " " + data
+    # Go very verbose if we are in fake hardware or test-tag mode.
+    #
+    if self.cnf.offline or self.cnf.tags:
+       self.cnf.v = 10
 
-      logging.debug("Sending @"+topic+": "+data)
-      publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
+    if self.cnf.offline:
+       self.logger.info("TEST: import MFRC522")
+    else:
+       # Note: The current MFC522 library claims pin22/GPIO25
+       # as the reset pin -- set by the constant NRSTPD near
+       # the start of the file.
+       #
+       import MFRC522
+       MIFAREReader = MFRC522.MFRC522()
 
-# Capture SIGINT for cleanup when the script is aborted
-def end_read(signal,frame):
-    global forever
-    logging.info("Ctrl+C captured, aborting.")
-    forever= False
+    if self.cnf.offline:
+       self.logger.info("TEST: import RPI.GPIO")
+    else:
+       # Note: The current MFC522 library claims pin22/GPIO25
+       import RPi.GPIO as GPIO
+    
 
-signal.signal(signal.SIGINT, end_read)
-signal.signal(signal.SIGQUIT, end_read)
+    if self.cnf.offline:
+       self.logger.info("TEST: init_gpio()")
+    else:
+       self.logger.debug("Initializing hardware.")
+       init_gpio()
 
-def on_connect(client, userdata, flags, rc):
-    logging.info(("(re)Connected with result code "+str(rc)))
-    topic = cnf['mqtt']['sub']+"/" + cnf['node'] + "/reply"
+  def send_request(self,uid = None):
+      super().send_request("open", self.cnf.machine,uid)
 
-    if sys.version_info[0] < 3:
-       topic = topic.encode('ASCII')
+  def on_message(self,client, userdata, message):
+    payload = super().on_message(client, userdata, message)
 
-    mid = client.subscribe(topic)
-    logging.debug(("Subscription req to {0} with MID={1}".format(cnf['mqtt']['sub'], mid)))
+    if not payload:
+       return 1
 
-def on_subscribe(client, userdata, mid, granted_qos):
-    logging.info(("(re)Subscribed confirmed for {0}".format(mid)))
-
-def on_message(client, userdata, message):
-    logging.debug(("Payload: %s",message.payload))
-
-    payload = None
-    try:
-      payload = message.payload.decode('ASCII')
-    except:
-      logging.info("Non ascii equest '{0}' -- ignored".format(message.payload))
-      return
-
-    topic = message.topic
-
-    if payload.startswith("SIG/"):
-      try:
-        hdr, sig, payload = payload.split(' ',2)
-      except:
-        logging.info("Could not parse '{0}' -- ignored".format(payload))
-        raise
-        return
-
-      if not 'secret' in cnf:
-        logging.critical("No secret configured for this node.")
-        return
-
-      secret = cnf['secret']
-      global nonce
-     
-      HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-      HMAC.update(topic.encode('ASCII'))
-      HMAC.update(payload.encode('ASCII'))
-      hexdigest = HMAC.hexdigest()
-
-      if not hexdigest == sig:
-        logging.warning("Invalid signatured; ignored.")
-        return
-
+    # We know that we have a good message - so parse
+    # it in our context.
+    #
     try:
       what, which, result = payload.split()
     except:
-      logging.warning("Cannot parse payload; ignored")
-      return
+      self.logger.warning("Cannot parse payload; ignored")
+      return 100
 
-    if which != machine:
-      logging.info("I am a '{0}'- ignoring '{1}; ignored".format(which,machine))
-      return
+    if which != self.cnf.machine:
+      self.logger.info("I am a '{0}'- ignoring '{1}; ignored".format(which,self.cnf.machine))
+      return 101
 
     if what != 'open':
-      logging.warning("Unexpected command '{0}' - I can only <open> the <{1}>; ignored".format(what,machine))
-      return
+      self.logger.warning("Unexpected command '{0}' - I can only <open> the <{1}>; ignored".format(what,self.cnf.machine))
+      return 102
 
     if result == 'denied':
-      logging.info("Denied XS")
-      return
+      self.logger.info("Denied XS")
+      return 103
 
     if result != 'approved':
-      logging.info("Unexpected result; ignored")
-      return
+      self.logger.info("Unexpected result; ignored")
+      return 104
 
-    open_door()
+    if self.cnf.offline:
+       self.logger.debug("TEST: open_door()")
+    else:
+       self.loggin.info("Oepning door")
+       open_door()
 
-client = mqtt.Client()
+    return 0
 
-if not cnf['mqtt']['host'] or not cnf['mqtt']['sub']:
-  logging.critical("No MQTT configured. aborting.")
-  os.exit(1)
+  def loop(self):
+   super().loop()
 
-client.connect(cnf['mqtt']['host'])
-client.on_message = on_message
-client.on_connect = on_connect
-client.on_subscribe= on_subscribe
+   if self.cnf.tags and time.time() - self.fake_time > 5:
 
+     tag = self.cnf.tags.pop(0)
+     self.logger.info("Pretending swipe of fake tag: <"+tag+">")
 
-while forever:
-   client.loop()
-   if args.C:
-     for tag in args.C:
-       if sys.version_info[0] < 3:
-         tag_asbytes= ''.join(chr(int(x)) for x in tag.split("-"))
-       else:
-         tag_asbytes = bytearray(map(int,tag.split("-")))
-       send_request(tag_asbytes)
-     # we only do this once.
-     args.C = None
+     if sys.version_info[0] < 3:
+        tag_asbytes= ''.join(chr(int(x)) for x in tag.split("-"))
+     else:
+        tag_asbytes = bytearray(map(int,tag.split("-")))
+
+     self.send_request(tag_asbytes)
+     self.fake_time = time.time()
+
+     if not self.cnf.tags:
+        self.logger.info("And that was the last pretend tag; going into normal mode now.")
 
    uid = None
-   if args.offline:
+   if self.cnf.offline:
      (status,TagType) = (None, None)
    else:
      (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
      if status == MIFAREReader.MI_OK:
         (status,uid) = MIFAREReader.MFRC522_Anticoll()
         if status == MIFAREReader.MI_OK:
-          logging.info("Swiped card "+'-'.join(map(str,uid)))
+          logger.info("Swiped card "+'-'.join(map(str,uid)))
         else:
           uid = None
      
-   if last_tag != uid:
+   if self.last_tag != uid:
       localtime = time.asctime( time.localtime(time.time()) )
-      logging.info(localtime + "     Card UID: "+'-'.join(map(str,uid)))
-      send_request(uid)
-      last_tag = uid
+      logger.info(localtime + "     Card UID: "+'-'.join(map(str,uid)))
+      self.send_request(uid)
+      self.last_tag = uid
 
-client.disconnect()
+  def on_exit(self,exitcode):
+    if not self.cnf.offline:
+      GPIO.cleanup()
+    else:
+      self.logger.debug("TEST: GPIO_cleanup() called.")
+    super().on_exit(exitcode)
 
-if not args.offline:
-  GPIO.cleanup()
+# Spin up a node; and run it forever; or until aborted; and
+# provide a non-zero exit code as/if needd.
+#
+#
+acnode = SimpleACNode()
 
-sys.exit(0)
+if not acnode:
+  sys.exit(1)
+
+exitcode = acnode.run()
+
+sys.exit(exitcode)
+
+
+

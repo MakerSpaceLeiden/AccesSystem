@@ -67,7 +67,10 @@ Version 2 -- mid 2016
 			the tag-hmac is that of the secret, nonce and the exact
 			bytes (in network/SPI order) 'as is' read from the card
 			without any terminating 0 or length prefix.
-        'roll'		Roll the nonce (for the device mentioned in the topic)
+        'roll'		Roll the nonce (for the device mentioned in the topic). This
+			gives us some (very limited) protection against replay (as one
+			can also replay a 'roll' - and keeping a huge history of these
+			is not ideal.
         'open' <space> 'devicename' <space> <tag-hmac>
 			Request to open the door 'devicename'
 
