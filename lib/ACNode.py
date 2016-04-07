@@ -65,7 +65,7 @@ class ACNode:
     self.parser.add('--topic','-t',default=default_sub,
          help='MQTT topic to subcribe to for replies from the master (default: '+default_sub+').'),
 
-    self.parser.add('-v', action='count',
+    self.parser.add('--verbose', '-v', action='count', default=0,
          help='Verbose; repeat for more verbosity (default off)')
     self.parser.add('--no-mqtt-log', action='count',
          help='Disable logging to MQTT log channel (default on)'),
@@ -79,9 +79,9 @@ class ACNode:
   def setup(self):
     loglevel=logging.ERROR
 
-    if self.cnf.v:
+    if self.cnf.verbose:
       loglevel=logging.INFO
-      if self.cnf.v > 1:
+      if self.cnf.verbose > 1:
         loglevel=logging.DEBUG
 
     self.logger = logging.getLogger()
@@ -95,7 +95,7 @@ class ACNode:
     if self.cnf.logfile:
       self.logger.addHandler(logging.StreamHandler(stream=self.cnf.logfile))
 
-    if self.cnf.v:
+    if self.cnf.verbose:
        self.logger.addHandler(logging.StreamHandler())
 
     if not self.cnf.no_syslog:
@@ -118,16 +118,30 @@ class ACNode:
       tag_encoded = tag_hmac.hexdigest()
 
       data = command + " " + target_machine+ " " + tag_encoded
-   
-      HMAC = hmac.new(self.cnf.secret.encode('ASCII'),self.nonce.encode('ASCII'),hashlib.sha256)
+
+      self.reply(self.cnf.node, self.nonce, self.cnf.secret, data)
+  
+  def reply(dstnode, dstsecret, mynonce, data, targetnode = self.cnf.master):
+      HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
       HMAC.update(data.encode('ASCII'))
       hexdigest = HMAC.hexdigest()
-   
-      data = "SIG/1.00 " + hexdigest + " " + self.nonce + " " + self.cnf.node + " " + data
+  
+      topic = self.cnf.sub + "/" + targetnode + "/" + self.cnf.node 
 
-      self.logger.debug("Sending @"+self.topic+": "+data)
+      data = "SIG/1.00 " + hexdigest + " " + nonce + " " + dstnode + " " + data
 
-      publish.single(self.topic, data, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
+      self.logger.debug("Sending @"+topic+": "+data)
+
+      publish.single(topic, data, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
+
+  def roll_nonce(dstnode = self.cnf.master, secret = self.cnf.secret):
+   nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
+   data = "roll"
+   self.reply(self.cnf.master, secret, nonce, data)
+   if not dstnode = self.cnf.master:
+      self.nonce[ dstnode ] = nonce
+   else
+     self.nonce = nonce
 
   def on_connect(self, client, userdata, flags, rc):
     self.logger.info("(re)Connected to '" + self.cnf.mqtthost + "'")
@@ -143,7 +157,21 @@ class ACNode:
     self.logger.info("(re)Subscribed.")
 
   def on_message(self,client, userdata, message):
-    self.logger.debug("Payload: %s",message.payload)
+    topic = message.topic
+    self.logger.debug("@%s: : %s",topic, message.payload)
+
+    try:
+      path = topic.split('/')
+      moi = path[-2]
+      node = path[-1]
+    except:
+      self.logger.info("Message topic '{0}' could not be parsed -- ignored.".format(topic))
+      return None
+
+    if moi != self.cnf.node
+      self.logger.info("Message addressed to '{0}' not to me ('{1}') -- ignored."
+           .format(moi,self.cnf.node))
+      return
 
     payload = None
     try:
@@ -165,7 +193,7 @@ class ACNode:
         self.logger.critical("No secret configured for this node.")
         return
 
-      secret = self.cnf.secret
+      secret = self.secret(node)
      
       HMAC = hmac.new(secret.encode('ASCII'),self.nonce.encode('ASCII'),hashlib.sha256)
       HMAC.update(topic.encode('ASCII'))
@@ -177,6 +205,12 @@ class ACNode:
         return
 
       self.logger.debug("Good message.")
+
+      if node = self.cnf.master and payload = 'restart':
+        self.logger.info("restart of master detected; rerolling nonce")
+        self.reroll_nonce()
+        return None
+         
       return payload
 
   # Capture SIGINT for cleanup when the script is aborted
@@ -202,7 +236,7 @@ class ACNode:
       self.client.on_subscribe= self.on_subscribe
    except:
       self.logger.critical("MQTT connection setup to '"+self.cnf.mqtthost+"' failed:")
-      if self.cnf.v> 1 :
+      if self.cnf.verbose> 1 :
         raise
 
       sys.exit(1)

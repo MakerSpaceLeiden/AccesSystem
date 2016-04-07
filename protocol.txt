@@ -112,3 +112,33 @@ Note:	The digest of the TAG means that one is relatively anonymous
 	tag identifiers (as opposed to tags protected by a crypt or
 	a PBKDF2 like finction.
 
+
+
+sensor->master
+	own nonce -> effective hmac maskin
+	hmac + shared secret
+		-> auth
+		+ nonce sender
+			prevent replay if receiver notes all nonces
+		+ nonce receiver
+			prevents replay
+
+master->actuator
+	hmac + secret
+		-> auth
+		+ nonce selceted by receiver
+			prevents replay
+
+=> receiver nonces needed
+	-> roll prior to any command
+		-> on join
+		-> on request
+		-> post any 'use' of a nonce
+
+actuator
+	on startup
+	after receiving command
+	on seeing 'restart + nonce'
+
+
+		
