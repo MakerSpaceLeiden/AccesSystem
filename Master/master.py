@@ -1,16 +1,17 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.4
 
 import os
 import sys
 import time
 
+sys.path.append('.')
+import db
+
 sys.path.append('../lib')
 import alertEmail
-from ACNode import ACNode
 
-class Master(ACNode):
+class Master(db.TextDB):
   default_subject="[Master ACNode]"
-  default_dbfile="./dbfile"
   default_email = None
   rollingnonces = {}
 
@@ -18,61 +19,14 @@ class Master(ACNode):
     self.parser.add_argument('-C', nargs=2, metavar=('tag', 'machine'),
                    help='Client mode - useful for testing')
 
-    self.parser.add('--subject',default=default_subject,
-         help='Subject prefix for alert emails (default: '+default_subject+')'),
+    self.parser.add('--subject',default=self.default_subject,
+         help='Subject prefix for alert emails (default: '+self.default_subject+')'),
 
     self.parser.add('--email',
          help='Email address for alerts (default is none)'),
     
-    self.parser.add('--dbfile',default=default_dbfile,
-         help='File with access database (default: '+default_dbfile+')'),
     super().parseArguments()
 
-  def setup(self):
-    super().setup()
-
-    self.reload_db()
-    signal.signal(signal.SIGHUB, self.reload_db)
-
-  def reload_db(self):
-     newuserdb = {}
-     try:
-       for row in open(self.cnf.dbfile,'r'):
-          if row.startswith('#'): continue
-          if len(row.split(':')) != 4: continue
-          
-          # Parse keys to valid input
-          tag,access,name,email = row.strip().split(':')
-          tag = '-'.join(map(str.strip, tag.split(',')))
-          
-          # Break access up into the things this user
-          # has access to.          
-          allowed_items = access.split(',')
-
-          # Create database
-          newuserdb[tag] = { 'tag': 'hidden', 'access': allowed_items, 'name': name, 'email': email }
-     except IOError as e:
-       self.logger.critical("I/O error %s", e.strerror())
-       sys.exit(1)
-     except ValueError:
-       self.logger.error("Could not convert data to an integer -- some malformed tag ? ignored. ")
-       raise
-     except:
-       self.logger.critical("Unexpected error: %s", sys.exc_info()[0])
-       sys.exit(1)
-
-     self.logger.info("Reloaded userdb")
-     self.userdb = newuserdb
-
-  def secret(node = None)
-    if not node or node == self.cnf.master:
-       return self.cnf.secret
-        
-    if node in self.cnf.secrets:
-       return self.cnf.secrets[node]
-
-    return None
- 
 def on_message(client, userdata, message):
     payload = super.on_message(client, userdata, message)
 
@@ -163,20 +117,25 @@ def on_message(client, userdata, message):
     self.logger.debug("Nonce: "+nonce)
     reply(topic, msg, nonce)
 
-   if not which in cnf['secrets']:
-     self.logger.warning("No secret defined to reply with -- ignoring")
-     return
+    if not which in cnf['secrets']:
+      self.logger.warning("No secret defined to reply with -- ignoring")
+      return
 
-   if not requestnonce:
-     self.logger.warning("No nonce -- ignoring")
-     return
+    if not requestnonce:
+      self.logger.warning("No nonce -- ignoring")
+      return
 
-   secret = cnf['secrets'][which]
+    secret = cnf['secrets'][which]
 
-   self.reply(node
+    self.reply()
 
 
-if args.C:
+master = Master()
+
+if not master:
+  sys.exit(1)
+
+if False:
    print("Client mode - one post shot.")
    tag,machine = args.C
    topic = cnf['mqtt']['sub'] + '/master'
@@ -199,3 +158,12 @@ if args.C:
     
    self.logger.info("@"+topic+": " + data) 
    publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
+
+
+
+exitcode = master.run()
+
+sys.exit(exitcode)
+
+
+

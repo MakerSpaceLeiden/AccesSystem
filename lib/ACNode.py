@@ -106,6 +106,15 @@ class ACNode:
 
     self.topic = self.cnf.topic+ "/" + self.cnf.master + "/" + self.cnf.node
 
+  def secret(node = None):
+    if not node or node == self.cnf.master:
+       return self.cnf.secret
+
+    if node in self.cnf.secrets:
+       return self.cnf.secrets[node]
+
+    return None
+
   def send_request(self, command, target_machine, tag_uid = None, nonce = None):
       if nonce:
          self.nonce = nonce
@@ -121,7 +130,10 @@ class ACNode:
 
       self.reply(self.cnf.node, self.nonce, self.cnf.secret, data)
   
-  def reply(dstnode, dstsecret, mynonce, data, targetnode = self.cnf.master):
+  def reply(self,dstnode, dstsecret, mynonce, data, targetnode = None):
+      if not targetnode:
+         targetnode = self.cnf.master
+
       HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
       HMAC.update(data.encode('ASCII'))
       hexdigest = HMAC.hexdigest()
@@ -134,13 +146,18 @@ class ACNode:
 
       publish.single(topic, data, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
 
-  def roll_nonce(dstnode = self.cnf.master, secret = self.cnf.secret):
+  def roll_nonce(self,dstnode = None, secret = None):
+   if not dstnode:
+      dstnode = self.cnf.master
+   if not secret:
+      secret = self.cnf.secret
+
    nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
    data = "roll"
    self.reply(self.cnf.master, secret, nonce, data)
-   if not dstnode = self.cnf.master:
+   if not dstnode == self.cnf.master:
       self.nonce[ dstnode ] = nonce
-   else
+   else:
      self.nonce = nonce
 
   def on_connect(self, client, userdata, flags, rc):
@@ -168,7 +185,7 @@ class ACNode:
       self.logger.info("Message topic '{0}' could not be parsed -- ignored.".format(topic))
       return None
 
-    if moi != self.cnf.node
+    if moi != self.cnf.node:
       self.logger.info("Message addressed to '{0}' not to me ('{1}') -- ignored."
            .format(moi,self.cnf.node))
       return
@@ -206,7 +223,7 @@ class ACNode:
 
       self.logger.debug("Good message.")
 
-      if node = self.cnf.master and payload = 'restart':
+      if node == self.cnf.master and payload == 'restart':
         self.logger.info("restart of master detected; rerolling nonce")
         self.reroll_nonce()
         return None
