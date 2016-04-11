@@ -10,6 +10,7 @@ class SensorACNode(ACNode):
   subscribed = None
   fake_time = 0
   command = None
+  last_tag = None
 
   # In addition; have one extra argument - which allows us to 'fake'
   # swipe tags from the command line - and see the effect.
@@ -33,7 +34,11 @@ class SensorACNode(ACNode):
       self.subscribed = True
 
   def send_request(self,uid = None):
-      super().send_request(self.command, self.cnf.machine,uid)
+      super().send_request(self.command, self.cnf.node, self.cnf.machine, uid)
+
+  def run(self):
+    self.fake_time = time.time()
+    super().run()
 
   def loop(self):
    super().loop()
@@ -48,6 +53,7 @@ class SensorACNode(ACNode):
      else:
         tag_asbytes = bytearray(map(int,tag.split("-")))
 
+     self.last_tag = tag_asbytes
      self.send_request(tag_asbytes)
      self.fake_time = time.time()
 

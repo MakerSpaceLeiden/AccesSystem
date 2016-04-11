@@ -40,7 +40,7 @@ Version 2 -- mid 2016
 
 -	MQTT message from ACNode to master
 
-	topic:		PREFIX/acnode/master/<node>
+	topic:		PREFIX/master/<node>
 
 	payload:	bytes interpreted as 7-bit safe ASCII
 

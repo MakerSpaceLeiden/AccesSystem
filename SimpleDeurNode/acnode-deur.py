@@ -28,7 +28,6 @@ def init_gpio(self):
      GPIO.setwarnings(False)
      GPIO.setmode(GPIO.BCM)
      if ( stepper == 1 ):
-          logger.debug("setup stepper")
           GPIO.setup(pin_dir, GPIO.OUT)
           GPIO.setup(pin_step, GPIO.OUT)
           GPIO.setup(pin_enable, GPIO.OUT)
@@ -41,12 +40,10 @@ def init_gpio(self):
 
 def open_door(self):
      if ( mosfet == 1 ): 
-          logger.debug("open via mosfet")
           GPIO.output(pin, True)     
           time.sleep(pin_high_time)
           GPIO.output(pin, False)
      if (stepper == 1 ):
-          logger.debug("open via stepper")
           GPIO.output(pin_enable,False)
 
           for step in xrange(steps):
@@ -69,6 +66,18 @@ def open_door(self):
 
 class DeurNode(SimpleACNode, OfflineModeACNode):
   command = "open"
+
+  def __init__(self):
+    super().__init__()
+    self.commands[ 'revealtag' ] = self.cmd_revealtag
+
+  def cmd_revealtag(self,path,node,nonce,payload):
+    if not self.last_tag:
+       self.logger.info("Asked to reveal a tag - but nothing swiped.")
+
+    tag = '-'.join(str(int(bte)) for bte in self.last_tag)
+
+    self.logger.info("Last tag swiped at {}: {}".format(self.cnf.node, tag))
 
   # We load the hardware related libraries late and
   # on demand; this allows for an '--offline' flag.
@@ -105,6 +114,9 @@ class DeurNode(SimpleACNode, OfflineModeACNode):
        self.loggin.info("Oepning door")
        open_door()
     
+  last_tag = None
+  tag = None
+
   def loop(self):
    super().loop()
 
@@ -120,11 +132,11 @@ class DeurNode(SimpleACNode, OfflineModeACNode):
         else:
           uid = None
      
-   if self.last_tag != uid:
+   if self.last_tag != uid and uid:
       localtime = time.asctime( time.localtime(time.time()) )
-      logger.info(localtime + "     Card UID: "+'-'.join(map(str,uid)))
-      self.send_request(uid)
+      self.logger.info(localtime + "     Card UID: "+'-'.join(map(str,uid)))
       self.last_tag = uid
+      self.send_request(uid)
 
   def on_exit(self,exitcode):
     if not self.cnf.offline:

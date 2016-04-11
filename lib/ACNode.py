@@ -36,7 +36,9 @@ class ACNode:
   protocol = None
   client = None
   parser = None
-  nonce = None
+  nonces = {}		# voor self.cnf.node -- eigen nonce op dit moment in gebruik - andere velden -- nonce counter party.
+  usednonces = {}
+  commands = {}
 
   def __init__(self,description='ACNode', cnf_file=None):
 
@@ -44,6 +46,9 @@ class ACNode:
     if cnf_file: 
       files = (cnf_file)
     self.parser = configargparse.ArgParser(default_config_files=files)
+
+    self.commands[ 'roll' ] = self.cmd_roll
+    self.commands[ 'announce' ] = self.cmd_announce
 
   def parseArguments(self):
     self.parser.add('-c', '--config', is_config_file=True,  
@@ -66,7 +71,9 @@ class ACNode:
          help='MQTT topic to subcribe to for replies from the master (default: '+default_sub+').'),
 
     self.parser.add('--verbose', '-v', action='count', default=0,
-         help='Verbose; repeat for more verbosity (default off)')
+         help='Verbose on (default off)')
+    self.parser.add('--debug', '-d', action='count', default=0,
+         help='Debuging on; implies verbose (default off)')
     self.parser.add('--no-mqtt-log', action='count',
          help='Disable logging to MQTT log channel (default on)'),
     self.parser.add('--no-syslog', 
@@ -81,7 +88,8 @@ class ACNode:
 
     if self.cnf.verbose:
       loglevel=logging.INFO
-      if self.cnf.verbose > 1:
+
+    if self.cnf.debug:
         loglevel=logging.DEBUG
 
     self.logger = logging.getLogger()
@@ -104,65 +112,96 @@ class ACNode:
     if not self.cnf.machine:
       self.cnf.machine = self.cnf.node
 
-    self.topic = self.cnf.topic+ "/" + self.cnf.master + "/" + self.cnf.node
+    # self.topic = self.cnf.topic+ "/" + self.cnf.master + "/" + self.cnf.node
 
-  def secret(node = None):
-    if not node or node == self.cnf.master:
+  def secret(self, node = None):
+    if not node or node == self.cnf.master or node == self.cnf.node:
        return self.cnf.secret
 
-    if node in self.cnf.secrets:
+    if 'secrets' in self.cnf and node in self.cnf.secrets:
        return self.cnf.secrets[node]
 
+    self.logger.warning("No secret defined for {}".format(node))
     return None
 
-  def send_request(self, command, target_machine, tag_uid = None, nonce = None):
-      if nonce:
-         self.nonce = nonce
+  def getnonce(self, dstnode):
+    nonce = None
 
-      if not self.nonce:
-         self.nonce = ('nonce-'+hashlib.sha256(os.urandom(1024)).hexdigest())[0:15]
+    if self.nonces and dstnode in self.nonces:
+       nonce = self.nonces[ dstnode ]
+    else:
+       nonce = self.newnonce(dstnode)
+ 
+    if not nonce:
+       if dstnode == self.cnf.node:
+           nonce = newnonce(dstnode)
 
-      tag_hmac = hmac.new( self.cnf.secret.encode('ASCII'), self.nonce.encode('ASCII'), hashlib.sha256)
+    return nonce
+
+  def newnonce(self, dstnode = None):
+    nonce = "nc-{}-{}".format(self.cnf.node,(hashlib.sha256(os.urandom(1024)).hexdigest())[0:4])
+
+    self.nonces[ dstnode ] = nonce
+    print("NEW nonce for {}: {} ".format(dstnode, nonce))
+    return nonce
+     
+  def send_request(self, command, target_node, target_machine, tag_uid):
+      nonce = self.newnonce(self.cnf.node)
+
+      tag_hmac = hmac.new( self.cnf.secret.encode('ASCII'), nonce.encode('ASCII'), hashlib.sha256)
       tag_hmac.update(bytearray(tag_uid)) # note - in its original binary glory and order.
       tag_encoded = tag_hmac.hexdigest()
 
-      data = command + " " + target_machine+ " " + tag_encoded
+      data = target_node + " " + command + " " + target_machine+ " " + tag_encoded
 
-      self.reply(self.cnf.node, self.nonce, self.cnf.secret, data)
+      self.send(self.cnf.master, data, nonce)
   
-  def reply(self,dstnode, dstsecret, mynonce, data, targetnode = None):
-      if not targetnode:
-         targetnode = self.cnf.master
+  def hexdigest(self,secret,nonce,topic,dstnonce,dstnode,payload):
+    print("s={}.N={}.t={}.N={}.m={}.d={}".format(secret,nonce,topic,dstnonce,dstnode,payload))
 
-      HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-      HMAC.update(data.encode('ASCII'))
-      hexdigest = HMAC.hexdigest()
-  
-      topic = self.cnf.sub + "/" + targetnode + "/" + self.cnf.node 
+    HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+    HMAC.update(topic.encode('ASCII'))
+    HMAC.update(dstnonce.encode('ASCII'))
+    HMAC.update(payload.encode('ASCII'))
 
-      data = "SIG/1.00 " + hexdigest + " " + nonce + " " + dstnode + " " + data
+    return HMAC.hexdigest()
+
+  def send(self,dstnode,payload, nonce = None):
+
+      dstsecret = self.secret(dstnode)
+      if not dstsecret:
+         self.logger.error("No secret defined for '{}' - aborting send".format(dstnode))
+         return
+
+      if not nonce:
+         nonce = self.newnonce(self.cnf.node)
+
+      topic = self.cnf.topic+ "/" + dstnode + "/" + self.cnf.node 
+
+      if payload == 'announce': 
+          dstnonce = nonce
+      else:
+          dstnonce = self.getnonce(dstnode)
+
+      hexdigest = self.hexdigest(dstsecret,nonce,topic,dstnonce,dstnode,payload)
+
+      data = "SIG/1.00 " + hexdigest + " " + nonce + " " + payload 
 
       self.logger.debug("Sending @"+topic+": "+data)
-
       publish.single(topic, data, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
 
-  def roll_nonce(self,dstnode = None, secret = None):
-   if not dstnode:
-      dstnode = self.cnf.master
-   if not secret:
-      secret = self.cnf.secret
+  def roll_nonce(self,dstnode):
+    return self.send(dstnode, "roll")
 
-   nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
-   data = "roll"
-   self.reply(self.cnf.master, secret, nonce, data)
-   if not dstnode == self.cnf.master:
-      self.nonce[ dstnode ] = nonce
-   else:
-     self.nonce = nonce
+  def announce(self,dstnode):
+    if dstnode in self.nonces:
+       del self.nonces[dstnode]
+
+    return self.send(dstnode, "announce")
 
   def on_connect(self, client, userdata, flags, rc):
     self.logger.info("(re)Connected to '" + self.cnf.mqtthost + "'")
-    topic = self.cnf.topic + "/" + self.cnf.node + "/reply"
+    topic = self.cnf.topic + "/" + self.cnf.node + "/#"
 
     if sys.version_info[0] < 3:
        topic = topic.encode('ASCII')
@@ -172,23 +211,31 @@ class ACNode:
 
   def on_subscribe(self, client, userdata, mid, granted_qos):
     self.logger.info("(re)Subscribed.")
+    self.announce(self.cnf.master)
 
-  def on_message(self,client, userdata, message):
-    topic = message.topic
-    self.logger.debug("@%s: : %s",topic, message.payload)
-
+  def parse_topic(self, topic):
     try:
       path = topic.split('/')
       moi = path[-2]
       node = path[-1]
     except:
       self.logger.info("Message topic '{0}' could not be parsed -- ignored.".format(topic))
-      return None
+      return None, None, None
 
     if moi != self.cnf.node:
       self.logger.info("Message addressed to '{0}' not to me ('{1}') -- ignored."
            .format(moi,self.cnf.node))
-      return
+      return None, None, None
+
+    return path, moi, node
+
+  def on_message(self,client, userdata, message):
+    topic = message.topic
+    self.logger.debug("@%s: : %s",topic, message.payload)
+
+    path, moi, node = self.parse_topic(topic)
+    if not path:
+       return None
 
     payload = None
     try:
@@ -199,36 +246,69 @@ class ACNode:
 
     topic = message.topic
 
-    if payload.startswith("SIG/"):
-      try:
-        hdr, sig, payload = payload.split(' ',2)
-      except:
+    if not payload.startswith("SIG/"):
+        self.logger.info("Unknown version of '{0}' -- ignored".format(payload))
+        return
+       
+    try:
+        hdr, sig, nonce, payload = payload.split(' ',3)
+    except:
         self.logger.info("Could not parse '{0}' -- ignored".format(payload))
         return
 
-      if not self.cnf.secret:
-        self.logger.critical("No secret configured for this node.")
+    if not self.cnf.secret:
+        self.logger.critical("No secret configured for this node; ignored.")
         return
 
-      secret = self.secret(node)
-     
-      HMAC = hmac.new(secret.encode('ASCII'),self.nonce.encode('ASCII'),hashlib.sha256)
-      HMAC.update(topic.encode('ASCII'))
-      HMAC.update(payload.encode('ASCII'))
-      hexdigest = HMAC.hexdigest()
+    if nonce in self.usednonces:
+        self.logger.critical("Nonce recycled. Ignoring.")
+        return
+       
+    self.usednonces[ nonce ] = time.time()
+    secret = self.secret(node)
+    if not secret:
+         self.logger.error("No secret defined for '{}' - ignoring".format(node))
+         return
 
-      if not hexdigest == sig:
+    dstnonce = None
+    if payload == 'announce':
+         dstnonce = nonce
+    else:
+         dstnonce = self.getnonce(moi)
+
+    hexdigest = self.hexdigest(secret,nonce,topic,dstnonce,node,payload)
+
+    if not hexdigest == sig:
         self.logger.warning("Invalid signatured; ignored.")
         return
 
-      self.logger.debug("Good message.")
+    self.logger.debug("Good message.")
 
-      if node == self.cnf.master and payload == 'restart':
-        self.logger.info("restart of master detected; rerolling nonce")
-        self.reroll_nonce()
-        return None
-         
-      return payload
+    cmd = payload.split(' ')[0]
+    if cmd in self.commands:
+        self.logger.debug("Handling command '{}' with {}:{}()".format(cmd,self.commands[cmd].__class__.__name__, self.commands[cmd].__name__))
+        return self.commands[cmd](path,node,nonce,payload)
+
+    self.logger.debug("Returning <{}> for handling by {}".format(payload,self.__class__.__name__))
+    self.nonces[ node ] = nonce
+    return payload
+
+  def cmd_roll(self,path,node,nonce,payload):
+    if node != self.cnf.node:
+       self.logger.info("Roll by {}; updating his".format(node))
+       self.nonces[ node ] = nonce
+    else:
+       self.logger.info("Ignoring my own roll message.")
+    return None
+
+  def cmd_announce(self,path,node,nonce,payload):
+    if node != self.cnf.node:
+       self.logger.info("Announce of {}; resending my nonce; updating his".format(node))
+       self.nonces[ node ] = nonce
+       self.roll_nonce(node)
+    else:
+       self.logger.info("Ignoring my own restart message.")
+    return None
 
   # Capture SIGINT for cleanup when the script is aborted
   def end_read(self,signal,frame):

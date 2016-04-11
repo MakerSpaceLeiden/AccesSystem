@@ -3,6 +3,8 @@
 import os
 import sys
 import time
+import hmac
+import hashlib
 
 sys.path.append('.')
 import db
@@ -22,16 +24,33 @@ class Master(db.TextDB):
     self.parser.add('--subject',default=self.default_subject,
          help='Subject prefix for alert emails (default: '+self.default_subject+')'),
 
+    self.parser.add('--secrets', action='append',
+         help='Secret pairs for connecting nodes in nodename=secret style.')
+
     self.parser.add('--email',
          help='Email address for alerts (default is none)'),
     
     super().parseArguments()
 
-def on_message(client, userdata, message):
-    payload = super.on_message(client, userdata, message)
+    if self.cnf.secrets:
+       newsecrets = {}
+       for e in self.cnf.secrets:
+         node, secret = e.split('=',1)
+         newsecrets[ node ] = secret
+       self.cnf.secrets = newsecrets
+
+  def on_message(self,client, userdata, message):
+    path, moi, node = self.parse_topic(message.topic)
+
+    if not path:
+       return None
+
+    payload = super().on_message(client, userdata, message)
+    if not payload:
+       return
 
     try:
-      dstnode, payload = payload.split(' ',2)
+      dstnode, payload = payload.split(' ',1)
     except:
       self.logger.info("Could not parse '{0}' -- ignored".format(payload))
       return
@@ -52,56 +71,49 @@ def on_message(client, userdata, message):
       raise
       return
 
-    if what == 'roll':
-       self.logger.debug("Updated nonce for node '{0}' to '{1}'".format(dstnode,nonce))
-       rollingnonces[node] = nonce
+    if what == 'unknowntag':
+       self.logger.info("Unknown tag offered at station {}: {}".format(node,tag_encoded))
        return
 
     tag = None
-    for uid in userdb.keys():
+    secret = self.secret( dstnode )
+    nonce  = self.getnonce( node )
+
+    for uid in self.userdb.keys():
 
       tag_hmac = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
       try:
-        tag_asbytes= ''.join(chr(int(x)) for x in uid.split("-") )
+        if sys.version_info[0] < 3:
+           tag_asbytes= ''.join(chr(int(x)) for x in uid.split("-"))
+        else:
+           tag_asbytes = bytearray(map(int,uid.split("-")))
       except:
         self.logger.error("Could not parse tag '{0}' in config file-- skipped".format(uid))
         continue
 
-      tag_hmac.update(tag_asbytes)
+      tag_hmac.update(bytearray(tag_asbytes))
       tag_db = tag_hmac.hexdigest()
 
       if tag_encoded == tag_db:
          tag = uid
          break
 
-    if not tag in userdb:
-      self.logger.info("Unknown tag; ignored")
+    if not tag in self.userdb:
+      self.logger.info("Tag not in DB; asking node to reveal it")
+      self.send(dstnode,"revealtag")
       return
-
-    if not tag in userdb:
-      self.logger.info("Tag not in DB; ignored")
-      return
-
-    email = userdb[tag]['email'];
-    name = userdb[tag]['name'];
 
     acl = 'error'
-    if which in userdb[tag]['access']:
-       self.logger.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, what, which);
-       acl = 'approved'
-    else:
-       self.logger.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, which);
-       acl = 'denied'
-    
-    if dstnode != node:
-       self.logger.debug("Target node '{1}' not the same as requesting node {0} - using rolling nonce.".format(dstnode,node))
-       if not dstnode in rollingnonces:
-          self.logger.info("No rolling nonce for node '%s'", node)
-          return
-       nonce = rollingnonces[node]
-    
-    topic = cnf['mqtt']['sub']+'/'+dstnode+'/reply'
+    email = self.userdb[tag]['email'];
+    name = self.userdb[tag]['name'];
 
+    if which in self.userdb[tag]['access']:
+         self.logger.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, what, which);
+         acl = 'approved'
+    else:
+         self.logger.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, which);
+         acl = 'denied'
+    
     msg = None
     if what == 'energize':
       msg = 'energize ' + which + ' ' + acl
@@ -110,25 +122,10 @@ def on_message(client, userdata, message):
       msg = 'open ' + which + ' ' + acl
 
     if not msg:
-      self.logger.info("Unknown commnad '{0]'- ignored.".format(what))
+      self.logger.info("Unknown command '{0]'-- ignored.".format(what))
       return
 
-    self.logger.info("@"+topic+": "+msg)
-    self.logger.debug("Nonce: "+nonce)
-    reply(topic, msg, nonce)
-
-    if not which in cnf['secrets']:
-      self.logger.warning("No secret defined to reply with -- ignoring")
-      return
-
-    if not requestnonce:
-      self.logger.warning("No nonce -- ignoring")
-      return
-
-    secret = cnf['secrets'][which]
-
-    self.reply()
-
+    self.send(dstnode, msg)
 
 master = Master()
 

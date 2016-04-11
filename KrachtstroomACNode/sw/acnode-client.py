@@ -1,89 +1,12 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.4
 #
 import time 
-import hashlib
-import json
 import sys
-import signal
-import logging
-import logging.handlers
 import os
-import hmac
-import argparse
-
-import paho.mqtt.client as mqtt
-import paho.mqtt.publish as publish
 
 sys.path.append('../../lib')
-import configRead
-import alertEmail
-import MqttHandler
-
-parser = argparse.ArgumentParser(description='ACNode RFID Lezer control.')
-parser.add_argument('-v', action='count',
-                   help='Verbose')
-parser.add_argument('-c', type=argparse.FileType('r'), metavar='config.json',
-                   help='Configuration file')
-parser.add_argument('-l', type=argparse.FileType('w+'), metavar='logfile',
-                   help='Log to file, rather than the default syslog')
-parser.add_argument('-s', type=str, metavar='hostname',
-                   help='MQTT Server (FQDN or IP address)')
-parser.add_argument('--offline', action='count',
-                   help='Activate offline/no-hardware needed test mode')
-
-args = parser.parse_args()
-
-configfile = None
-if args.c:
-  configfile = args.c
-
-configRead.load(configfile)
-cnf = configRead.cnf
-
-if args.s:
-  cnf['mqtt']['host'] = s
-
-if args.offline:
-  args.v = 10
-
-loglevel=logging.ERROR
-if args.v:
-  loglevel=logging.INFO
-if args.v> 1:
-  loglevel=logging.DEBUG
-
-logger = logging.getLogger()
-logger.setLevel(loglevel)
-
-logtopic = cnf['mqtt']['sub']+"/log/" + cnf['node']
-logger.addHandler(MqttHandler.MqttHandler(cnf['mqtt']['host'],logtopic))
-
-
-if args.l:
-  logger.addHandler(logging.StreamHandler(stream=args.l))
-else:
-  if args.v:
-    logger.addHandler(logging.StreamHandler())
-  else:
-    logger.addHandler(logging.handlers.SysLogHandler())
-
-
-if args.offline:
-  logger.info("TEST: import PWM")
-  logger.info("TEST: import MFRC522")
-else:
-  # We're careful as to not import the 
-  # RPIO itself; as it magically claims
-  # pin 22; thus conflicting with MFRC522.
-  #
-  import RPIO.PWM as PWM
-
-  # Note: The current MFC522 library claims pin22/GPIO25
-  # as the reset pin -- set by the constant NRSTPD near
-  # the start of the file.
-  #
-  import MFRC522
-  MIFAREReader = MFRC522.MFRC522()
+from ACNode import ACNode
+from OfflineModeACNode import OfflineModeACNode
 
 # GPIO Wiring
 #
@@ -101,59 +24,98 @@ holdDelay=0.3 	# seconds
 
 pulseInc = 50 # in Micro Seconds
 
-grace = 6	# seconds - timeout between card offer & cable offer.
-graceOff = 2	# seconds -- timeout between removal of card and powerdown.
 
 ledChannel = 1
 relayChannel = 0
 
-# No user maintainable parts beyond this line.
-#
 relayFull = int(1e6/frequency/pulseInc - 1)
 relayLow = max(1,int(relayFull * holdpwm / 100 -1))
 
 ledFull = int(1e6/1/pulseInc - 1)
 
-if args.offline:
-   logger.info("TEST: initializing PWM")
-else:
-   PWM.set_loglevel(PWM.LOG_LEVEL_ERRORS)
-   PWM.setup(pulseInc)
-   PWM.init_channel(relayChannel, subcycle_time_us=int(1e6/frequency)) 
-   PWM.init_channel(ledChannel, subcycle_time_us=int(1e6/1)) # Cycle time in microSeconds == 1 second
+class KrachtstroomNode(OfflineModeACNode):
+  powered = 0
+  machine = None
+  machine_tag = None
+  last_ok = 0
+  user_tag = None
 
-topLedTransitionsPerCycle = 0
-bottomLedTransitionsPerCycle = 0
+  default_grace = 6 	# seconds - timeout between card offer & cable offer.
+  default_graceOff = 2 	# seconds -- timeout between removal of card and powerdown.
 
-def setLEDs():
-  global topLedTransitionsPerCycle, bottomLedTransitionsPerCycle
+  command = 'energize'
 
-  if args.offline:
-      logger.info("TEST: topled=%d bottomled=%d", topLedTransitionsPerCycle, bottomLedTransitionsPerCycle)
+  topLedTransitionsPerCycle = 0
+  bottomLedTransitionsPerCycle = 0
+
+  def initGPIO(self) :
+    if self.cnf.offline:
+      self.logger.info("TEST: import PWM")
+      self.logger.info("TEST: import MFRC522")
+      self.logger.info("TEST: initializing PWM")
       return
 
-  PWM.clear_channel(ledChannel)
-  for pin, state in { topLed: topLedTransitionsPerCycle, bottomLed: bottomLedTransitionsPerCycle }.iteritems():
-    if state:
-      ds = ledFull / (state*2 - 1)
-      for i in range(0,state):
-        PWM.add_channel_pulse(ledChannel, pin, start=i*ds*2, width=ds)
-    else:
+    # We're careful as to not import the 
+    # RPIO itself; as it magically claims
+    # pin 22; thus conflicting with MFRC522.
+    #
+    import RPIO.PWM as PWM
+
+    PWM.set_loglevel(PWM.LOG_LEVEL_ERRORS)
+    PWM.setup(pulseInc)
+    PWM.init_channel(relayChannel, subcycle_time_us=int(1e6/frequency)) 
+    PWM.init_channel(ledChannel, subcycle_time_us=int(1e6/1)) # Cycle time in microSeconds == 1 second
+
+    # Flash top LED while we get our bearings.
+    #
+    self.setTopLED(20)
+
+    # Note: The current MFC522 library claims pin22/GPIO25
+    # as the reset pin -- set by the constant NRSTPD near
+    # the start of the file.
+    #
+    import MFRC522
+    MIFAREReader = MFRC522.MFRC522()
+
+  def cleardownGPIO(self):
+   power(0)
+   self.setBottomLED(0)
+   self.setTopLED(0)
+
+   PWM.clear_channel_gpio(relayChannel,relay)
+   PWM.clear_channel_gpio(ledChannel,topLed)
+   PWM.clear_channel_gpio(ledChannel,bottomLed)
+   
+   # Shutdown all PWM and DMA activity
+   PWM.cleanup()
+
+  
+  def setLEDs(self):
+
+    if self.cnf.offline:
+      self.logger.info("TEST: topled=%d bottomled=%d", self.topLedTransitionsPerCycle, self.bottomLedTransitionsPerCycle)
+      return
+
+    PWM.clear_channel(ledChannel)
+    for pin, state in { topLed: self.topLedTransitionsPerCycle, bottomLed: self.bottomLedTransitionsPerCycle }.iteritems():
+      if state:
+        ds = ledFull / (state*2 - 1)
+        for i in range(0,state):
+          PWM.add_channel_pulse(ledChannel, pin, start=i*ds*2, width=ds)
+      else:
         PWM.add_channel_pulse(ledChannel, pin, start=0, width=1)
   
-def setTopLED( state ):
-   global topLedTransitionsPerCycle
-   topLedTransitionsPerCycle=state
-   setLEDs()
+  def setTopLED(self, state ):
+   self.topLedTransitionsPerCycle=state
+   self.setLEDs()
 
-def setBottomLED( state ):
-   global bottomLedTransitionsPerCycle
-   bottomLedTransitionsPerCycle=state
-   setLEDs()
+  def setBottomLED(self, state ):
+   self.bottomLedTransitionsPerCycle=state
+   self.setLEDs()
 
-def power(state):
+  def power(self,state):
     if args.offline:
-        logger.info("TEST: setting power=%d", state)
+        self.logger.info("TEST: setting power=%d", state)
         return
 
     if state:
@@ -166,262 +128,195 @@ def power(state):
         PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
         PWM.clear_channel(relayChannel)
 
-# Flash top LED while we get our bearings.
-#
-setTopLED(20)
+  def parseArguments(self):
+    self.parser.add('--machines', action='append',
+                   help='Machine/tag pairs - separated by a equal sign.')
+    self.parser.add('--grace', action='store', default=self.default_grace,
+                   help='Grace period between offering cards, in seconds (default: '+str(self.default_grace)+' seconds)')
+    self.parser.add('--offdelay', action='store', default=self.default_graceOff,
+                   help='Delay between loosing the machine card and powering down, in seconds (default: '+str(self.default_graceOff)+' seconds)')
 
-def find_machinetag(uid=None):
-  m = cnf['machines']
-  for key in m.keys():
-    if m[key]['tag'] == uid:
-       return key
-  return None
+    self.parser.add('tags', nargs='*',
+       help = 'Zero or more test tags to "pretend" offer with 5 seconds pause. Once the last pair has been offered the daemon will enter the normal loop.')
 
+    super().parseArguments()
 
-# Ready to start - turn top LED full on.
-setTopLED(1)
+    # Parse the machine/tag pairs into a more convenient
+    # dictionary.
+    #
+    if self.cnf.machines:
+       n = {}
+       for e in self.cnf.machines:
+         machine, tag= e.split('=',1)
+         n[ tag ] = machine
+       self.cnf.machines = n
 
-powered = 0
-machine = None
-machine_tag = None
-last_ok = 0
-user_tag = None
-last_tag = None
+  def on_message(self,client, userdata, message):
+    payload = super().on_message(client, userdata, message)
 
-if 'grace' in cnf:
-   grace = cnf['grace']
-if 'graceOff' in cnf:
-   graceOff = cnf['graceOff']
-
-forever= True
-
-# Capture SIGINT for cleanup when the script is aborted
-def end_read(signal,frame):
-    global forever 
-    logger.debug("Ctrl+C captured, aborting.")
-    forever= False
-
-signal.signal(signal.SIGINT, end_read)
-signal.signal(signal.SIGQUIT, end_read)
-
-
-def on_connect(client, userdata, flags, rc):
-    logger.info(("(re)Connected with result code "+str(rc)))
-    topic = cnf['mqtt']['sub']+"/" + cnf['node'] + "/reply"
-
-    if sys.version_info[0] < 3:
-       topic = topic.encode('ASCII')
-
-    mid = client.subscribe(topic)
-    logger.info("Subscription req to {0} with MID={1}".format(cnf['mqtt']['sub'], mid))
-
-def on_subscribe(client, userdata, mid, granted_qos):
-    logger.info("(re)Subscribed confirmed for {0}".format(mid))
-
-def on_message(client, userdata, message):
-    logger.info("Payload: %s",message.payload)
-
-    payload = None
-    try:
-      payload = message.payload.decode('ASCII')
-    except:
-      logger.info("Non ascii equest '{0}' -- ignored".format(message.payload))
-      return
-
-    topic = message.topic
-
-    if payload.startswith("SIG/"):
-      try:
-	# 'SIG/1.00 27b1f...498c40d1cb85173de8e6026604bea234107d energize circelzaag approved' 
-        hdr, sig, payload = payload.split(' ',2)
-      except:
-        logger.info("Could not parse '{0}' -- ignored".format(payload))
-        raise
-        return
-
-      if not 'secret' in cnf:
-        logger.critical("No secret configured for this node.")
-        return
-
-      secret = cnf['secret']
-      global nonce
-
-      HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-      HMAC.update(topic.encode('ASCII'))
-      HMAC.update(payload.encode('ASCII'))
-      hexdigest = HMAC.hexdigest()
-
-      if not hexdigest == sig:
-        logger.warning("Invalid signatured; ignored.")
-        return
+    if not payload:
+       return 
 
     try:
       what, which, result = payload.split()
     except:
-      logger.info("Cannot parse payload; ignored")
-      return
- 
-    global user_tag, machine
-
-    if machine != which:
-      logger.info("Unexpected machine; ignored")
+      self.logger.warning("Cannot parse payload; ignored")
       return
 
-    if what != 'energize':
-      logger.info("Unexpected command; ignored")
+    if what != self.machine:
+      self.logger.info("Machine '{}' not connected (connected machine is {})- ignoring command".format(what,self.machine))
+      return 
+
+    if not which in self.cnf.machines:
+      self.logger.info("Not in control of a machine called'{0}'- ignored".format(which))
+      return 
+
+    if what != self.command:
+      self.logger.warning("Unexpected command '{}' - I can only '{}' a '{}' -- ignored".format(what,self.command.which))
       return
 
     if result == 'denied':
-      logger.info("Denied XS")
-      setBottomLED(5)
-      return
+      self.logger.info("Denied XS")
+      return 103
 
     if result != 'approved':
-      logger.info("Unexpected result; ignored")
-      return
+      self.logger.info("Unexpected result; ignored")
+      return 104
 
+    self.logger.info("Got the OK - Powering up the " + self.machine)
 
-    if not user_tag or not machine:
-      logger.info("Lost my mind - ignored the ok.")
-      return
- 
-    logger.info("Got the OK - Powering up the " + machine)
-    setBottomLED(1)
-
+    self.setBottomLED(1)
     power(1)
-    global machine_tag, powered, last_ok
-    machine_tag = cnf['machines'][machine]['tag']
-    powered = 1
-    last_ok = time.time()
 
+    self.machine_tag = self.cnf['machines'][self.machine]
+    self.powered = 1
+    self.last_ok = time.time()
 
-if not 'secret' in cnf:
-    logger.critical("No secret for this node defined. aborting.")
-    sys.exit(1)
+  def __init__(self):
+    super().__init__()
+    self.commands[ 'revealtag' ] = self.cmd_revealtag
 
-if not 'node' in cnf:
-    logger.critical("No node name defined. aborting.")
-    sys.exit(1)
+  def cmd_revealtag(self,path,node,nonce,payload):
+    if not self.user_tag:
+       self.logger.info("Asked to reveal a tag - but nothing swiped.")
 
-client = mqtt.Client()
+    tag = '-'.join(str(int(bte)) for bte in self.user_tag)
+    self.logger.info("Last tag swiped at {}: {}".format(self.cnf.node,tag))
 
-client.connect(cnf['mqtt']['host'])
-client.on_message = on_message
-client.on_connect = on_connect
-client.on_subscribe= on_subscribe
+    # Shall we email here -- or at the master ??
 
-master = 'master'
-if 'master' in cnf:
-  master = cnf['masternode']
+  # We load the hardware related libraries late and
+  # on demand; this allows for an '--offline' flag.
+  #
+  def setup(self):
+    super().setup()
+    self.initGPIO()
 
-topic = cnf['mqtt']['sub'] + "/" + master + "/" + cnf['node']
+    # Ready to start - turn top LED full on.
+    self.setTopLED(1)
 
-logger.info("Operational")
-while forever:
-   client.loop()
+  last_tag = None
+  tag = None
+  fake_time = 0
+  subscribed = False
 
-   # We are doing this reading 'in' the main loop. This causes two
-   # issues. Firstly it is rather slow; and hence responding to
-   # various events and timeouts can be 0.5-1 second late.
-   # Secondly; once a card is contienously present; we get the
-   # occasional 'no card'; so we should not instantly trigger
-   # on this; and again allow some grace. This makes detecting
-   # the removal of a card slower.
-   #
+  def on_subscribe(self, client, userdata, mid, granted_qos):
+      super().on_subscribe(client, userdata,mid,granted_qos)
+      self.subscribed = True
+
+  def loop(self):
+   super().loop()
+
    uid = None
-
-   if args.offline:
-     (status,TagType) = (None, None)
+   tag = None
+   if self.cnf.tags and time.time() - self.fake_time > 0.5 and self.subscribed:
+      tag = self.cnf.tags.pop(0)
+      self.logger.info("Pretending swipe of fake tag: <"+tag+">")
+      if sys.version_info[0] < 3:
+        uid = ''.join(chr(int(x)) for x in tag.split("-"))
+      else:
+        uid = bytearray(map(int,tag.split("-")))
+      if not self.cnf.tags:
+         self.logger.info("And that was the last pretend tag; going into normal mode after this.")
+      self.fake_time = time.time()
    else:
-     (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
-
-     if status == MIFAREReader.MI_OK:
-        (status,uid) = MIFAREReader.MFRC522_Anticoll()
-        if status == MIFAREReader.MI_OK:
-           localtime = time.asctime( time.localtime(time.time()) )
-           if last_tag != uid:
-              logger.debug(localtime + "	Card UID: "+'-'.join(map(str,uid)))
-           last_tag = uid
-        else:
-           logger.error("Card read error.")
-
-   if powered:
+     if self.cnf.offline:
+       (status,TagType) = (None, None)
+     else:
+       (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
+       if status == MIFAREReader.MI_OK:
+         (status,uid) = MIFAREReader.MFRC522_Anticoll()
+         if status == MIFAREReader.MI_OK:
+           tag = '-'.join(map(str,uid))
+           self.logger.info("Detected card: " + tag)
+         else:
+           uid = None
+     
+   if self.powered:
        # check that the right plug tag is still being read.
        #
-       if machine_tag == uid:
-          logger.debug("plug tag still detected.")
-          last_ok = time.time()
+       if self.machine_tag == uid:
+          self.logger.debug("plug tag still detected.")
+          self.last_ok = time.time()
 
-       if time.time() - last_ok > graceOff:
-          logger.info("Power down.")
-          powered = 0
-          user_tag = None
-          machine = None
-          power(powered)
-          setBottomLED(0)
+       if time.time() - self.last_ok > self.cnf.graceOff:
+          self.logger.info("Power down.")
+          self.powered = 0
+          self.user_tag = None
+          self.machine = None
+          self.power(self.powered)
+          self.setBottomLED(0)
    else:
        # we are not powered - so waiting for a user tag or device tag.
        #
        if uid:
-         m = find_machinetag(uid)
-         if not m:
-           logger.debug("Assuming this is a user tag.")
-           user_tag = uid
-           setBottomLED(4)
+         if tag in self.cnf.machines:
+           m = self.cnf.machines[ tag ]
+           if self.user_tag:
+             self.machine = m
+             self.logger.info("Machine " + self.machine + " now wired up - requesting permission")
+
+             super().send_request(self.command, self.cnf.node, self.machine, self.user_tag)
+             self.setBottomLED(50)
+           else:
+              self.logger.info("Ignoring machine tag without user tag.")
+
+              # flash the led for about a third of the grace time.
+              #
+              self.setBottomLED(8)
+              self.last_ok = time.time() + self.cnf.grace - self.cnf.grace/3
+              self.machine = None
+         
+         else:
+           self.logger.debug("Assuming this is a user tag.")
+           self.user_tag = uid
+           self.setBottomLED(4)
 
            # Allow the time to move along if the user holds the
            # card long against the reader. So in effect the grace
            # period becomes the time between cards.
            #
-           last_ok = time.time()
+           self.last_ok = time.time()
 
-         if m:
-           if user_tag:
-             machine = m
-             logger.info("Machine " + machine + " now wired up - requesting permission")
+       if time.time() - self.last_ok > self.cnf.grace:
+          self.setBottomLED(0)
 
-             secret = cnf['secret']
-             nonce = hashlib.sha256(os.urandom(1024)).hexdigest()
+  def on_exit(self,exitcode):
+    if not self.cnf.offline:
+      cleardownGPIO()
+    else:
+      self.logger.debug("TEST: GPIO_cleanup() called.")
+    super().on_exit(exitcode)
 
-             tag_hmac = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-             tag_hmac.update(bytearray(user_tag)) # note - in its original binary glory and order.
-             tag_encoded = tag_hmac.hexdigest()
+# Spin up a node; and run it forever; or until aborted; and
+# provide a non-zero exit code as/if needd.
+#
+#
+acnode = KrachtstroomNode()
 
-             data = "energize " + machine + " " + tag_encoded
+if not acnode:
+  sys.exit(1)
 
-             HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
-             HMAC.update(data.encode('ASCII'))
-             hexdigest = HMAC.hexdigest()
+exitcode = acnode.run()
+sys.exit(exitcode)
 
-             data = "SIG/1.00 " + hexdigest + " " + nonce + " " + cnf['node'] + " " + data
-
-             publish.single(topic, data, hostname=cnf['mqtt']['host'], protocol="publish.MQTTv311")
-             setBottomLED(50)
-           else:
-              logger.info("Ignoring machine tag without user tag.")
-
-              # flash the led for about a third of the grace time.
-              #
-              setBottomLED(8)
-              last_ok = time.time() + grace - grace/3
-              machine = None
-         
-       if time.time() - last_ok > grace:
-          setBottomLED(0)
- 
-
-if args.offline:
-   logger.info("TEST: clearing down PWM")
-else:   
-   # Needed to clear down the GPIO back to input (cleanup() does not do that).
-   #
-   PWM.clear_channel_gpio(relayChannel,relay)
-   PWM.clear_channel_gpio(ledChannel,topLed)
-   PWM.clear_channel_gpio(ledChannel,bottomLed)
-   
-   # Shutdown all PWM and DMA activity
-   PWM.cleanup()
-
-client.disconnect()
-logger.info("normal exit")
-sys.exit(0)
