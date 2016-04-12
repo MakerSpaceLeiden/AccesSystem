@@ -5,51 +5,28 @@ import sys
 import os
 
 sys.path.append('../lib')
-from SensorACNode import SensorACNode
-from OfflineModeACNode import OfflineModeACNode
+from RfidReaderNode import RfidReaderNode
 
-class ReaderOnlyNode(SensorACNode,OfflineModeACNode):
+class ReaderOnlyNode(RfidReaderNode):
   command = "open"
+  default_target = "acnode"
 
-  # We load the hardware related libraries late and
-  # on demand; this allows for an '--offline' flag.
-  #
-  def setup(self):
-    super().setup()
+  def parseArguments(self):
+    self.parser.add('--target','-T',default=self.default_target,
+      help='Machine (default :'+self.default_target+')'),
 
-    if self.cnf.offline:
-       self.logger.info("TEST: import MFRC522")
-    else:
-       # Note: The current MFC522 library claims pin22/GPIO25
-       # as the reset pin -- set by the constant NRSTPD near
-       # the start of the file.
-       #
-       import MFRC522
-       MIFAREReader = MFRC522.MFRC522()
-
-  last_tag = None
+    super().parseArguments()
 
   def loop(self):
    super().loop()
 
-   uid = None
-   if self.cnf.offline:
-     (status,TagType) = (None, None)
-   else:
-     (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
-     if status == MIFAREReader.MI_OK:
-        (status,uid) = MIFAREReader.MFRC522_Anticoll()
-        if status == MIFAREReader.MI_OK:
-          logger.info("Swiped card "+'-'.join(map(str,uid)))
-        else:
-          uid = None
-     
-   if self.last_tag != uid:
+   uid = self.readtag()
+   if uid and self.last_tag != uid:
       localtime = time.asctime( time.localtime(time.time()) )
-      logger.info(localtime + "     Card UID: "+'-'.join(map(str,uid)))
+      self.logger.info(localtime + "     Card UID: "+'-'.join(map(str,uid)))
 
-      self.send_request(uid)
-      self.last_tag = uid
+      print("open {}@{}".format(self.cnf.target,self.cnf.machine))
+      self.send_request('open', self.cnf.target, self.cnf.machine, uid)
 
 # Spin up a node; and run it forever; or until aborted; and
 # provide a non-zero exit code as/if needd.
@@ -63,4 +40,3 @@ if not acnode:
 exitcode = acnode.run()
 
 sys.exit(exitcode)
-

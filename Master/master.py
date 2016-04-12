@@ -11,11 +11,17 @@ import db
 
 sys.path.append('../lib')
 import alertEmail
+import DrumbeatNode as DrumbeatNode
 
-class Master(db.TextDB):
+class Master(db.TextDB, DrumbeatNode.DrumbeatNode):
   default_subject="[Master ACNode]"
   default_email = None
-  rollingnonces = {}
+
+  def __init__(self):
+    super().__init__()
+    self.commands[ 'open' ] = self.cmd_approve
+    self.commands[ 'energize' ] = self.cmd_approve
+    self.commands[ 'lastused' ] = self.cmd_lastused
 
   def parseArguments(self):
     self.parser.add_argument('-C', nargs=2, metavar=('tag', 'machine'),
@@ -39,49 +45,36 @@ class Master(db.TextDB):
          newsecrets[ node ] = secret
        self.cnf.secrets = newsecrets
 
-  def on_message(self,client, userdata, message):
-    path, moi, node = self.parse_topic(message.topic)
+  def announce(self,dstnode):
+    for dstnode in self.cnf.secrets:
+       self.send(dstnode, "announce")
 
-    if not path:
-       return None
-
-    payload = super().on_message(client, userdata, message)
-    if not payload:
-       return
-
+  def cmd_lastused(self,path,node,theirbeat,payload):
     try:
-      dstnode, payload = payload.split(' ',1)
+      cmd, tag = payload.split()
     except:
-      self.logger.info("Could not parse '{0}' -- ignored".format(payload))
+      self.logger.error("Could not parse lastused payload '{}' -- ignored.".format(payload))
       return
 
-    which = None
-    tag_encoded = None    
-    try:
-      elems = payload.split()
-      what = elems.pop(0)
-      if elems:
-        which = elems.pop(0)
-      if elems:
-        tag_encoded = elems.pop(0)
-      if elems:
-        raise "Too many elements"
-    except:
-      self.logger.info("Cannot parse payload; ignored")
-      raise
-      return
+    self.logger.info("Unknown tag {} reportedly used at {}".format(tag,node))
 
-    if what == 'unknowntag':
-       self.logger.info("Unknown tag offered at station {}: {}".format(node,tag_encoded))
+    self.send_email("Unknown tag {} used at {}".format(tag,node),
+	"An unknown tag ({}) was reportedly used at node {} around {}.".format(tag,node,time.asctime()))
+
+  def cmd_approve(self,path,node,theirbeat,payload):
+    cmd, target_node, target_machine, tag_encoded = self.parse_request(payload) or (None, None, None, None)
+    if not target_node:
        return
 
     tag = None
-    secret = self.secret( dstnode )
-    nonce  = self.getnonce( node )
-
+    secret = self.secret( node )
+    if not secret:
+        self.logger.error("No secret for node '{}' (but how did we ever get here?".format(node))
+        return
+ 
     for uid in self.userdb.keys():
 
-      tag_hmac = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+      tag_hmac = hmac.new(secret.encode('ASCII'),theirbeat.encode('ASCII'),hashlib.sha256)
       try:
         if sys.version_info[0] < 3:
            tag_asbytes= ''.join(chr(int(x)) for x in uid.split("-"))
@@ -100,32 +93,21 @@ class Master(db.TextDB):
 
     if not tag in self.userdb:
       self.logger.info("Tag not in DB; asking node to reveal it")
-      self.send(dstnode,"revealtag")
+      self.send(node,"revealtag")
       return
 
     acl = 'error'
     email = self.userdb[tag]['email'];
     name = self.userdb[tag]['name'];
 
-    if which in self.userdb[tag]['access']:
-         self.logger.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, what, which);
+    if target_machine in self.userdb[tag]['access']:
+         self.logger.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, target_machine, target_node);
          acl = 'approved'
     else:
-         self.logger.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, what, which);
+         self.logger.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, target_machine, target_node);
          acl = 'denied'
     
-    msg = None
-    if what == 'energize':
-      msg = 'energize ' + which + ' ' + acl
-
-    if what == 'open':
-      msg = 'open ' + which + ' ' + acl
-
-    if not msg:
-      self.logger.info("Unknown command '{0]'-- ignored.".format(what))
-      return
-
-    self.send(dstnode, msg)
+    self.send(target_node, acl + ' ' + cmd + ' ' +  target_machine + ' ' + theirbeat)
 
 master = Master()
 

@@ -46,7 +46,7 @@ class TextDB(ACNode.ACNode):
           # Create database
           newuserdb[tag] = { 'tag': 'hidden', 'access': allowed_items, 'name': name, 'email': email }
      except IOError as e:
-       self.logger.critical("I/O error %s", e.strerror())
+       self.logger.critical("I/O error {}".format(e))
        sys.exit(1)
      except ValueError:
        self.logger.error("Could not convert data to an integer -- some malformed tag ? ignored. ")

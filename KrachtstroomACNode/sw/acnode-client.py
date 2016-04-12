@@ -5,8 +5,7 @@ import sys
 import os
 
 sys.path.append('../../lib')
-from ACNode import ACNode
-from OfflineModeACNode import OfflineModeACNode
+from RfidReaderNode import RfidReaderNode
 
 # GPIO Wiring
 #
@@ -33,7 +32,7 @@ relayLow = max(1,int(relayFull * holdpwm / 100 -1))
 
 ledFull = int(1e6/1/pulseInc - 1)
 
-class KrachtstroomNode(OfflineModeACNode):
+class KrachtstroomNode(RfidReaderNode):
   powered = 0
   machine = None
   machine_tag = None
@@ -78,7 +77,7 @@ class KrachtstroomNode(OfflineModeACNode):
     MIFAREReader = MFRC522.MFRC522()
 
   def cleardownGPIO(self):
-   power(0)
+   self.power(0)
    self.setBottomLED(0)
    self.setTopLED(0)
 
@@ -114,7 +113,7 @@ class KrachtstroomNode(OfflineModeACNode):
    self.setLEDs()
 
   def power(self,state):
-    if args.offline:
+    if self.cnf.offline:
         self.logger.info("TEST: setting power=%d", state)
         return
 
@@ -128,6 +127,11 @@ class KrachtstroomNode(OfflineModeACNode):
         PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
         PWM.clear_channel(relayChannel)
 
+  def __init__(self):
+    super().__init__()
+    self.commands[ 'approved' ] = self.cmd_approved
+    self.commands[ 'revealtag' ] = self.cmd_revealtag
+
   def parseArguments(self):
     self.parser.add('--machines', action='append',
                    help='Machine/tag pairs - separated by a equal sign.')
@@ -135,9 +139,6 @@ class KrachtstroomNode(OfflineModeACNode):
                    help='Grace period between offering cards, in seconds (default: '+str(self.default_grace)+' seconds)')
     self.parser.add('--offdelay', action='store', default=self.default_graceOff,
                    help='Delay between loosing the machine card and powering down, in seconds (default: '+str(self.default_graceOff)+' seconds)')
-
-    self.parser.add('tags', nargs='*',
-       help = 'Zero or more test tags to "pretend" offer with 5 seconds pause. Once the last pair has been offered the daemon will enter the normal loop.')
 
     super().parseArguments()
 
@@ -151,59 +152,14 @@ class KrachtstroomNode(OfflineModeACNode):
          n[ tag ] = machine
        self.cnf.machines = n
 
-  def on_message(self,client, userdata, message):
-    payload = super().on_message(client, userdata, message)
-
-    if not payload:
-       return 
-
-    try:
-      what, which, result = payload.split()
-    except:
-      self.logger.warning("Cannot parse payload; ignored")
-      return
-
-    if what != self.machine:
-      self.logger.info("Machine '{}' not connected (connected machine is {})- ignoring command".format(what,self.machine))
-      return 
-
-    if not which in self.cnf.machines:
-      self.logger.info("Not in control of a machine called'{0}'- ignored".format(which))
-      return 
-
-    if what != self.command:
-      self.logger.warning("Unexpected command '{}' - I can only '{}' a '{}' -- ignored".format(what,self.command.which))
-      return
-
-    if result == 'denied':
-      self.logger.info("Denied XS")
-      return 103
-
-    if result != 'approved':
-      self.logger.info("Unexpected result; ignored")
-      return 104
-
+  def cmd_approved(self,path,node,theirbeat,payload):
     self.logger.info("Got the OK - Powering up the " + self.machine)
 
     self.setBottomLED(1)
-    power(1)
+    self.power(1)
 
-    self.machine_tag = self.cnf['machines'][self.machine]
     self.powered = 1
     self.last_ok = time.time()
-
-  def __init__(self):
-    super().__init__()
-    self.commands[ 'revealtag' ] = self.cmd_revealtag
-
-  def cmd_revealtag(self,path,node,nonce,payload):
-    if not self.user_tag:
-       self.logger.info("Asked to reveal a tag - but nothing swiped.")
-
-    tag = '-'.join(str(int(bte)) for bte in self.user_tag)
-    self.logger.info("Last tag swiped at {}: {}".format(self.cnf.node,tag))
-
-    # Shall we email here -- or at the master ??
 
   # We load the hardware related libraries late and
   # on demand; this allows for an '--offline' flag.
@@ -215,43 +171,10 @@ class KrachtstroomNode(OfflineModeACNode):
     # Ready to start - turn top LED full on.
     self.setTopLED(1)
 
-  last_tag = None
-  tag = None
-  fake_time = 0
-  subscribed = False
-
-  def on_subscribe(self, client, userdata, mid, granted_qos):
-      super().on_subscribe(client, userdata,mid,granted_qos)
-      self.subscribed = True
-
   def loop(self):
    super().loop()
 
-   uid = None
-   tag = None
-   if self.cnf.tags and time.time() - self.fake_time > 0.5 and self.subscribed:
-      tag = self.cnf.tags.pop(0)
-      self.logger.info("Pretending swipe of fake tag: <"+tag+">")
-      if sys.version_info[0] < 3:
-        uid = ''.join(chr(int(x)) for x in tag.split("-"))
-      else:
-        uid = bytearray(map(int,tag.split("-")))
-      if not self.cnf.tags:
-         self.logger.info("And that was the last pretend tag; going into normal mode after this.")
-      self.fake_time = time.time()
-   else:
-     if self.cnf.offline:
-       (status,TagType) = (None, None)
-     else:
-       (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
-       if status == MIFAREReader.MI_OK:
-         (status,uid) = MIFAREReader.MFRC522_Anticoll()
-         if status == MIFAREReader.MI_OK:
-           tag = '-'.join(map(str,uid))
-           self.logger.info("Detected card: " + tag)
-         else:
-           uid = None
-     
+   uid = self.readtag()
    if self.powered:
        # check that the right plug tag is still being read.
        #
@@ -259,7 +182,7 @@ class KrachtstroomNode(OfflineModeACNode):
           self.logger.debug("plug tag still detected.")
           self.last_ok = time.time()
 
-       if time.time() - self.last_ok > self.cnf.graceOff:
+       if time.time() - self.last_ok > self.cnf.offdelay:
           self.logger.info("Power down.")
           self.powered = 0
           self.user_tag = None
@@ -270,10 +193,13 @@ class KrachtstroomNode(OfflineModeACNode):
        # we are not powered - so waiting for a user tag or device tag.
        #
        if uid:
+         tag = '-'.join(map(str,uid))
          if tag in self.cnf.machines:
            m = self.cnf.machines[ tag ]
            if self.user_tag:
              self.machine = m
+             self.machine_tag = uid
+
              self.logger.info("Machine " + self.machine + " now wired up - requesting permission")
 
              super().send_request(self.command, self.cnf.node, self.machine, self.user_tag)
@@ -288,7 +214,7 @@ class KrachtstroomNode(OfflineModeACNode):
               self.machine = None
          
          else:
-           self.logger.debug("Assuming this is a user tag.")
+           self.logger.debug("Assuming {} to be a user tag.".format(tag))
            self.user_tag = uid
            self.setBottomLED(4)
 

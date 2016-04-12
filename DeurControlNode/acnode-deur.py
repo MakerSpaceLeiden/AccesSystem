@@ -60,14 +60,6 @@ def open_door():
 
 class DeurControllerNode(ActuatorACNode, OfflineModeACNode):
   command = 'open'
-  default_renew = 300
-  nonce_time = None
-
-  def parseArguments(self):
-    self.parser.add('--renew', action='store', default = self.default_renew,
-                   help='Renewal rate of the nonce (default is {} seconds)'.format(self.default_renew))
-
-    super().parseArguments()
 
   # Load the various libraries (unless in test/offline mode)
   #
@@ -92,33 +84,20 @@ class DeurControllerNode(ActuatorACNode, OfflineModeACNode):
        self.loggin.info("Oepning door")
        open_door()
 
-    nonce = None
-
-    # Update the nonce; as to disallow replay.
-    self.roll_nonce()
-
-  # Upon (re)connect - force a new nonce; thus ensuring
-  # that the master can send us a requst with a nonce
-  # that we accept.
-  #
-  def on_subscribe(self, client, userdata, mid, granted_qos):
-    super.on_subscribe(client, userdata, id, granted_qos)
-    self.roll_nonce()
-
-  def loop(self):
-   super().loop()
-
-   if time.time() - nonce_time > self.cnf.renew:
-     roll_nonce()
-     self.logger.info("Rolling secret")
-     nonce_time = time.time()
-
   def on_exit(self,exitcode):
     if not self.cnf.offline:
       GPIO.cleanup()
     else:
       self.logger.debug("TEST: GPIO_cleanup() called.")
     super().on_exit(exitcode)
+
+  def cmd_approved(self,path,node,theirbeat,payload):
+   # Permit an 'alien' beat to open the door - i.e. one
+   # originating from anohter unit.
+   #
+   self.last_tag_beat = theirbeat
+   self.last_tag_shown = None
+   super().cmd_approved(path,node,theirbeat,payload)
 
 # Spin up a node; and run it forever; or until aborted; and
 # provide a non-zero exit code as/if needd.
@@ -132,4 +111,3 @@ if not acnode:
 exitcode = acnode.run()
 
 sys.exit(exitcode)
-

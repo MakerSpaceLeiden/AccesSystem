@@ -115,12 +115,12 @@ Note:	The digest of the TAG means that one is relatively anonymous
 
 
 sensor->master
-	own nonce -> effective hmac maskin
+	own nonce -> effective hmac masking tag.
 	hmac + shared secret
 		-> auth
 		+ nonce sender
-			prevent replay if receiver notes all nonces
-		+ nonce receiver
+			prevent replay if receiver notes all (historic) nonces
+		+ also use nonce receiver
 			prevents replay
 
 master->actuator
@@ -141,4 +141,23 @@ actuator
 	on seeing 'restart + nonce'
 
 
-		
+announce -> dst node			store his nonce per source A
+	my nonce per dst node A
+					
+       			<---		roll 
+					my nonce per dst node B
+					his nonce per src node A
+    check against my nonce of source A
+    store his noce per source B
+
+some msg				
+	my nonce per dst node C
+	his nonce per dst node B
+    					check against my nonce of source B
+					store his nonce per source C
+some msg				
+	my nonce per dst node D
+	his nonce per dst node B
+
+
+

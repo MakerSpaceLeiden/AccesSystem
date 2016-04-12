@@ -22,7 +22,7 @@ Sleep=0.0001
 
 sys.path.append('../lib')
 from SimpleACNode import SimpleACNode
-from OfflineModeACNode import OfflineModeACNode
+from RfidReaderNode import RfidReaderNode
 
 def init_gpio(self):
      GPIO.setwarnings(False)
@@ -64,20 +64,8 @@ def open_door(self):
           time.sleep(0.1)
           GPIO.output(pin_enable,True)
 
-class DeurNode(SimpleACNode, OfflineModeACNode):
+class DeurNode(SimpleACNode, RfidReaderNode):
   command = "open"
-
-  def __init__(self):
-    super().__init__()
-    self.commands[ 'revealtag' ] = self.cmd_revealtag
-
-  def cmd_revealtag(self,path,node,nonce,payload):
-    if not self.last_tag:
-       self.logger.info("Asked to reveal a tag - but nothing swiped.")
-
-    tag = '-'.join(str(int(bte)) for bte in self.last_tag)
-
-    self.logger.info("Last tag swiped at {}: {}".format(self.cnf.node, tag))
 
   # We load the hardware related libraries late and
   # on demand; this allows for an '--offline' flag.
@@ -109,34 +97,23 @@ class DeurNode(SimpleACNode, OfflineModeACNode):
 
   def execute(self):
     if self.cnf.offline:
-       self.logger.debug("TEST: open_door()")
+       self.logger.info("TEST: open_door()")
     else:
-       self.loggin.info("Oepning door")
+       self.loggin.info("Opening door")
        open_door()
     
-  last_tag = None
   tag = None
 
   def loop(self):
    super().loop()
 
-   uid = None
-   if self.cnf.offline:
-     (status,TagType) = (None, None)
-   else:
-     (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
-     if status == MIFAREReader.MI_OK:
-        (status,uid) = MIFAREReader.MFRC522_Anticoll()
-        if status == MIFAREReader.MI_OK:
-          logger.info("Swiped card "+'-'.join(map(str,uid)))
-        else:
-          uid = None
+   uid = self.readtag()
      
    if self.last_tag != uid and uid:
       localtime = time.asctime( time.localtime(time.time()) )
       self.logger.info(localtime + "     Card UID: "+'-'.join(map(str,uid)))
       self.last_tag = uid
-      self.send_request(uid)
+      self.send_request('open', self.cnf.node, self.cnf.machine, uid)
 
   def on_exit(self,exitcode):
     if not self.cnf.offline:

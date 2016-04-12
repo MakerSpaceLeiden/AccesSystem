@@ -19,14 +19,16 @@ import configRead
 import alertEmail
 import MqttHandler
 
-default_cnf_files = ["config.ini","~/.acnode.ini","/usrlocal/etc/acnode.ini","etc/acnode.ini"]
+default_cnf_files = ["/usrlocal/etc/acnode.ini","/etc/acnode.ini","~/.acnode.ini", "acnode.ini"]
 default_master = 'master'
-default_node  = 'acnode/test'
+default_drumbeat= 'master'
+default_node  = 'unamednode'
 default_secret = 'public'
 default_host = 'localhost'
 default_sub = default_node
 default_protocol = "publish.MQTTv311"
 default_machine = 'deur'
+default_leeway = 30
 
 class ACNode:
   cnf = None
@@ -36,9 +38,9 @@ class ACNode:
   protocol = None
   client = None
   parser = None
-  nonces = {}		# voor self.cnf.node -- eigen nonce op dit moment in gebruik - andere velden -- nonce counter party.
-  usednonces = {}
   commands = {}
+  beatoff = 0
+  beatsseen = 0
 
   def __init__(self,description='ACNode', cnf_file=None):
 
@@ -47,15 +49,18 @@ class ACNode:
       files = (cnf_file)
     self.parser = configargparse.ArgParser(default_config_files=files)
 
-    self.commands[ 'roll' ] = self.cmd_roll
     self.commands[ 'announce' ] = self.cmd_announce
+    self.commands[ 'beat' ] = self.cmd_beat
 
   def parseArguments(self):
     self.parser.add('-c', '--config', is_config_file=True,  
-         help='config file path'),
+         help='config file path (default is '+",".join(default_cnf_files)+').')
 
-    self.parser.add('-M','--master',default=default_master,
+    self.parser.add('--master','-M',default=default_master,
          help='Name of the master node (default: '+default_master+')'),
+    self.parser.add('--drumbeat','-D',default=default_drumbeat,
+         help='Name of the drumbeat node (default: '+default_drumbeat+')'),
+
     self.parser.add('--node','-n',default=default_node,
          help='Name of this node (default: '+default_node+')'),
     self.parser.add('-s','--secret',default=default_secret,
@@ -81,7 +86,13 @@ class ACNode:
     self.parser.add('-l','--logfile', type=configargparse.FileType('w+'), 
         help='Append log entries to specified file (default: none)'),
 
+    self.parser.add('--ignorebeat',
+         help='Ignore the beat (default is to follow)')
+    self.parser.add('--leeway', action='store', default=default_leeway, type=int,
+         help='Beat leeway, in seconds (default: '+str(default_leeway)+' seconds).')
     self.cnf = self.parser.parse_args()
+
+    self.cnf.follower = not self.cnf.ignorebeat
 
   def setup(self):
     loglevel=logging.ERROR
@@ -124,84 +135,88 @@ class ACNode:
     self.logger.warning("No secret defined for {}".format(node))
     return None
 
-  def getnonce(self, dstnode):
-    nonce = None
+  def beat(self):
+      return "{:012d}".format(int(0.5 + time.time() + self.beatoff))
 
-    if self.nonces and dstnode in self.nonces:
-       nonce = self.nonces[ dstnode ]
-    else:
-       nonce = self.newnonce(dstnode)
- 
-    if not nonce:
-       if dstnode == self.cnf.node:
-           nonce = newnonce(dstnode)
+  def send_request(self, command, target_node, target_machine, tag_uid, beat = None):
+      if not beat:
+         beat = self.beat()
 
-    return nonce
-
-  def newnonce(self, dstnode = None):
-    nonce = "nc-{}-{}".format(self.cnf.node,(hashlib.sha256(os.urandom(1024)).hexdigest())[0:4])
-
-    self.nonces[ dstnode ] = nonce
-    print("NEW nonce for {}: {} ".format(dstnode, nonce))
-    return nonce
-     
-  def send_request(self, command, target_node, target_machine, tag_uid):
-      nonce = self.newnonce(self.cnf.node)
-
-      tag_hmac = hmac.new( self.cnf.secret.encode('ASCII'), nonce.encode('ASCII'), hashlib.sha256)
+      tag_hmac = hmac.new( self.cnf.secret.encode('ASCII'), beat.encode('ASCII'), hashlib.sha256)
       tag_hmac.update(bytearray(tag_uid)) # note - in its original binary glory and order.
       tag_encoded = tag_hmac.hexdigest()
 
-      data = target_node + " " + command + " " + target_machine+ " " + tag_encoded
+      data = command + " " + target_node + " " + target_machine+ " " + tag_encoded
 
-      self.send(self.cnf.master, data, nonce)
-  
-  def hexdigest(self,secret,nonce,topic,dstnonce,dstnode,payload):
-    print("s={}.N={}.t={}.N={}.m={}.d={}".format(secret,nonce,topic,dstnonce,dstnode,payload))
+      self.send(self.cnf.master, data, beat)
+ 
+  def parse_request(self, payload):
+    command = None
+    target_node = None
+    target_machine = None
+    tag_encoded = None
 
-    HMAC = hmac.new(secret.encode('ASCII'),nonce.encode('ASCII'),hashlib.sha256)
+    try:
+      elems = payload.split()
+      command = elems.pop(0)
+
+      if elems:
+        target_node = elems.pop(0)
+      if elems:
+        target_machine = elems.pop(0)
+      if elems:
+        tag_encoded = elems.pop(0)
+      if elems:
+        self.logger.info("Too many elements; ignored")
+        return
+    except:
+      self.logger.info("Cannot parse request '{}' ; ignored".format(payload))
+      return
+
+    return(command, target_node, target_machine, tag_encoded)
+
+ 
+  def hexdigest(self,secret,beat,topic,dstnode,payload):
+
+    HMAC = hmac.new(secret.encode('ASCII'),beat.encode('ASCII'),hashlib.sha256)
     HMAC.update(topic.encode('ASCII'))
-    HMAC.update(dstnonce.encode('ASCII'))
     HMAC.update(payload.encode('ASCII'))
 
     return HMAC.hexdigest()
 
-  def send(self,dstnode,payload, nonce = None):
+  def send(self,dstnode,payload, beat= None):
+      if not beat:
+         beat = self.beat()
 
       dstsecret = self.secret(dstnode)
       if not dstsecret:
          self.logger.error("No secret defined for '{}' - aborting send".format(dstnode))
          return
 
-      if not nonce:
-         nonce = self.newnonce(self.cnf.node)
-
       topic = self.cnf.topic+ "/" + dstnode + "/" + self.cnf.node 
 
-      if payload == 'announce': 
-          dstnonce = nonce
-      else:
-          dstnonce = self.getnonce(dstnode)
+      hexdigest = self.hexdigest(dstsecret,beat,topic,dstnode,payload)
 
-      hexdigest = self.hexdigest(dstsecret,nonce,topic,dstnonce,dstnode,payload)
-
-      data = "SIG/1.00 " + hexdigest + " " + nonce + " " + payload 
+      data = "SIG/1.00 " + hexdigest + " " + beat + " " + payload 
 
       self.logger.debug("Sending @"+topic+": "+data)
       publish.single(topic, data, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
 
-  def roll_nonce(self,dstnode):
-    return self.send(dstnode, "roll")
-
   def announce(self,dstnode):
-    if dstnode in self.nonces:
-       del self.nonces[dstnode]
-
     return self.send(dstnode, "announce")
 
   def on_connect(self, client, userdata, flags, rc):
     self.logger.info("(re)Connected to '" + self.cnf.mqtthost + "'")
-    topic = self.cnf.topic + "/" + self.cnf.node + "/#"
+    if self.cnf.node == self.cnf.master:
+      self.subscribe(client,self.cnf.node + "/#" )
+    else:
+      self.subscribe(client,self.cnf.node + "/" + self.cnf.master)
+
+    if self.cnf.master != self.cnf.drumbeat:
+      self.subscribe(client,self.cnf.drumbeat + '/#')
+
+  def subscribe(self,client,leaf):
+    topic = self.cnf.topic + "/" + leaf
 
     if sys.version_info[0] < 3:
        topic = topic.encode('ASCII')
@@ -216,18 +231,23 @@ class ACNode:
   def parse_topic(self, topic):
     try:
       path = topic.split('/')
-      moi = path[-2]
+      destination = path[-2]
       node = path[-1]
     except:
       self.logger.info("Message topic '{0}' could not be parsed -- ignored.".format(topic))
       return None, None, None
 
-    if moi != self.cnf.node:
-      self.logger.info("Message addressed to '{0}' not to me ('{1}') -- ignored."
-           .format(moi,self.cnf.node))
-      return None, None, None
+    if destination == self.cnf.drumbeat and node == self.cnf.drumbeat:
+      if not self.cnf.follower: 
+        self.logger.debug("Ignoring drumbeat messages, not a follower.")
+        return None, None, None
+    else:
+      if destination != self.cnf.node:
+        self.logger.info("Message addressed to '{0}' not to me ('{1}') -- ignored."
+           .format(destination,self.cnf.node))
+        return None, None, None
 
-    return path, moi, node
+    return path, destination, node
 
   def on_message(self,client, userdata, message):
     topic = message.topic
@@ -235,6 +255,7 @@ class ACNode:
 
     path, moi, node = self.parse_topic(topic)
     if not path:
+       self.logger.info("No path in topic '{0}' -- ignored".format(message.topic))
        return None
 
     payload = None
@@ -242,72 +263,76 @@ class ACNode:
       payload = message.payload.decode('ASCII')
     except:
       self.logger.info("Non ascii equest '{0}' -- ignored".format(message.payload))
-      return
+      return None
 
     topic = message.topic
 
     if not payload.startswith("SIG/"):
         self.logger.info("Unknown version of '{0}' -- ignored".format(payload))
-        return
+        return None
        
+    beat = self.beat()
     try:
-        hdr, sig, nonce, payload = payload.split(' ',3)
+        hdr, sig, theirbeat, payload = payload.split(' ',3)
+        delta = abs(int(theirbeat) - int(beat))
     except:
         self.logger.info("Could not parse '{0}' -- ignored".format(payload))
-        return
+        return None
 
-    if not self.cnf.secret:
-        self.logger.critical("No secret configured for this node; ignored.")
-        return
-
-    if nonce in self.usednonces:
-        self.logger.critical("Nonce recycled. Ignoring.")
-        return
-       
-    self.usednonces[ nonce ] = time.time()
     secret = self.secret(node)
     if not secret:
-         self.logger.error("No secret defined for '{}' - ignoring".format(node))
-         return
+       return None
 
-    dstnonce = None
-    if payload == 'announce':
-         dstnonce = nonce
-    else:
-         dstnonce = self.getnonce(moi)
-
-    hexdigest = self.hexdigest(secret,nonce,topic,dstnonce,node,payload)
-
+    if delta > self.cnf.leeway:
+        self.logger.critical("Beats more than {} seconds apart. ignoring.".format(self.cnf.leeway))
+        return None
+       
+    hexdigest = self.hexdigest(secret,theirbeat,topic,node,payload)
     if not hexdigest == sig:
         self.logger.warning("Invalid signatured; ignored.")
-        return
+        return None
 
     self.logger.debug("Good message.")
 
     cmd = payload.split(' ')[0]
     if cmd in self.commands:
         self.logger.debug("Handling command '{}' with {}:{}()".format(cmd,self.commands[cmd].__class__.__name__, self.commands[cmd].__name__))
-        return self.commands[cmd](path,node,nonce,payload)
+        return self.commands[cmd](path,node,theirbeat,payload)
 
-    self.logger.debug("Returning <{}> for handling by {}".format(payload,self.__class__.__name__))
-    self.nonces[ node ] = nonce
+    self.logger.debug("No mapping for {} - deferring to <{}> for handling by {}".format(cmd, payload,self.__class__.__name__))
     return payload
 
-  def cmd_roll(self,path,node,nonce,payload):
+  def cmd_announce(self,path,node,theirbeat,payload):
     if node != self.cnf.node:
-       self.logger.info("Roll by {}; updating his".format(node))
-       self.nonces[ node ] = nonce
-    else:
-       self.logger.info("Ignoring my own roll message.")
-    return None
-
-  def cmd_announce(self,path,node,nonce,payload):
-    if node != self.cnf.node:
-       self.logger.info("Announce of {}; resending my nonce; updating his".format(node))
-       self.nonces[ node ] = nonce
-       self.roll_nonce(node)
+       self.logger.info("Announce of {}".format(node))
     else:
        self.logger.info("Ignoring my own restart message.")
+    return None
+
+  def cmd_beat(self,path,node,theirbeat,payload):
+    delta = abs(int(theirbeat) - int(self.beat()))
+
+    self.logger.debug("Drumbeat - delta is {}".format(delta))
+    self.beatsseen+=1
+
+    if node == self.cnf.node:
+       if delta > 5:
+          self.logger.critical("My own beat is returned with more than 5 seconds delay (or getting replayed)")
+       return
+
+    if not self.cnf.follower or delta < self.cnf.leeway / 4:
+       self.logger.debug("Not adjusting beat - in acceptable range.")
+       return
+
+    if delta < self.cnf.leeway * 4:
+       if self.beatsseen == 1:
+         self.logger.warning("About {} seconds askew; adjusting clock".format(int(delta)))
+         self.beatoff -= delta
+         return
+
+       self.logger.warning("Delta too far to adjust; ignoring".format(int(delta)))
+       return
+
     return None
 
   # Capture SIGINT for cleanup when the script is aborted
