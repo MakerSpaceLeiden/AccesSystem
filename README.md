@@ -11,13 +11,13 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
 
   The master node and a sample database. Can be ran out of the box with
 
-	./master.py --debug --dbfile sample-keydb.txt 
+       ./master.py --debug --dbfile sample-keydb.txt 
 
 * SimpleDeurNode
 
   A simple door RFID reader and stepper-motor lock combination. Can be tested/ran with the command
 
-	./acnode-deur.py --offline --debug 1-1
+      ./acnode-deur.py --offline --debug 1-1
 
   The --offline command removes the hardware from the loop (see the top of the file for the GPIO settings); the '1-1' is a 'fake' card; see the above sample-keydb.txt
 
@@ -25,7 +25,7 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
 
   A node that has only the stepper engine to open the door connected. Run with:
 
-	./acnode-deur.py --offline --debug
+      ./acnode-deur.py --offline --debug
 
 * DeurRFIDNode
 
@@ -33,10 +33,10 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
 
   Test with the command (after starting above DeurControlNode.  
 
-	./acnode-rfid.py --offline --debug 1-1
+      ./acnode-rfid.py --offline --debug 1-1
 
 * KrachtstroomACNode
-	
+      
   A more complex node - which can control multiple tools.
 
 * Drumbeat
@@ -62,4 +62,5 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
    Provides the '--offline' functionality to allow testing on laptops (e.g. not require the specific RasberryPI & assorted hardware).
 
  * RfidReaderNode.py
-	Simple RFID reader
+
+   Simple RFID reader
