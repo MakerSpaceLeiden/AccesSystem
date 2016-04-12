@@ -132,7 +132,6 @@ class ACNode:
     if 'secrets' in self.cnf and node in self.cnf.secrets:
        return self.cnf.secrets[node]
 
-    self.logger.warning("No secret defined for {}".format(node))
     return None
 
   def beat(self):
@@ -281,10 +280,11 @@ class ACNode:
 
     secret = self.secret(node)
     if not secret:
+       self.logger.error("No secret defined for '{}' - ignored".format(dstnode))
        return None
 
     if delta > self.cnf.leeway:
-        self.logger.critical("Beats more than {} seconds apart. ignoring.".format(self.cnf.leeway))
+        self.logger.critical("Beats are {} seconds off (max leeway is {} seconds). ignoring.".format(delta,self.cnf.leeway))
         return None
        
     hexdigest = self.hexdigest(secret,theirbeat,topic,node,payload)

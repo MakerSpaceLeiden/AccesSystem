@@ -10,6 +10,9 @@ class ActuatorACNode(ACNode):
 
   def __init__(self):
     super().__init__()
+
+    # An actuator only responds to approval messages..
+    #
     self.commands[ 'approved' ] = self.cmd_approved
 
   def setup(self):
@@ -25,8 +28,10 @@ class ActuatorACNode(ACNode):
 
   def send_request(self, command, target_node, target_machine, tag_uid, beat = None):
       if not beat:
-        beat = self.beat()
+         beat = self.beat()
 
+      # Track what tags we ask approval for - so we can log it slightly nicer once
+      # we get the approval back.
       self.last_tag_shown = tag_uid
       self.last_tag_beat = beat
 
