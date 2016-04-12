@@ -15,8 +15,6 @@ import configargparse
 import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
 
-import configRead
-import alertEmail
 import MqttHandler
 
 default_cnf_files = ["/usrlocal/etc/acnode.ini","/etc/acnode.ini","~/.acnode.ini", "acnode.ini"]

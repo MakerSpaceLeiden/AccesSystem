@@ -47,10 +47,10 @@ Version 2 -- mid 2016
 
 	'SIG/1.00'	protocol version.
 	<space>
-	hexdigest	SHA256 based HMAC of topic, nonce, secret, nodename and message
+	hexdigest	SHA256 based HMAC of topic, timestamp, secret, nodename and message.
                         secret and node name are tied to the source.
 	<space>
-	nonce		Nonce; ASCII; no spaces allowed; up to 128 bytes.
+	timestamp	Nonce; ASCII; no spaces allowed; up to 128 bytes.
 	<space>
 	targetnode	Target Node name; ASCII; no spaces allowed; up to 32 bytes. For
                         a node that is both a reader and a controller this name will be
@@ -61,17 +61,19 @@ Version 2 -- mid 2016
 
 	Possible message (case sensitive)
 	
-	'energize' <space>  <devicename> <space> <tag-hmac>
+	'energize' <space> <nodename> <devicename> <space> <tag-hmac>
 			where device name cannot contain a space; up to 32 bytes and
-			the tag-hmac is that of the secret, nonce and the exact
+			the tag-hmac is that of the secret, timestamp and the exact
 			bytes (in network/SPI order) 'as is' read from the card
 			without any terminating 0 or length prefix.
-        'roll'		Roll the nonce (for the device mentioned in the topic). This
-			gives us some (very limited) protection against replay (as one
-			can also replay a 'roll' - and keeping a huge history of these
-			is not ideal.
-        'open' <space> 'devicename' <space> <tag-hmac>
-			Request to open the door 'devicename'
+        'open' <space> 'nodename' <space> 'devicename' <space> <tag-hmac>
+			Request to open the door 'devicename' connected to 'nodename'
+
+	'beat'		My timestamp
+
+	'revealtag'	Reveal the last tag swiped in the clear.
+
+	'announce'	Sent when a node joins the network
 
 -	MQTT reply from master to (relevant) Target ACNode(s)
 
@@ -81,23 +83,24 @@ Version 2 -- mid 2016
 
 	'SIG/1.00'	protocol version.
 	<space>
-	hexdigest	SHA256 based HMAC of reply-topic, target-device-nonce, target-secret and message
+	hexdigest	SHA256 based HMAC of reply-topic, target-device-timestamp, target-secret and message
 	<space>
 	message		bytes; until the remainder of the message
 
 	Possible replies
 
-	'energize' <space> <devicename> <space> 'approved'
-	'energize' <space> <devicename> <space> 'denied'
-	'energize' <space> <devicename> <space> 'error'
+	'energize' <space> 'nodename' <space> <devicename> <space> 'approved'
+	'energize' <space> 'nodename' <space> <devicename> <space> 'denied'
+	'energize' <space> 'nodename' <space> <devicename> <space> 'error'
 
-	'open' <space> <devicename> <space> 'approved'
-	'open' <space> <devicename> <space> 'denied'
-	'open' <space> <devicename> <space> 'error'
+	'open' <space> 'nodename' <space> <devicename> <space> 'approved'
+	'open' <space> 'nodename' <space> <devicename> <space> 'denied'
+	'open' <space> 'nodename' <space> <devicename> <space> 'error'
 
 Note:	As the recipient is an embedded device we worry about implementations
 	which are somewhat careless with state and this easily fooled by
-	a replay or similarly.
+	a replay or similarly. We rely on simple timestamps to make it
+	slightly harder to replay/spoof.
 
 Note:	we originally used JSON as the payload; as this plays well with
 	browsers. Unfortunately; json serialization is non-trivial; and it
@@ -110,53 +113,3 @@ Note:	The digest of the TAG means that one is relatively anonymous
 	is that this means that the master has a 'userdb' with plaintext
 	tag identifiers (as opposed to tags protected by a crypt or
 	a PBKDF2 like finction.
-
-
-
-sensor->master
-	own nonce -> effective hmac masking tag.
-	hmac + shared secret
-		-> auth
-		+ nonce sender
-			prevent replay if receiver notes all (historic) nonces
-		+ also use nonce receiver
-			prevents replay
-
-master->actuator
-	hmac + secret
-		-> auth
-		+ nonce selceted by receiver
-			prevents replay
-
-=> receiver nonces needed
-	-> roll prior to any command
-		-> on join
-		-> on request
-		-> post any 'use' of a nonce
-
-actuator
-	on startup
-	after receiving command
-	on seeing 'restart + nonce'
-
-
-announce -> dst node			store his nonce per source A
-	my nonce per dst node A
-					
-       			<---		roll 
-					my nonce per dst node B
-					his nonce per src node A
-    check against my nonce of source A
-    store his noce per source B
-
-some msg				
-	my nonce per dst node C
-	his nonce per dst node B
-    					check against my nonce of source B
-					store his nonce per source C
-some msg				
-	my nonce per dst node D
-	his nonce per dst node B
-
-
-
