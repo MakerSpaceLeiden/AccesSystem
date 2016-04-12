@@ -21,8 +21,10 @@ pin_enable=22
 Sleep=0.0001
 
 sys.path.append('../lib')
-from SimpleACNode import SimpleACNode
 from RfidReaderNode import RfidReaderNode
+from SensorACNode import SensorACNode
+from ActuatorACNode import ActuatorACNode
+
 
 def init_gpio(self):
      GPIO.setwarnings(False)
@@ -64,7 +66,7 @@ def open_door(self):
           time.sleep(0.1)
           GPIO.output(pin_enable,True)
 
-class DeurNode(SimpleACNode, RfidReaderNode):
+class DeurNode(RfidReaderNode, SensorACNode, ActuatorACNode):
   command = "open"
 
   # We load the hardware related libraries late and

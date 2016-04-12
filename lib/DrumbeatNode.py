@@ -21,28 +21,11 @@ class DrumbeatNode(ACNode.ACNode):
 
   def cmd_announce(self,path,node,theirbeat,payload):
     if node != self.cnf.node:
-       self.logger.info("Node '{}' (re)subscrubed; sending beat.".format(node))
+       self.logger.info("Node '{}' (re)subscribed; sending beat.".format(node))
        self.send(node,"beat")
     else:
        self.logger.info("Ignoring my own announce message.")
     return None
-
-  def on_message(self,client, userdata, message):
-    path, moi, node = self.parse_topic(message.topic)
-
-    if not path:
-       return None
-
-    payload = super().on_message(client, userdata, message)
-    if not payload:
-       return
-
-    try:
-      dstnode, payload = payload.split(' ',1)
-    except:
-      self.logger.info("Could not parse '{0}' -- ignored".format(payload))
-      return
-
 
   last_time = 0
   def loop(self):
@@ -52,6 +35,9 @@ class DrumbeatNode(ACNode.ACNode):
 
     super().loop()
 
+# Allow this class to auto instanciate if
+# we run it on its own.
+#
 if __name__ == "__main__":
   drumbeat = DrumbeatNode()
   if not drumbeat:
