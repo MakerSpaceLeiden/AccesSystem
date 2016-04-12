@@ -1,6 +1,12 @@
 Software for the Access Control Nodes (ACNode) at the
 Makerspace Leiden.
 
+RFID cards are coded as decimal numbers separated by a dash. So if the card contains
+
+    unsigned char uid[] = { 13, 70, 0, 33, 19 }; // In 'read from card' order.
+
+then the seralisation into an ascii string wil be '13-17-0-33-19'.
+
 * Master
 
   The master node and a sample database. Can be ran out of the box with
@@ -48,8 +54,12 @@ Makerspace Leiden.
  * SensorACNode.py
  * ActuatorACNode.py
  * DrumbeatNode.py
+
    Classes on top of the ACNode that add the protocol bits for a sensor, actuator and the timestamps.
+
  * OfflineModeACNode.py
+
    Provides the '--offline' functionality to allow testing on laptops (e.g. not require the specific RasberryPI & assorted hardware).
+
  * RfidReaderNode.py
 	Simple RFID reader
