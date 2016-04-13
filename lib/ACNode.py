@@ -366,10 +366,13 @@ class ACNode:
   def loop(self):
     self.client.loop()
 
-  def run(self):
+  def initialize(self):
     self.parseArguments()
     self.setup()
     self.connect()
+
+  def run(self):
+    self.initialize()
 
     self.forever = 1
 

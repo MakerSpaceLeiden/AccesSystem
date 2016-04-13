@@ -19,6 +19,11 @@ class DrumbeatNode(ACNode.ACNode):
 
     super().parseArguments()
 
+  def cmd_beat(self,path,node,theirbeat,payload):
+    if node != self.cnf.node:
+       self.logger.critical("Node {} sends a beat - yet this node {} is the beatmaster".format(node,self.cnf.node))
+    return
+
   def cmd_announce(self,path,node,theirbeat,payload):
     if node != self.cnf.node:
        self.logger.info("Node '{}' (re)subscribed; sending beat.".format(node))

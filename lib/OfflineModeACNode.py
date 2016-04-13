@@ -25,5 +25,5 @@ class OfflineModeACNode(ACNode):
 
     # Go very verbose if we are in fake hardware or test-tag mode.
     #
-    if self.cnf.offline or self.cnf.tags:
+    if self.cnf.offline or 'tags' in self.cnf:
        self.cnf.verbose = 10
