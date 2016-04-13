@@ -64,3 +64,15 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
  * RfidReaderNode.py
 
    Simple RFID reader
+
+ * lib/Drivers
+  * Mosfet.py
+  * Stepper.py
+
+   Directory with hardware/wiring specific drivers. These can be ran from the command line as well. e.g. use:
+
+      ./Stepper.py 
+
+   to activate the stepper to open the door.
+
+
