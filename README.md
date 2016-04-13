@@ -63,7 +63,13 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
 
  * RfidReaderNode.py
 
-   Simple RFID reader
+   Simple RFID reader; can also be ran 'stand alone' to test the RFID reader; e.g. with
+
+       $ ./RfidReaderNode
+       Detected card: 23-9-12-4-32
+       Detected card: 3-71-5-21-81
+       ctrl-C
+       $
 
  * lib/Drivers
   * Mosfet.py

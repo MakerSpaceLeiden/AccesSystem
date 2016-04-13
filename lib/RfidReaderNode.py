@@ -1,5 +1,7 @@
 #!/usr/bin/env python3.4
 #
+import sys
+
 from SensorACNode import SensorACNode
 from OfflineModeACNode import OfflineModeACNode
 
@@ -37,3 +39,24 @@ class RfidReaderNode(SensorACNode, OfflineModeACNode):
     self.logger.info("Detected card: " + tag)
 
     return  uid
+
+class Test(RfidReaderNode):
+  command = "xx"
+
+  def test(self):
+    self.forever = 1
+
+    while(self.forever):
+      uid = self.readtag()
+
+if __name__ == "__main__":
+  acnode = Test()
+  if not acnode:
+    sys.exit(1)
+
+  acnode.parseArguments()
+  acnode.setup()
+  acnode.subscribed = 1
+
+  acnode.test()
+

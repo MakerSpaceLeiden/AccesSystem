@@ -35,6 +35,11 @@ class SensorACNode(ACNode):
                 file=sys.stderr)
        sys.exit(1)
 
+    # Go very verbose if we are in fake est-tag mode.
+    #
+    if self.cnf.tags:
+       self.cnf.verbose = 10
+
   def cmd_revealtag(self,path,node,nonce,payload):
     if not self.last_tag:
        self.logger.info("Asked to reveal a tag - but nothing swiped.")

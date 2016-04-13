@@ -39,6 +39,7 @@ class ACNode:
   commands = {}
   beatoff = 0
   beatsseen = 0
+  forever = 0
 
   def __init__(self,description='ACNode', cnf_file=None):
 
