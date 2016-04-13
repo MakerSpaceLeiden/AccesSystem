@@ -1,37 +1,80 @@
+#!/usr/bin/env python3.4
+#
+import sys
+
 import smtplib
 import time
 import logging
 from email.mime.text import MIMEText
 
-import configRead
+from ACNode import ACNode
 
-def send_email(mailmsg,mailsubject, to=None):
-  cnf = configRead.cnf
+class AlertEmail(ACNode):
+  default_smtphost = 'localhost'
+  default_smtpport = 25
+  default_alertsubject = "[Node alert]"
+  default_alertfrom = 'acnode@unknown'
 
-  sendfrom  = cnf['alert_email_from'];
-  sendto = [ cnf['alert_email_to'] ];
+  # Firstly - we have an 'offline' mode that allows for
+  # testing without the hardware (i.e. on any laptop or
+  # machine with python); without the need for the stepper
+  # motor, mosfet or RFID reader.
+  #
+  def parseArguments(self):
+    self.parser.add('--smtphost', action='store', default= self.default_smtphost,
+                   help='SMTP host (default is '+self.default_smtphost+').')
 
-  # Include extra person if provided
-  if to: sendto.append(to)
+    self.parser.add('--smtpuser', action='store',
+                   help='SMTP username (default is none)')
+    self.parser.add('--smtppasswd', action='store',
+                   help='SMTP password (default is none)')
 
-  msg = MIMEText(mailmsg)
+    self.parser.add('--smtpport', action='store', default=self.default_smtpport,
+                   help='SMTP host (default is '+str(self.default_smtpport)+').')
 
-  msg['Subject'] = mailsubject 
-  msg['From'] = sendfrom
-  msg['To'] = ','.join(sendto)
+    self.parser.add('--alertsubject', action='store', default=self.default_alertsubject,
+                   help='Subject prefix alert emails (default is '+self.default_alertsubject+').')
 
-  smtpcnf = cnf['smtp']
+    self.parser.add('--alertfrom', action='store', default=self.default_alertfrom,
+                   help='Sender of alert emails (default is '+self.default_alertfrom+').')
+    self.parser.add('--alertto', action='append', 
+                   help='Sender of alert emails (default is none). May be used multiple times.')
 
-  port = 25
-  if 'port' in smtpcnf:
-     port = smtpcnf['port']
+    super().parseArguments()
 
-  s = smtplib.SMTP(smtpcnf['host'], port)
+  def send_email(self,mailmsg,mailsubject, to = None):
 
-  if 'username' in smtpcnf:
-     s.login(smtpcnf['username'], smtpcnf['password'])
+    msg = MIMEText(mailmsg)
 
-  s.sendmail(sendfrom, sendto, msg.as_string())
-  s.quit()
+    COMMASPACE = ', '
+
+    msg['Subject'] = self.cnf.alertsubject + ' ' + mailsubject 
+    msg['From'] = 'ACNode ' + self.cnf.node + ' <' + self.cnf.alertfrom + '>'
+    msg['To'] = COMMASPACE.join(self.cnf.alertto)
+
+    s = smtplib.SMTP(self.cnf.smtphost, self.cnf.smtpport)
+
+    if self.cnf.smtpuser and self.cnf.smtppasswd:
+       s.login(self.cnf.smtpuser, self.cnf.smtppasswd)
+
+    self.logger.info("AlertEmail: {}: {}".format(msg['Subject'], msg['To']))
+
+    # s.sendmail(self.cnf.alertfrom, self.cnf.alertto, msg.as_string())
+    s.send_message(msg)
+    s.quit()
+
+if __name__ == "__main__":
+  acnode = AlertEmails()
+  if not acnode:
+    sys.exit(1)
+
+  acnode.parseArguments()
+  acnode.setup()
+
+  if not acnode.cnf.alertto:
+     print("You did not specify an email destination. aborting test.")
+     sys.exit(1)
+
+  acnode.send_email("This is a test.", "test")
 
 

@@ -40,9 +40,14 @@ class SensorACNode(ACNode):
     if self.cnf.tags:
        self.cnf.verbose = 10
 
+  def send_request(self, command, target_node, target_machine, tag_uid, beat = None):
+      self.last_tag = tag_uid
+      return super().send_request(command, target_node, target_machine, tag_uid,beat)
+
   def cmd_revealtag(self,path,node,nonce,payload):
     if not self.last_tag:
        self.logger.info("Asked to reveal a tag - but nothing swiped.")
+       return
 
     tag = '-'.join(str(int(bte)) for bte in self.last_tag)
 

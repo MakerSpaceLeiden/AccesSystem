@@ -1,4 +1,4 @@
-el!/usr/bin/env python3.4
+#!/usr/bin/env python3.4
 
 import os
 import sys
@@ -10,10 +10,10 @@ sys.path.append('.')
 import db
 
 sys.path.append('../lib')
-import alertEmail
 import DrumbeatNode as DrumbeatNode
+import AlertEmail as AlertEmail
 
-class Master(db.TextDB, DrumbeatNode.DrumbeatNode):
+class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
   default_subject="[Master ACNode]"
   default_email = None
 
