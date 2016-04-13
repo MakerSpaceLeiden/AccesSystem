@@ -121,13 +121,6 @@ class KrachtstroomNode(RfidReaderNode,KrachtstroomHW):
        if time.time() - self.last_ok > self.cnf.grace:
           self.setBottomLED(0)
 
-  def on_exit(self,exitcode):
-    if not self.cnf.offline:
-      cleardownGPIO()
-    else:
-      self.logger.debug("TEST: GPIO_cleanup() called.")
-    super().on_exit(exitcode)
-
 # Spin up a node; and run it forever; or until aborted; and
 # provide a non-zero exit code as/if needd.
 #

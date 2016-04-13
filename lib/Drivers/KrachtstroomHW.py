@@ -31,6 +31,13 @@ ledFull = int(1e6/1/pulseInc - 1)
 sys.path.append('../../lib')
 from GPIOACNode import GPIOACNode
 
+# We're careful as to not import the 
+# RPIO itself; as it magically claims
+# pin 22; thus conflicting with MFRC522.
+#
+import RPIO.PWM
+
+
 class KrachtstroomHW(GPIOACNode):
 
   topLedTransitionsPerCycle = 0
@@ -40,21 +47,15 @@ class KrachtstroomHW(GPIOACNode):
     super().setup()
 
     if self.cnf.offline:
-      self.logger.info("TEST: import PWM")
-      self.logger.info("TEST: initializing PWM")
+      self.logger.info("TEST: import RPIO.PWM")
+      self.logger.info("TEST: initializing RPIO.PWM")
       return
 
-    # We're careful as to not import the 
-    # RPIO itself; as it magically claims
-    # pin 22; thus conflicting with MFRC522.
-    #
-    import RPIO.PWM as PWM
-
-    PWM.set_loglevel(PWM.LOG_LEVEL_ERRORS)
-    PWM.setup(pulseInc)
-    PWM.init_channel(relayChannel, subcycle_time_us=int(1e6/frequency))
+    RPIO.PWM.set_loglevel(RPIO.PWM.LOG_LEVEL_ERRORS)
+    RPIO.PWM.setup(pulseInc)
+    RPIO.PWM.init_channel(relayChannel, subcycle_time_us=int(1e6/frequency))
     # Cycle time in microSeconds == 1 second
-    PWM.init_channel(ledChannel, subcycle_time_us=int(1e6/1)) 
+    RPIO.PWM.init_channel(ledChannel, subcycle_time_us=int(1e6/1)) 
 
     # Flash top LED while we get our bearings.
     #
@@ -65,12 +66,12 @@ class KrachtstroomHW(GPIOACNode):
    self.setBottomLED(0)
    self.setTopLED(0)
 
-   PWM.clear_channel_gpio(relayChannel,relay)
-   PWM.clear_channel_gpio(ledChannel,topLed)
-   PWM.clear_channel_gpio(ledChannel,bottomLed)
+   RPIO.PWM.clear_channel_gpio(relayChannel,relay)
+   RPIO.PWM.clear_channel_gpio(ledChannel,topLed)
+   RPIO.PWM.clear_channel_gpio(ledChannel,bottomLed)
 
-   # Shutdown all PWM and DMA activity
-   PWM.cleanup()
+   # Shutdown all RPIO.PWM and DMA activity
+   RPIO.PWM.cleanup()
 
 
   def setLEDs(self):
@@ -79,14 +80,14 @@ class KrachtstroomHW(GPIOACNode):
       self.logger.info("TEST: topled=%d bottomled=%d", self.topLedTransitionsPerCycle, self.bottomLedTransitionsPerCycle)
       return
 
-    PWM.clear_channel(ledChannel)
-    for pin, state in { topLed: self.topLedTransitionsPerCycle, bottomLed: self.bottomLedTransitionsPerCycle }.iteritems():
+    RPIO.PWM.clear_channel(ledChannel)
+    for pin, state in { topLed: self.topLedTransitionsPerCycle, bottomLed: self.bottomLedTransitionsPerCycle }.items():
       if state:
         ds = ledFull / (state*2 - 1)
         for i in range(0,state):
-          PWM.add_channel_pulse(ledChannel, pin, start=i*ds*2, width=ds)
+          RPIO.PWM.add_channel_pulse(ledChannel, pin, start=int(i*ds*2), width=int(ds))
       else:
-        PWM.add_channel_pulse(ledChannel, pin, start=0, width=1)
+        RPIO.PWM.add_channel_pulse(ledChannel, pin, start=0, width=1)
 
   def setTopLED(self, state ):
    self.topLedTransitionsPerCycle=state
@@ -102,17 +103,22 @@ class KrachtstroomHW(GPIOACNode):
         return
 
     if state:
-        PWM.clear_channel(relayChannel)
-        PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayFull)
+        RPIO.PWM.clear_channel(relayChannel)
+        RPIO.PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayFull)
         time.sleep(holdDelay)
-        PWM.clear_channel(relayChannel)
-        PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayLow)
+        RPIO.PWM.clear_channel(relayChannel)
+        RPIO.PWM.add_channel_pulse(relayChannel, relay, start=0, width=relayLow)
     else:
-        PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
-        PWM.clear_channel(relayChannel)
+        RPIO.PWM.add_channel_pulse(relayChannel, relay, start=0, width=0)
+        RPIO.PWM.clear_channel(relayChannel)
 
+  def on_exit(self,exitcode):
+    if not self.cnf.offline:
+      self.cleardownGPIO()
+    else:
+      self.logger.debug("TEST: GPIO_cleanup() called.")
 
-
+    super().on_exit(exitcode)
 
 if __name__ == "__main__":
   acnode = KrachtstroomHW()

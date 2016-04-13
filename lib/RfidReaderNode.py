@@ -17,7 +17,7 @@ class RfidReaderNode(SensorACNode, OfflineModeACNode):
        # the start of the file.
        #
        import MFRC522
-       MIFAREReader = MFRC522.MFRC522()
+       self.MIFAREReader = MFRC522.MFRC522()
 
   def readtag(self):
     uid = super().readtag()
@@ -27,12 +27,12 @@ class RfidReaderNode(SensorACNode, OfflineModeACNode):
     if self.cnf.offline:
       return None
 
-    (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
-    if status != MIFAREReader.MI_OK:
+    (status,TagType) = self.MIFAREReader.MFRC522_Request(self.MIFAREReader.PICC_REQIDL)
+    if status != self.MIFAREReader.MI_OK:
       return None
 
-    (status,uid) = MIFAREReader.MFRC522_Anticoll()
-    if status != MIFAREReader.MI_OK:
+    (status,uid) = self.MIFAREReader.MFRC522_Anticoll()
+    if status != self.MIFAREReader.MI_OK:
       return None
 
     tag = '-'.join(map(str,uid))
