@@ -62,8 +62,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
 
     self.logger.info("Unknown tag {} reportedly used at {}".format(tag,node))
 
-    self.send_email("Unknown tag {} used at {}".format(tag,node),
-	"An unknown tag ({}) was reportedly used at node {} around {}.".format(tag,node,time.asctime()))
+    self.send_email( "An unknown tag ({}) was reportedly used at node {} around {}.".format(tag,node,time.asctime()), "Unknown tag {} used at {}".format(tag,node))
 
   def cmd_approve(self,path,node,theirbeat,payload):
     cmd, target_node, target_machine, tag_encoded = self.parse_request(payload) or (None, None, None, None)

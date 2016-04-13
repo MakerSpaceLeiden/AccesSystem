@@ -57,7 +57,7 @@ class AlertEmail(ACNode):
     if self.cnf.smtpuser and self.cnf.smtppasswd:
        s.login(self.cnf.smtpuser, self.cnf.smtppasswd)
 
-    self.logger.info("AlertEmail: {}: {}".format(msg['Subject'], msg['To']))
+    self.logger.debug("AlertEmail: {}: {}".format(msg['Subject'], msg['To']))
 
     # s.sendmail(self.cnf.alertfrom, self.cnf.alertto, msg.as_string())
     s.send_message(msg)
