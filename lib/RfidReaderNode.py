@@ -33,6 +33,7 @@ class RfidReaderNode(SensorACNode, OfflineModeACNode):
 
     (status,uid) = self.MIFAREReader.MFRC522_Anticoll()
     if status != self.MIFAREReader.MI_OK:
+      print("col")
       return None
 
     tag = '-'.join(map(str,uid))

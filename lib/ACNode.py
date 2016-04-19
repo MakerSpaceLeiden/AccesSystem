@@ -123,6 +123,8 @@ class ACNode:
       self.cnf.machine = self.cnf.node
 
     # self.topic = self.cnf.topic+ "/" + self.cnf.master + "/" + self.cnf.node
+    signal.signal(signal.SIGINT, self.end_read)
+    signal.signal(signal.SIGQUIT, self.end_read)
 
   def secret(self, node = None):
     if not node or node == self.cnf.master or node == self.cnf.node:
@@ -282,7 +284,7 @@ class ACNode:
        self.logger.error("No secret defined for '{}' - ignored".format(dstnode))
        return None
 
-    if delta > self.cnf.leeway:
+    if delta > self.cnf.leeway and payload != 'announce':
         self.logger.critical("Beats are {} seconds off (max leeway is {} seconds). ignoring.".format(delta,self.cnf.leeway))
         return None
        
@@ -319,7 +321,7 @@ class ACNode:
           self.logger.critical("My own beat is returned with more than 5 seconds delay (or getting replayed)")
        return
 
-    if not self.cnf.follower or delta < self.cnf.leeway / 4:
+    if not self.cnf.follower or (delta < self.cnf.leeway / 4 and delta < 120):
        self.logger.debug("Not adjusting beat - in acceptable range.")
        return
 
@@ -346,8 +348,6 @@ class ACNode:
       return(e)
 
   def connect(self):
-   signal.signal(signal.SIGINT, self.end_read)
-   signal.signal(signal.SIGQUIT, self.end_read)
 
    try:
       self.client = mqtt.Client()
@@ -382,6 +382,6 @@ class ACNode:
       self.loop()
 
     self.logger.debug("Aborting loop.")
-    e = self.on_exit(self.err)
+    e = self.on_exit()
 
     return e 
