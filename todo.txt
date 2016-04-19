@@ -1,4 +1,1 @@
-Timeout on check/ask
-setproctitle
-beat on setup slack
 

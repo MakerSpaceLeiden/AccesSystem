@@ -282,10 +282,11 @@ class ACNode:
         self.logger.info("Unknown version of '{0}' -- ignored".format(payload))
         return None
        
-    beat = self.beat()
+    beat = int(self.beat())
     try:
         hdr, sig, theirbeat, payload = payload.split(' ',3)
-        delta = abs(int(theirbeat) - int(beat))
+        theirbeat = int(theirbeat)
+        delta = abs(theirbeat - beat)
     except:
         self.logger.info("Could not parse '{0}' -- ignored".format(payload))
         return None
@@ -319,10 +320,18 @@ class ACNode:
        self.logger.info("Announce of {}".format(node))
     else:
        self.logger.info("Ignoring my own restart message.")
+
+    if node == self.cnf.master && self.beatsseen < 2 and self.cnf.follower:
+       delta = abs(theirbeat - int(self.beat()))
+       if not delta < self.cnf.leeway:
+         self.logger.infor("Adjusting beat in startup window, delta={} seconds".format(delta))
+         self.beatoff -= delta
+       return
+       
     return None
 
   def cmd_beat(self,path,node,theirbeat,payload):
-    delta = abs(int(theirbeat) - int(self.beat()))
+    delta = abs(theirbeat - int(self.beat()))
 
     self.logger.debug("Drumbeat - delta is {}".format(delta))
     self.beatsseen+=1
@@ -332,7 +341,7 @@ class ACNode:
           self.logger.critical("My own beat is returned with more than 5 seconds delay (or getting replayed)")
        return
 
-    if not self.cnf.follower or (delta < self.cnf.leeway / 4 and delta < 120):
+    if not self.cnf.follower or (delta < self.cnf.leeway / 4):
        self.logger.debug("Not adjusting beat - in acceptable range.")
        return
 
