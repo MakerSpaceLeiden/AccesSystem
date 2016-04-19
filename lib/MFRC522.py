@@ -142,7 +142,7 @@ class MFRC522:
   
   def AntennaOff(self):
     self.ClearBitMask(self.TxControlReg, 0x03)
-  
+ 
   def MFRC522_ToCard(self,command,sendData):
     backData = []
     backLen = 0
