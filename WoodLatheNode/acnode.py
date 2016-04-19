@@ -81,9 +81,11 @@ class Node(RfidReaderNode, SensorACNode, ActuatorACNode):
       self.poweredup = time.time()
       self.send_request(self.command, self.cnf.node, self.cnf.machine, uid)
 
-   if self.powered and self.last_tag == uid  and time.time() - self.poweredup > 10:
-      self.last_tag = None
-      self.off()
+   if time.time() - self.poweredup > 10:
+     if self.last_tag == uid:
+        self.last_tag = None
+        if self.powered:
+           self.off()
    
    
 # Spin up a node; and run it forever; or until aborted; and

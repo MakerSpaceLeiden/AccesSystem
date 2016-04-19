@@ -10,6 +10,7 @@ import logging.handlers
 import os
 import hmac
 import daemon
+import setproctitle
 
 import configargparse
 
@@ -102,6 +103,8 @@ class ACNode:
     self.cnf.follower = not self.cnf.ignorebeat
 
   def setup(self):
+    setproctitle.setproctitle(self.cnf.node)
+
     loglevel=logging.ERROR
 
     if self.cnf.verbose:
