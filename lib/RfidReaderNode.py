@@ -19,6 +19,20 @@ class RfidReaderNode(SensorACNode, OfflineModeACNode):
        import MFRC522
        self.MIFAREReader = MFRC522.MFRC522()
 
+  def dumpVersion(self):
+    v = self.MIFAREReader.Read_MFRC522(self.MIFAREReader.VersionReg)
+
+    if v == 0 or v == 0xFF:
+       print("Unknown version reporte d- likely a comms error")
+       return
+
+    s = "unknown"
+    known = { 0x80 : 'clone', 0x90: 'v0.0', 0x91: 'v1.0', 0x92 : 'v2.0' }
+    if v in known:
+       s = known[ v ]
+
+    print("MFRC522: version 0x{:x} ({})".format(v,s))
+
   def readtag(self):
     uid = super().readtag()
     if uid:
@@ -33,7 +47,7 @@ class RfidReaderNode(SensorACNode, OfflineModeACNode):
 
     (status,uid) = self.MIFAREReader.MFRC522_Anticoll()
     if status != self.MIFAREReader.MI_OK:
-      print("col")
+      self.logger.info("Card clash")
       return None
 
     tag = '-'.join(map(str,uid))
@@ -58,6 +72,9 @@ if __name__ == "__main__":
   acnode.parseArguments()
   acnode.setup()
   acnode.subscribed = 1
+  print("---")
+  acnode.dumpVersion()
 
+  print("Scanning...")
   acnode.test()
 
