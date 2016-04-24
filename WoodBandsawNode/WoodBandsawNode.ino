@@ -23,7 +23,8 @@ const char* mqtt_server = "space.makerspaceleiden.nl";
 // MQTT topics are constructed from <prefix> / <dest> / <sender>
 //
 const char *mqtt_topic_prefix = "test";
-const char *moi = "ESP-dirkx";    // Name of the sender
+const char *moi = "woodbandsawnode";    // Name of the sender
+const char *machine = "woodbandsaw";
 const char *master = "master";    // Destination for commands
 const char *logpath = "log";       // Destination for human readable text/logging info.
 
@@ -31,7 +32,6 @@ const char *logpath = "log";       // Destination for human readable text/loggin
 // machine we control.
 //
 const char *passwd = ACNODE_PASSWD;
-const char *machine = moi;
 
 // Enduser visible Timeouts
 //
@@ -53,7 +53,7 @@ const uint8_t PIN_LEDS       = 0; // red led to ground, green led to rail (with 
 const uint8_t PIN_OVERLOAD   = 0; // switch on thermal sensor to ground
 
 const uint8_t PIN_POWER      = 15; // pulled low when not in use.
-const uint8_t PIN_VACUUM     = 16; // / pulled low when not in use.
+const uint8_t PIN_VACUUM     = 16; // pulled low when not in use.
 
 const uint8_t PIN_OPTO1      = 4; // front-switch 'off' -- capacitor charged by diode; needs to be pulled to ground to empty.
 const uint8_t PIN_OPTO2      = 5; // relay energized -- capacitor charged by diode; needs to be pulled to ground to empty.

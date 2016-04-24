@@ -285,6 +285,7 @@ class ACNode:
         hdr, sig, theirbeat, payload = payload.split(' ',3)
         theirbeatasint = int(theirbeat)
         delta = abs(theirbeatasint - beat)
+        delta = abs(int(theirbeat) - beat)
     except:
         self.logger.warning("Could not parse '{0}' -- ignored".format(payload))
         return None
