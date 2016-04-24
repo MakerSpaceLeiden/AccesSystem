@@ -1,3 +1,4 @@
 1-2-3-4-4:deur:Fred:fred@foobar.com
 1-2-3-4-6:deur,circelzaag:Vingerloze Pieter:pieter@vlugge.com
 1-1:voordeurmotortje,voordeur:Professional Gatepener:ladysfriend@chatterly.com
+1-2-3-4:deur,ESP-dirkx:Test de Tester:test@test.com
