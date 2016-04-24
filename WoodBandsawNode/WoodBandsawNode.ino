@@ -8,13 +8,15 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
+#define BUILD  __FILE__ " " __DATE__ " " __TIME__
+
 #include <sha256.h>
 
 #if MQTT_MAX_PACKET_SIZE < 256
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
 #endif
 
-#include "/Users/dirkx/.passwd.h"
+#include "../../../.passwd.h"
 
 const char* ssid = WIFI_NETWORK;
 const char* wifi_password = WIFI_PASSWD;
@@ -35,7 +37,7 @@ const char *passwd = ACNODE_PASSWD;
 
 // Enduser visible Timeouts
 //
-const unsigned int   VACUUM_TO      = (2 * 1000); // 2 seconds extra vacuum on
+const unsigned int   VACUUM_TO      = (5 * 1000); // 5 seconds extra vacuum on
 const unsigned int   IDLE_TO        = (20 * 60 * 1000); // Auto disable/off after 20 minutes.
 const unsigned int   CHECK_TO       = (3 * 1000); // Wait up to 3 second for result of card ok check.
 
@@ -60,7 +62,7 @@ const uint8_t PIN_OPTO2      = 5; // relay energized -- capacitor charged by dio
 
 // Comment out to reduce debugging output.
 //
-#define DEBUG
+// #define DEBUG  yes
 
 // While we avoid using #defines, as per https://www.arduino.cc/en/Reference/Define, in above - in below
 // case - the compiler was found to procude better code if done the old-fashioned way.
@@ -78,10 +80,9 @@ typedef enum {
   DENIED,                    // we got a denied from the master -- flash an LED and then return to WAITINGFORCARD
   CHECKING,                  // we are are waiting for the master to respond -- flash an LED and then return to WAITINGFORCARD
   WAITINGFORCARD,            // waiting for card.
-  ENERGIZED,                 // Got the OK; go to POWERED once the green button at the back is pressed.
-  POWERED,                   // Waiting for the front-switch to be set to 'running'.
+  ENERGIZED,                 // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
   RUNNING,                   // Running - go to VACUUM once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
-  VACUUM                     // Letting dust control do its thing; then drop back to POWERED.
+  VACUUM                     // Letting dust control do its thing; then drop back to ENERGIZED.
 } machinestates_t;
 
 static machinestates_t laststate;
@@ -130,12 +131,21 @@ size_t Log::write(uint8_t c) {
   if (c >= 32)
     logbuff[ at++ ] = c;
 
-  if ((c == '\n' || at < sizeof(logbuff) - 1) && (client.connected())) {
+  if (c != '\n' && at <= sizeof(logbuff) - 1)
+    return r;
+
+  if (client.connected()) {
     logbuff[at++] = 0;
+#ifdef DEBUG4
+    Serial.print("debug: ");
+    Serial.print(at);
+    Serial.print(" ");
+    Serial.println(logbuff);
+#endif
     client.publish(logtopic, logbuff);
   };
-
   at = 0;
+
   return r;
 }
 Log Log;
@@ -179,10 +189,10 @@ void restoreLeds() {
   }
   else if (r) {
     pinMode(PIN_LEDS, OUTPUT);
-    digitalWrite(PIN_LEDS, 1);
+    digitalWrite(PIN_LEDS, 0);
   } else {
     pinMode(PIN_LEDS, OUTPUT);
-    digitalWrite(PIN_LEDS, 0);
+    digitalWrite(PIN_LEDS, 1);
   };
 }
 
@@ -193,14 +203,14 @@ void tock1second() {
 }
 
 void setup() {
-  pinMode(PIN_POWER, OUTPUT); digitalWrite(PIN_POWER, 0);
   pinMode(PIN_VACUUM, OUTPUT); digitalWrite(PIN_VACUUM, 0);
+  pinMode(PIN_POWER, OUTPUT); digitalWrite(PIN_POWER, 0);
 
   red = green = LED_FAST;
   tock();
 
   Log.begin(mqtt_topic_prefix, 115200);
-  Log.println("\n\n\nBuild: " __FILE__ " " __DATE__ " " __TIME__);
+  Log.println("\n\n\nBuild: " BUILD);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, wifi_password);
@@ -376,13 +386,16 @@ void reconnectMQTT() {
   //  client.subscribe(mqtt_topic_prefix);
 
   if (client.connect(moi)) {
-    Log.println("(re)connected");
+    Log.println("(re)connected " BUILD);
 
     char topic[MAX_TOPIC];
-    snprintf(topic, sizeof(topic), " % s / % s / % s", mqtt_topic_prefix, moi, master);
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
     client.subscribe(topic);
-    snprintf(topic, sizeof(topic), " % s / % s / % s", mqtt_topic_prefix, master, master);
+    Debug.print("Subscribed to "); Debug.println(topic);
+
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, master);
     client.subscribe(topic);
+    Debug.print("Subscribed to "); Debug.println(topic);
 
     send("announce");
   } else {
@@ -394,6 +407,7 @@ void reconnectMQTT() {
 void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   char payload[MAX_MSG];
   memcpy(payload, payload_theirs, length);
+  payload[length] = 0;
 
   Debug.print("["); Log.print(topic); Log.print("] ");
   Debug.print((char *)payload);
@@ -404,7 +418,6 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
     return;
   };
   char * p = (char *)payload;
-  p[length] = 0;
 
 #define SEP(tok, err) tok = strsepspace(&p); if (!tok) { Log.println(err); return; }
 
@@ -451,7 +464,7 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   }
 
   if (!strncmp("revealtag", rest, 9)) {
-    if (b <= lasttagbeat) {
+    if (b < lasttagbeat) {
       Log.println("Asked to reveal a tag I no longer have a record off, ignoring.");
       return;
     };
@@ -462,8 +475,10 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   }
 
   if (!strncmp("approved", rest, 8) || !strncmp("energize", rest, 8)) {
-    Log.println("POWERING on");
+    Log.println("relay energized");
     green = LED_ON; red = LED_OFF; tock();
+    machinestate = ENERGIZED;
+    send("event energized");
     return;
   }
   if (!strncmp("denied", rest, 6) || !strncmp("unknown", rest, 7)) {
@@ -481,26 +496,42 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
 
 
 void handleMachineState() {
+#if 0
+  static unsigned long lastdischarge = 0;
   unsigned int v1 = 0, v2 = 0;
-  // Discharge the capacitors first.
+  if (lastdischarge) {
+    pinMode(PIN_OPTO1, INPUT); pinMode(PIN_OPTO2, INPUT);
+    while (millis() - lastdischarge < 50) {
+      v1 += digitalRead(PIN_OPTO1);
+      v2 += digitalRead(PIN_OPTO2);
+      delay(1);
+    }
+  }
+  // Discharge the capacitors once we are done.
   //
+  pinMode(PIN_OPTO1, OUTPUT); pinMode(PIN_OPTO2, OUTPUT);
+  digitalWrite(PIN_OPTO1, 0); digitalWrite(PIN_OPTO2, 0);
+  delay(1);
+  pinMode(PIN_OPTO1, INPUT); pinMode(PIN_OPTO2, INPUT);
+  lastdischarge = millis();
+#endif
+  unsigned int v1 = 0, v2 = 0;
   pinMode(PIN_OPTO1, OUTPUT); pinMode(PIN_OPTO2, OUTPUT);
   digitalWrite(PIN_OPTO1, 0);  digitalWrite(PIN_OPTO2, 0);
   delay(1);
   pinMode(PIN_OPTO1, INPUT); pinMode(PIN_OPTO2, INPUT);
-
-  // We meet for a bit - as to ensure we have had at least most of a full 50Hz cycle.
-  for (int j = 0; j < 7; j++) {
-    delay(3);
+  //  for (int j = 0; j < 5 || (v1+v2==0 && j < 30); j++) {
+  for (int j = 0; j < 50; j++) {
     v1 += digitalRead(PIN_OPTO1);
     v2 += digitalRead(PIN_OPTO2);
+    delay(2);
   };
 
   // The overload pin is shared with the LED; so do the
   // measurement quickly - and then restore the LEDs.
   pinMode(PIN_OVERLOAD, INPUT);
   delay(1);
-  int overload = !digitalRead(PIN_OVERLOAD);
+  int overload = digitalRead(PIN_OVERLOAD) ? 0 : 1;
   restoreLeds();
 
   int r = 0;
@@ -508,29 +539,33 @@ void handleMachineState() {
   if (v2) r |= 2;
   switch (r) {
     case 0: // On/off switch 'on' - blocking energizing.
-      if (machinestate != WRONGFRONTSWITCHSETTING)
-        send("frontswitchfail");
-      machinestate = WRONGFRONTSWITCHSETTING;
+      if (machinestate >= ENERGIZED) {
+        send("event powerdown");
+        machinestate = WAITINGFORCARD;
+      } else if (machinestate != WRONGFRONTSWITCHSETTING && machinestate > OVERLOAD) {
+        send("event frontswitchfail");
+        machinestate = WRONGFRONTSWITCHSETTING;
+      }
       break;
     case 1: // On/off switch in the proper setting, ok to energize.
       if (machinestate == WRONGFRONTSWITCHSETTING) {
-        send("frontswitchokagain");
+        send("event frontswitchokagain");
         machinestate = WAITINGFORCARD;
       };
-      // relayenergizeded or energized ???
-      break;
-    case 2: // Relay engergized and running.
-      if (machinestate != RUNNING)
-        send("started");
-      machinestate = RUNNING;
       break;
     case 3: // Relay energized, but not running.
       if (machinestate == RUNNING) {
+        send("event halted");
         machinestate = VACUUM;
-        send("stopped");
+      } else if (machinestate < ENERGIZED && machinestate > OVERLOAD) {
+        send("event spuriousbuttonpress?");
       };
-      if (machinestate != VACUUM)
-        machinestate = ENERGIZED;
+      break;
+    case 2: // Relay engergized and running.
+      if (machinestate != RUNNING && machinestate > WAITINGFORCARD) {
+        send("event running");
+        machinestate = RUNNING;
+      }
       break;
   };
 
@@ -538,13 +573,13 @@ void handleMachineState() {
   //
   if (overload) {
     if (machinestate != OVERLOAD) {
-      send("overload");
+      send("event overload");
     };
     machinestate = OVERLOAD;
   } else {
     if (machinestate == OVERLOAD) {
       machinestate = WAITINGFORCARD;
-      send("recoverd");
+      send("event no-overload");
     };
   };
 
@@ -576,7 +611,7 @@ void handleMachineState() {
     case ENERGIZED:
       red = LED_ON; green = LED_OFF;
       if (millis() - laststatechange > IDLE_TO) {
-        send("toolongidle");
+        send("event toolongidle");
         Log.println("Machine not used for more than 20 minutes; revoking access.");
         machinestate = WAITINGFORCARD;
       }
@@ -584,53 +619,70 @@ void handleMachineState() {
       break;
     case VACUUM:
       if (millis() - laststatechange > VACUUM_TO) {
-        send("vacuumoff");
+        send("event vacuumoff");
         machinestate = ENERGIZED;
       };
-      vacuum = 1;
+      relayenergized = 1; vacuum = 1;
       break;
     case RUNNING:
       red = LED_ON; green = LED_OFF;
       relayenergized = 1; vacuum = 1;
       break;
   };
+
   digitalWrite(PIN_POWER, relayenergized);
   digitalWrite(PIN_VACUUM, vacuum);
 
   if (laststate != machinestate) {
+#if DEBUG5
+    Serial.print("State: ");
+    Serial.print(laststate);
+    Serial.print(" -->");
+    Serial.print(machinestate);
+    Serial.print(" O="); Serial.print(overload);
+    Serial.print(" 1="); Serial.print(v1);
+    Serial.print(" 2="); Serial.print(v2);
+    Serial.print(" red="); Serial.print(red);
+    Serial.print(" green="); Serial.print(green);
+    Serial.print(" P="); Serial.print(relayenergized);
+    Serial.print(" V="); Serial.print(vacuum);
+    Serial.println();
+#endif
     laststate = machinestate;
     laststatechange = millis();
   }
 }
 
-void checkTagReader() {
+int checkTagReader() {
   MFRC522::Uid uid = { 0, 0, 0 };
+
+#if 0
   static unsigned long test = 0;
   if (millis() - test > 15000) {
     uid = { 4, { 1, 2, 3, 4}, 0 };
     test = millis();
   }
-#if 0
+#endif
+
   // Look for new cards
   if ( ! mfrc522.PICC_IsNewCardPresent()) {
-    return;
+    return 0;
   }
 
   // Select one of the cards
   if ( ! mfrc522.PICC_ReadCardSerial()) {
-    return;
+    return 0;
   }
+
   uid = mfrc522.uid;
   // Dump debug info about the card; PICC_HaltA() is automatically called
   // mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
-#endif
 
   if (uid.size) {
-
     lasttag[0] = 0;
     for (int i = 0; i < uid.size; i++) {
       char buff[5];
-      snprintf(buff, sizeof(buff), " % s % d", i ? " - " : "", uid.uidByte[i]);
+      snprintf(buff, sizeof(buff), "%s%d", i ? "-" : "", uid.uidByte[i]);
       strcat(lasttag, buff);
     }
     lasttagbeat = beatCounter;
@@ -645,6 +697,8 @@ void checkTagReader() {
     char buff[250];
     snprintf(buff, sizeof(buff), "energize % s % s % s", moi, machine, tag_encoded);
     send(buff);
+
+    return 1;
   }
 }
 
@@ -663,7 +717,7 @@ void loop() {
   }
 
   static unsigned long last_wifi_ok = 0;
-    if (WiFi.status() != WL_CONNECTED && millis() - last_wifi_ok > 10000) {
+  if (WiFi.status() != WL_CONNECTED && millis() - last_wifi_ok > 10000) {
     Log.println("Connection dead for 10 seconds now -- Rebooting...");
     ESP.restart();
   }
@@ -673,10 +727,10 @@ void loop() {
 
   if ((!client.connected()) && (millis() - last_mqtt_connect_try > 5000))
     reconnectMQTT();
-    
+
   client.loop();
 
-#ifdef DEBUG
+#ifdef DEBUG3
   static unsigned long last_beat = 0;
   if (millis() - last_beat > 3000 && client.connected()) {
     send("ping");
@@ -684,7 +738,8 @@ void loop() {
   }
 #endif
 
-  if (machinestate == WAITINGFORCARD)
-    checkTagReader();
+  if (machinestate == WAITINGFORCARD && millis()-laststatechange > 500)
+    if (checkTagReader())
+      machinestate = CHECKING;
 }
 
