@@ -178,14 +178,13 @@ class ACNode:
       if elems:
         tag_encoded = elems.pop(0)
       if elems:
-        self.logger.info("Too many elements; ignored")
+        self.logger.debug("Too many elements; ignoring payload '{}'".format(payload))
         return
     except:
-      self.logger.info("Cannot parse request '{}' ; ignored".format(payload))
+      self.logger.debug("Cannot parse payload '{}' ; ignored".format(payload))
       return
 
     return(command, target_node, target_machine, tag_encoded)
-
  
   def hexdigest(self,secret,beat,topic,dstnode,payload):
 
@@ -245,7 +244,7 @@ class ACNode:
       destination = path[-2]
       node = path[-1]
     except:
-      self.logger.info("Message topic '{0}' could not be parsed -- ignored.".format(topic))
+      self.logger.warning("Message topic '{0}' could not be parsed -- ignored.".format(topic))
       return None, None, None
 
     if destination == self.cnf.drumbeat and node == self.cnf.drumbeat:
@@ -254,7 +253,7 @@ class ACNode:
         return None, None, None
     else:
       if destination != self.cnf.node:
-        self.logger.info("Message addressed to '{0}' not to me ('{1}') -- ignored."
+        self.logger.warning("Message addressed to '{0}' not to me ('{1}') -- ignored."
            .format(destination,self.cnf.node))
         return None, None, None
 
@@ -266,29 +265,28 @@ class ACNode:
 
     path, moi, node = self.parse_topic(topic)
     if not path:
-       self.logger.info("No path in topic '{0}' -- ignored".format(message.topic))
        return None
 
     payload = None
     try:
       payload = message.payload.decode('ASCII')
     except:
-      self.logger.info("Non ascii equest '{0}' -- ignored".format(message.payload))
+      self.logger.warning("Non ascii equest '{0}' -- ignored".format(message.payload))
       return None
 
     topic = message.topic
 
     if not payload.startswith("SIG/"):
-        self.logger.info("Unknown version of '{0}' -- ignored".format(payload))
+        self.logger.warning("Unknown version of '{0}' -- ignored".format(payload))
         return None
        
     beat = int(self.beat())
     try:
         hdr, sig, theirbeat, payload = payload.split(' ',3)
-        theirbeat = int(theirbeat)
-        delta = abs(theirbeat - beat)
+        theirbeatasint = int(theirbeat)
+        delta = abs(theirbeatasint - beat)
     except:
-        self.logger.info("Could not parse '{0}' -- ignored".format(payload))
+        self.logger.warning("Could not parse '{0}' -- ignored".format(payload))
         return None
 
     secret = self.secret(node)
@@ -319,12 +317,12 @@ class ACNode:
     if node != self.cnf.node:
        self.logger.info("Announce of {}".format(node))
     else:
-       self.logger.info("Ignoring my own restart message.")
+       self.logger.debug("Ignoring my own restart message.")
 
-    if node == self.cnf.master && self.beatsseen < 2 and self.cnf.follower:
+    if node == self.cnf.master and self.beatsseen < 2 and self.cnf.follower:
        delta = abs(theirbeat - int(self.beat()))
        if not delta < self.cnf.leeway:
-         self.logger.infor("Adjusting beat in startup window, delta={} seconds".format(delta))
+         self.logger.warning("Adjusting beat in startup window (no leeway limit), delta={} seconds".format(delta))
          self.beatoff -= delta
        return
        
@@ -345,13 +343,13 @@ class ACNode:
        self.logger.debug("Not adjusting beat - in acceptable range.")
        return
 
-    if delta < self.cnf.leeway * 4:
+    if delta < self.cnf.leeway:
        if self.beatsseen == 1:
          self.logger.warning("About {} seconds askew; adjusting clock".format(int(delta)))
          self.beatoff -= delta
          return
 
-       self.logger.warning("Delta too far to adjust; ignoring".format(int(delta)))
+       self.logger.critical("Delta too far to adjust; ignoring".format(int(delta)))
        return
 
     return None
@@ -359,7 +357,7 @@ class ACNode:
   # Capture SIGINT for cleanup when the script is aborted
   def end_read(self,signal,frame):
       self.forever = 0
-      self.logger.info("Abort detected; stopping")
+      self.logger.warning("Abort detected; stopping")
       self.err = 0
 
   def on_exit(self,e):
@@ -400,7 +398,7 @@ class ACNode:
     if self.cnf.daemonize:
         daemon.daemonize(self.cnf.pidfile)
 
-    self.logger.debug("Entering main forever loop.")
+    self.logger.warning("Node {} started.".format(self.cnf.node))
     while(self.forever): 
       self.loop()
 
