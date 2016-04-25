@@ -91,21 +91,21 @@ const uint8_t PIN_OPTO2      = 5; // relay energized -- capacitor charged by dio
 #endif
 
 typedef enum {
-  SWERROR, OUTOFORDER,     // some error - machine disabled.
-  OVERLOAD,                 // current overload protection has tripped. Machine disabled.
-  WRONGFRONTSWITCHSETTING,   // The switch on the front is in the 'on' setting; this blocks the operation of the on/off switch.
-  DENIED,                    // we got a denied from the master -- flash an LED and then return to WAITINGFORCARD
-  CHECKING,                  // we are are waiting for the master to respond -- flash an LED and then return to WAITINGFORCARD
-  WAITINGFORCARD,            // waiting for card.
-  ENERGIZED,                 // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
-  RUNNING,                   // Running - go to DUSTEXTRACT once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
+  SWERROR, OUTOFORDER, NOCONN, // some error - machine disabled.
+  OVERLOAD,                   // current overload protection has tripped. Machine disabled.
+  WRONGFRONTSWITCHSETTING,    // The switch on the front is in the 'on' setting; this blocks the operation of the on/off switch.
+  DENIED,                     // we got a denied from the master -- flash an LED and then return to WAITINGFORCARD
+  CHECKING,                   // we are are waiting for the master to respond -- flash an LED and then return to WAITINGFORCARD
+  WAITINGFORCARD,             // waiting for card.
+  ENERGIZED,                  // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
+  RUNNING,                    // Running - go to DUSTEXTRACT once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
   DUSTEXTRACT                     // Letting dust control do its thing; then drop back to ENERGIZED.
 } machinestates_t;
 
 #ifdef DEBUG
 // 229,884
 char machinestateNames = {
-  "Software Error", "Out of order",
+  "Software Error", "Out of order", "No network",
   "Current overload tripped",
   "Operator switch in wrong position",
   "Tag Denied",
@@ -273,20 +273,20 @@ void setup() {
     Log.println("OTA process started.");
   });
   ArduinoOTA.onEnd([]() {
-    Log.println("OTA process completed.");
+    Log.println("OTA process completed. Resetting.");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Log.printf("%c%c%c%cProgress: %u%% ", 27, '[', '1', 'G', (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
     Log.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Log.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Log.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Log.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Log.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Log.println("End Failed");
+    if (error == OTA_AUTH_ERROR) Log.println("OTA: Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Log.println("OTA: Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Log.println("OTA: Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Log.println("OTA: Receive Failed");
+    else if (error == OTA_END_ERROR) Log.println("OTA: End Failed");
     else {
-      Log.print("Error: ");
+      Log.print("OTA: Error: ");
       Log.println(error);
     };
   });
@@ -336,7 +336,7 @@ const char * state2str(int state) {
       return "Unknown MQTT error";
   }
 #else
-  static char buff[5]; snprintf(buff,sizeof(buff),"%d", state);
+  static char buff[5]; snprintf(buff, sizeof(buff), "%d", state);
 #endif
 }
 
@@ -410,9 +410,7 @@ char * strsepspace(char **p) {
   return NULL;
 }
 
-unsigned long last_mqtt_connect_try = 0;
 void reconnectMQTT() {
-  last_mqtt_connect_try = millis();
 
   Debug.print("Attempting MQTT connection (State : ");
   Debug.print(state2str(client.state()));
@@ -634,6 +632,9 @@ void handleMachineState() {
     case OVERLOAD:
       red = LED_FAST; green = LED_OFF;
       break;
+    case NOCONN:
+      red = LED_FAST; green = LED_FAST;
+      break;
     case WRONGFRONTSWITCHSETTING:
       red = LED_SLOW; green = LED_ON;
       break;
@@ -699,52 +700,49 @@ void handleMachineState() {
 }
 
 int checkTagReader() {
-  MFRC522::Uid uid = { 0, 0, 0 };
 
-#if 0
+#if FAKEREADERTEST
+  MFRC522::Uid uid = { 0, 0, 0 };
   static unsigned long test = 0;
   if (millis() - test > 15000) {
     uid = { 4, { 1, 2, 3, 4}, 0 };
     test = millis();
   }
-#endif
-
+#else
   // Look for new cards
-  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+  if ( ! mfrc522.PICC_IsNewCardPresent())
     return 0;
-  }
 
   // Select one of the cards
-  if ( ! mfrc522.PICC_ReadCardSerial()) {
+  if ( ! mfrc522.PICC_ReadCardSerial())
     return 0;
+
+  MFRC522::Uid uid = mfrc522.uid;
+#endif
+
+  if (!uid.size)
+    return 0;
+
+  lasttag[0] = 0;
+  for (int i = 0; i < uid.size; i++) {
+    char buff[5];
+    snprintf(buff, sizeof(buff), "%s%d", i ? "-" : "", uid.uidByte[i]);
+    strcat(lasttag, buff);
   }
+  lasttagbeat = beatCounter;
 
-  uid = mfrc522.uid;
-  // Dump debug info about the card; PICC_HaltA() is automatically called
-  // mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
+  char beatAsString[ MAX_BEAT ];
+  snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
+  Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
+  Sha256.print(beatAsString);
+  Sha256.write(uid.uidByte, uid.size);
+  const char * tag_encoded = hmacToHex(Sha256.resultHmac());
 
-  if (uid.size) {
-    lasttag[0] = 0;
-    for (int i = 0; i < uid.size; i++) {
-      char buff[5];
-      snprintf(buff, sizeof(buff), "%s%d", i ? "-" : "", uid.uidByte[i]);
-      strcat(lasttag, buff);
-    }
-    lasttagbeat = beatCounter;
+  char buff[250];
+  snprintf(buff, sizeof(buff), "energize % s % s % s", moi, machine, tag_encoded);
+  send(buff);
 
-    char beatAsString[ MAX_BEAT ];
-    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
-    Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
-    Sha256.print(beatAsString);
-    Sha256.write(uid.uidByte, uid.size);
-    const char * tag_encoded = hmacToHex(Sha256.resultHmac());
-
-    char buff[250];
-    snprintf(buff, sizeof(buff), "energize % s % s % s", moi, machine, tag_encoded);
-    send(buff);
-
-    return 1;
-  }
+  return 1;
 }
 
 void loop() {
@@ -752,29 +750,47 @@ void loop() {
   tock();
 
   // Keepting time is a bit messy; the millis() wrap around and
-  // the RFID readr seems to do something odd.
+  // the SPI access to the reader seems to mess with the millis().
   //
   static unsigned long last_loop = 0;
   if (millis() - last_loop >= 1000) {
-    int secs = (millis() - last_loop + 500) / 1000;
+    unsigned long secs = (millis() - last_loop + 500) / 1000;
     beatCounter += secs;
     last_loop = millis();
   }
 
   static unsigned long last_wifi_ok = 0;
-  if (WiFi.status() != WL_CONNECTED && millis() - last_wifi_ok > 10000) {
-    Log.println("Connection dead for 10 seconds now -- Rebooting...");
-    ESP.restart();
-  }
-  last_wifi_ok = millis();
-
+  if (WiFi.status() != WL_CONNECTED) {
+    if (machinestate <= WAITINGFORCARD)
+      machinestate = NOCONN;
+    if ( millis() - last_wifi_ok > 10000) {
+      Log.println("Connection dead for 10 seconds now -- Rebooting...");
+      ESP.restart();
+    }
+  } else { 
+    if (machinestate == NOCONN)
+      machinestate == WAITINGFORCARD;
+    last_wifi_ok = millis();
+  };
+  
 #ifdef OTA
   ArduinoOTA.handle();
 #endif
-  if ((!client.connected()) && (millis() - last_mqtt_connect_try > 5000))
-    reconnectMQTT();
 
   client.loop();
+
+  static unsigned long last_mqtt_connect_try = 0;
+  if (!client.connected()) {
+    if (machinestate <= WAITINGFORCARD)
+      machinestate = NOCONN;
+    if (millis() - last_mqtt_connect_try > 5000) {
+      reconnectMQTT();
+      last_mqtt_connect_try = millis();
+    } 
+  } else {
+    if (machinestate == NOCONN)
+      machinestate == WAITINGFORCARD;
+  };
 
 #ifdef DEBUG3
   static unsigned long last_beat = 0;
