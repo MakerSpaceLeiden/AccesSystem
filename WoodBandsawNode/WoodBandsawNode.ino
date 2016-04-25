@@ -1,9 +1,25 @@
 
+#ifdef ARDUINO_ESP8266_ESP12
+// We guess that ESP12 devices have enough memory for OTA. Unfortunately there is
+// no #define of the memory specified in the tools menu/hardware/boarts.txt file.
+//
+#define OTA
+#endif
+
+// While the ESP01s generally have a lot less memory. Our code needs to stay
+// below 236KB ( (512/2-4KB-16KB) in order to allow OTA on a 512kB flash.
+//
+#ifdef ARDUINO_ESP8266_ESP01
+#endif
 
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
+
+#ifdef OTA
 #include <WiFiUdp.h>
+#include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
+#endif
+
 #include <PubSubClient.h>
 #include <SPI.h>
 #include <MFRC522.h>
@@ -37,7 +53,7 @@ const char *passwd = ACNODE_PASSWD;
 
 // Enduser visible Timeouts
 //
-const unsigned int   VACUUM_TO      = (5 * 1000); // 5 seconds extra vacuum on
+const unsigned int   DUSTEXTRACT_TO      = (5 * 1000); // 5 seconds extra DUSTEXTRACT on
 const unsigned int   IDLE_TO        = (20 * 60 * 1000); // Auto disable/off after 20 minutes.
 const unsigned int   CHECK_TO       = (3 * 1000); // Wait up to 3 second for result of card ok check.
 
@@ -55,7 +71,7 @@ const uint8_t PIN_LEDS       = 0; // red led to ground, green led to rail (with 
 const uint8_t PIN_OVERLOAD   = 0; // switch on thermal sensor to ground
 
 const uint8_t PIN_POWER      = 15; // pulled low when not in use.
-const uint8_t PIN_VACUUM     = 16; // pulled low when not in use.
+const uint8_t PIN_DUSTEXTRACT     = 16; // pulled low when not in use.
 
 const uint8_t PIN_OPTO1      = 4; // front-switch 'off' -- capacitor charged by diode; needs to be pulled to ground to empty.
 const uint8_t PIN_OPTO2      = 5; // relay energized -- capacitor charged by diode; needs to be pulled to ground to empty.
@@ -74,16 +90,30 @@ const uint8_t PIN_OPTO2      = 5; // relay energized -- capacitor charged by dio
 #endif
 
 typedef enum {
-  OUTOFORDER, SWERROR,      // some error - machine disabled.
-  OVERLOAD,                 // current overload protection has tripped. Machine disabled.
-  WRONGFRONTSWITCHSETTING,   // The switch on the front is in the 'on' setting; this blocks the operation of the on/off switch.
-  DENIED,                    // we got a denied from the master -- flash an LED and then return to WAITINGFORCARD
-  CHECKING,                  // we are are waiting for the master to respond -- flash an LED and then return to WAITINGFORCARD
-  WAITINGFORCARD,            // waiting for card.
-  ENERGIZED,                 // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
-  RUNNING,                   // Running - go to VACUUM once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
-  VACUUM                     // Letting dust control do its thing; then drop back to ENERGIZED.
+  SWERROR, OUTOFORDER, NOCONN, // some error - machine disabled.
+  OVERLOAD,                   // current overload protection has tripped. Machine disabled.
+  WRONGFRONTSWITCHSETTING,    // The switch on the front is in the 'on' setting; this blocks the operation of the on/off switch.
+  DENIED,                     // we got a denied from the master -- flash an LED and then return to WAITINGFORCARD
+  CHECKING,                   // we are are waiting for the master to respond -- flash an LED and then return to WAITINGFORCARD
+  WAITINGFORCARD,             // waiting for card.
+  ENERGIZED,                  // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
+  RUNNING,                    // Running - go to DUSTEXTRACT once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
+  DUSTEXTRACT                     // Letting dust control do its thing; then drop back to ENERGIZED.
 } machinestates_t;
+
+#ifdef DEBUG
+char * machinestateName[] = {
+  "Software Error", "Out of order", "No network",
+  "Current overload tripped",
+  "Operator switch in wrong positson",
+  "Tag Denied",
+  "Checking tag",
+  "Waiting for card to be presented",
+  "Energized",
+  "Running",
+  "Postrun Dust extraction"
+};
+#endif
 
 static machinestates_t laststate;
 unsigned long laststatechange = 0;
@@ -150,25 +180,7 @@ size_t Log::write(uint8_t c) {
 }
 Log Log;
 
-
 ledstate lastred, lastgreen;
-void tock() {
-  static unsigned long lasttock = 0;
-  unsigned d  = DMAX;
-
-  if (red == LED_SLOW || green == LED_SLOW)
-    d = DSLOW;
-
-  if (red == LED_FAST || green == LED_FAST)
-    d = DFAST;
-
-  if (millis() - lasttock < d && lastgreen == green && lastred == red)
-    return;
-
-  lastred = red; lastgreen = green; lasttock = millis();
-  restoreLeds();
-}
-
 void restoreLeds() {
   int r, g;
   static int i;
@@ -196,6 +208,24 @@ void restoreLeds() {
   };
 }
 
+void tock() {
+  static unsigned long lasttock = 0;
+  unsigned d  = DMAX;
+
+  if (red == LED_SLOW || green == LED_SLOW)
+    d = DSLOW;
+
+  if (red == LED_FAST || green == LED_FAST)
+    d = DFAST;
+
+  if (millis() - lasttock < d && lastgreen == green && lastred == red)
+    return;
+
+  lastred = red; lastgreen = green; lasttock = millis();
+  restoreLeds();
+}
+
+
 void tock1second() {
   unsigned long now = millis();
   while (millis() - now < 1000)
@@ -203,7 +233,7 @@ void tock1second() {
 }
 
 void setup() {
-  pinMode(PIN_VACUUM, OUTPUT); digitalWrite(PIN_VACUUM, 0);
+  pinMode(PIN_DUSTEXTRACT, OUTPUT); digitalWrite(PIN_DUSTEXTRACT, 0);
   pinMode(PIN_POWER, OUTPUT); digitalWrite(PIN_POWER, 0);
 
   red = green = LED_FAST;
@@ -232,7 +262,7 @@ void setup() {
   }
 
   Log.print("Wifi connected to <"); Log.print(ssid); Log.println(">.");
-
+#ifdef OTA
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname(moi);
   ArduinoOTA.setPassword((const char *)OTA_PASSWD);
@@ -241,26 +271,26 @@ void setup() {
     Log.println("OTA process started.");
   });
   ArduinoOTA.onEnd([]() {
-    Log.println("OTA process completed.");
+    Log.println("OTA process completed. Resetting.");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Log.printf("%c%c%c%cProgress: %u%% ", 27, '[', '1', 'G', (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
     Log.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Log.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Log.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Log.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Log.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Log.println("End Failed");
+    if (error == OTA_AUTH_ERROR) Log.println("OTA: Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Log.println("OTA: Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Log.println("OTA: Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Log.println("OTA: Receive Failed");
+    else if (error == OTA_END_ERROR) Log.println("OTA: End Failed");
     else {
-      Log.print("Error: ");
+      Log.print("OTA: Error: ");
       Log.println(error);
     };
   });
 
   ArduinoOTA.begin();
-
+#endif
   Log.print("IP address: ");
   Log.println(WiFi.localIP());
 
@@ -278,6 +308,7 @@ void setup() {
 }
 
 const char * state2str(int state) {
+#ifdef DEBUG
   switch (state) {
     case  /* -4 */ MQTT_CONNECTION_TIMEOUT:
       return "the server didn't respond within the keepalive time";
@@ -302,6 +333,9 @@ const char * state2str(int state) {
     default:
       return "Unknown MQTT error";
   }
+#else
+  static char buff[5]; snprintf(buff, sizeof(buff), "%d", state);
+#endif
 }
 
 // Note - none of below HMAC utility functions is re-entrant/t-safe; they all rely
@@ -374,9 +408,7 @@ char * strsepspace(char **p) {
   return NULL;
 }
 
-unsigned long last_mqtt_connect_try = 0;
 void reconnectMQTT() {
-  last_mqtt_connect_try = millis();
 
   Debug.print("Attempting MQTT connection (State : ");
   Debug.print(state2str(client.state()));
@@ -426,6 +458,7 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
     Log.print("Unknown signature format <"); Log.print(sig); Log.println(">");
     return;
   }
+
   char * SEP(hmac, "No HMAC");
   char * SEP(beat, "No BEAT");
   char * rest = p;
@@ -447,8 +480,10 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   //
   if (((!strcmp("beat", rest) || !strcmp("announce", rest)) &&  beatCounter < 3600) || (delta < 120)) {
     beatCounter = b;
-    if (delta) {
+    if (delta > 10) {
       Log.print("Adjusting beat by "); Log.print(delta); Log.println(" seconds.");
+    } else if (delta) {
+      Debug.print("Adjusting beat by "); Debug.print(delta); Debug.println(" seconds.");
     }
   } else {
     Log.print("Good message -- but beats ignored as they are too far off ("); Log.print(delta); Log.println(" seconds).");
@@ -475,12 +510,10 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   }
 
   if (!strncmp("approved", rest, 8) || !strncmp("energize", rest, 8)) {
-    Log.println("relay energized");
-    green = LED_ON; red = LED_OFF; tock();
     machinestate = ENERGIZED;
-    send("event energized");
     return;
   }
+
   if (!strncmp("denied", rest, 6) || !strncmp("unknown", rest, 7)) {
     Log.println("Flash LEDS");
     green = LED_OFF; red = LED_FAST;
@@ -488,12 +521,17 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
     green = LED_ON; red = LED_OFF;
     tock();
     return;
+  };
+
+  if (!strcmp("outoforder", rest)) {
+    machinestate = OUTOFORDER;
+    send("event outoforder");
+    return;
   }
 
   Debug.print("Do not know what to do with <"); Log.print(rest); Log.println("> - ignoring.");
   return;
 }
-
 
 void handleMachineState() {
 #if 0
@@ -556,7 +594,7 @@ void handleMachineState() {
     case 3: // Relay energized, but not running.
       if (machinestate == RUNNING) {
         send("event halted");
-        machinestate = VACUUM;
+        machinestate = DUSTEXTRACT;
       } else if (machinestate < ENERGIZED && machinestate > OVERLOAD) {
         send("event spuriousbuttonpress?");
       };
@@ -584,13 +622,16 @@ void handleMachineState() {
   };
 
   int relayenergized = 0;
-  int vacuum = 0;
+  int dustextract = 0;
   switch (machinestate) {
     case OUTOFORDER:
       red = LED_FAST; green = LED_FAST;
       break;
     case OVERLOAD:
       red = LED_FAST; green = LED_OFF;
+      break;
+    case NOCONN:
+      red = LED_FAST; green = LED_FAST;
       break;
     case WRONGFRONTSWITCHSETTING:
       red = LED_SLOW; green = LED_ON;
@@ -610,6 +651,9 @@ void handleMachineState() {
       break;
     case ENERGIZED:
       red = LED_ON; green = LED_OFF;
+      if (laststatechange < ENERGIZED) {
+        send("event energized");
+      };
       if (millis() - laststatechange > IDLE_TO) {
         send("event toolongidle");
         Log.println("Machine not used for more than 20 minutes; revoking access.");
@@ -617,35 +661,35 @@ void handleMachineState() {
       }
       relayenergized = 1;
       break;
-    case VACUUM:
-      if (millis() - laststatechange > VACUUM_TO) {
-        send("event vacuumoff");
+    case DUSTEXTRACT:
+      if (millis() - laststatechange > DUSTEXTRACT_TO) {
+        send("event dustextractoff");
         machinestate = ENERGIZED;
       };
-      relayenergized = 1; vacuum = 1;
+      relayenergized = 1; dustextract = 1;
       break;
     case RUNNING:
       red = LED_ON; green = LED_OFF;
-      relayenergized = 1; vacuum = 1;
+      relayenergized = 1; dustextract = 1;
       break;
   };
 
   digitalWrite(PIN_POWER, relayenergized);
-  digitalWrite(PIN_VACUUM, vacuum);
+  digitalWrite(PIN_DUSTEXTRACT, dustextract);
 
   if (laststate != machinestate) {
-#if DEBUG5
-    Serial.print("State: ");
-    Serial.print(laststate);
-    Serial.print(" -->");
-    Serial.print(machinestate);
-    Serial.print(" O="); Serial.print(overload);
+#if DEBUG3
+    Serial.print("State: <");
+    Serial.print(machinestateName[laststate]);
+    Serial.print("> to <");
+    Serial.print(machinestateName[machinestate]);
+    Serial.print("> O="); Serial.print(overload);
     Serial.print(" 1="); Serial.print(v1);
     Serial.print(" 2="); Serial.print(v2);
     Serial.print(" red="); Serial.print(red);
     Serial.print(" green="); Serial.print(green);
     Serial.print(" P="); Serial.print(relayenergized);
-    Serial.print(" V="); Serial.print(vacuum);
+    Serial.print(" D="); Serial.print(dustextract);
     Serial.println();
 #endif
     laststate = machinestate;
@@ -654,81 +698,107 @@ void handleMachineState() {
 }
 
 int checkTagReader() {
+
+#if FAKEREADERTEST
   MFRC522::Uid uid = { 0, 0, 0 };
 
-#if 0
   static unsigned long test = 0;
   if (millis() - test > 15000) {
     uid = { 4, { 1, 2, 3, 4}, 0 };
     test = millis();
   }
-#endif
-
+#else
   // Look for new cards
-  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+  if ( ! mfrc522.PICC_IsNewCardPresent())
     return 0;
-  }
 
   // Select one of the cards
-  if ( ! mfrc522.PICC_ReadCardSerial()) {
+  if ( ! mfrc522.PICC_ReadCardSerial())
     return 0;
+
+  MFRC522::Uid uid = mfrc522.uid;
+#endif
+
+  if (uid.size == 0)
+    return 0;
+
+  lasttag[0] = 0;
+  for (int i = 0; i < uid.size; i++) {
+    char buff[5];
+    snprintf(buff, sizeof(buff), "%s%d", i ? "-" : "", uid.uidByte[i]);
+    strcat(lasttag, buff);
   }
+  lasttagbeat = beatCounter;
 
-  uid = mfrc522.uid;
-  // Dump debug info about the card; PICC_HaltA() is automatically called
-  // mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
+  char beatAsString[ MAX_BEAT ];
+  snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
+  Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
+  Sha256.print(beatAsString);
+  Sha256.write(uid.uidByte, uid.size);
+  const char * tag_encoded = hmacToHex(Sha256.resultHmac());
 
-  if (uid.size) {
-    lasttag[0] = 0;
-    for (int i = 0; i < uid.size; i++) {
-      char buff[5];
-      snprintf(buff, sizeof(buff), "%s%d", i ? "-" : "", uid.uidByte[i]);
-      strcat(lasttag, buff);
-    }
-    lasttagbeat = beatCounter;
+  char buff[250];
+  snprintf(buff, sizeof(buff), "energize % s % s % s", moi, machine, tag_encoded);
+  send(buff);
 
-    char beatAsString[ MAX_BEAT ];
-    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
-    Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
-    Sha256.print(beatAsString);
-    Sha256.write(uid.uidByte, uid.size);
-    const char * tag_encoded = hmacToHex(Sha256.resultHmac());
-
-    char buff[250];
-    snprintf(buff, sizeof(buff), "energize % s % s % s", moi, machine, tag_encoded);
-    send(buff);
-
-    return 1;
-  }
+  return 1;
 }
-
 void loop() {
+#ifdef DEBUG
+  static int last_debug = 0;
+  if (millis()-last_debug > 1500) {
+    Log.print("State: ");
+    Log.println(machinestateName[machinestate]);
+  }
+#endif
+  
   handleMachineState();
   tock();
 
   // Keepting time is a bit messy; the millis() wrap around and
-  // the RFID readr seems to do something odd.
+  // the SPI access to the reader seems to mess with the millis().
   //
   static unsigned long last_loop = 0;
   if (millis() - last_loop >= 1000) {
-    int secs = (millis() - last_loop + 500) / 1000;
+    unsigned long secs = (millis() - last_loop + 500) / 1000;
     beatCounter += secs;
     last_loop = millis();
   }
 
   static unsigned long last_wifi_ok = 0;
-  if (WiFi.status() != WL_CONNECTED && millis() - last_wifi_ok > 10000) {
-    Log.println("Connection dead for 10 seconds now -- Rebooting...");
-    ESP.restart();
-  }
-  last_wifi_ok = millis();
+  if (WiFi.status() != WL_CONNECTED) {
+    Debug.println("Lost WiFi connection.");
+    if (machinestate <= WAITINGFORCARD)
+      machinestate = NOCONN;
+    if ( millis() - last_wifi_ok > 10000) {
+      Log.println("Connection dead for 10 seconds now -- Rebooting...");
+      ESP.restart();
+    }
+  } else {
+    if (machinestate == NOCONN)
+      machinestate == WAITINGFORCARD;
+    last_wifi_ok = millis();
+  };
 
+#ifdef OTA
   ArduinoOTA.handle();
-
-  if ((!client.connected()) && (millis() - last_mqtt_connect_try > 5000))
-    reconnectMQTT();
+#endif
 
   client.loop();
+
+  static unsigned long last_mqtt_connect_try = 0;
+  if (!client.connected()) {
+    Debug.println("Lost MQTT connection.");
+    if (machinestate <= WAITINGFORCARD)
+      machinestate = NOCONN;
+    if (millis() - last_mqtt_connect_try > 5000 || last_mqtt_connect_try == 0) {
+      reconnectMQTT();
+      last_mqtt_connect_try = millis();
+    }
+  } else {
+    if (machinestate == NOCONN)
+      machinestate = WAITINGFORCARD;
+  };
 
 #ifdef DEBUG3
   static unsigned long last_beat = 0;
@@ -738,7 +808,7 @@ void loop() {
   }
 #endif
 
-  if (machinestate == WAITINGFORCARD && millis()-laststatechange > 500)
+  if (machinestate == WAITINGFORCARD && millis() - laststatechange > 500)
     if (checkTagReader())
       machinestate = CHECKING;
 }

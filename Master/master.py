@@ -32,13 +32,20 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
 
     super().parseArguments()
 
-    # Parse the secrets into an easier access table.
+    # Parse the secrets into an easier access table. Fall
+    # back to the global secret if no per-node one defined.
     #
     if self.cnf.secrets:
        newsecrets = {}
        for e in self.cnf.secrets:
-         node, secret = e.split('=',1)
+         secret = self.cnf.secret
+         if e.find('='):
+           node, secret = e.split('=',1)
+         else:
+           node = e
+           secret = self.cnf.secret
          newsecrets[ node ] = secret
+
        self.cnf.secrets = newsecrets
 
   def announce(self,dstnode):
