@@ -10,7 +10,6 @@
 // below 236KB ( (512/2-4KB-16KB) in order to allow OTA on a 512kB flash.
 //
 #ifdef ARDUINO_ESP8266_ESP01
-#define OTA
 #endif
 
 #include <ESP8266WiFi.h>
@@ -33,7 +32,7 @@
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
 #endif
 
-#include "../../../../.passwd.h"
+#include "../../../.passwd.h"
 
 const char* ssid = WIFI_NETWORK;
 const char* wifi_password = WIFI_PASSWD;
@@ -103,11 +102,10 @@ typedef enum {
 } machinestates_t;
 
 #ifdef DEBUG
-// 229,884
-char machinestateNames = {
+char * machinestateName[] = {
   "Software Error", "Out of order", "No network",
   "Current overload tripped",
-  "Operator switch in wrong position",
+  "Operator switch in wrong positson",
   "Tag Denied",
   "Checking tag",
   "Waiting for card to be presented",
@@ -182,25 +180,7 @@ size_t Log::write(uint8_t c) {
 }
 Log Log;
 
-
 ledstate lastred, lastgreen;
-void tock() {
-  static unsigned long lasttock = 0;
-  unsigned d  = DMAX;
-
-  if (red == LED_SLOW || green == LED_SLOW)
-    d = DSLOW;
-
-  if (red == LED_FAST || green == LED_FAST)
-    d = DFAST;
-
-  if (millis() - lasttock < d && lastgreen == green && lastred == red)
-    return;
-
-  lastred = red; lastgreen = green; lasttock = millis();
-  restoreLeds();
-}
-
 void restoreLeds() {
   int r, g;
   static int i;
@@ -227,6 +207,24 @@ void restoreLeds() {
     digitalWrite(PIN_LEDS, 1);
   };
 }
+
+void tock() {
+  static unsigned long lasttock = 0;
+  unsigned d  = DMAX;
+
+  if (red == LED_SLOW || green == LED_SLOW)
+    d = DSLOW;
+
+  if (red == LED_FAST || green == LED_FAST)
+    d = DFAST;
+
+  if (millis() - lasttock < d && lastgreen == green && lastred == red)
+    return;
+
+  lastred = red; lastgreen = green; lasttock = millis();
+  restoreLeds();
+}
+
 
 void tock1second() {
   unsigned long now = millis();
@@ -680,11 +678,11 @@ void handleMachineState() {
   digitalWrite(PIN_DUSTEXTRACT, dustextract);
 
   if (laststate != machinestate) {
-#if DEBUG5
+#if DEBUG3
     Serial.print("State: <");
-    Serial.print(machinestateNames[laststate]);
+    Serial.print(machinestateName[laststate]);
     Serial.print("> to <");
-    Serial.print(machinestateNames[machinestate]);
+    Serial.print(machinestateName[machinestate]);
     Serial.print("> O="); Serial.print(overload);
     Serial.print(" 1="); Serial.print(v1);
     Serial.print(" 2="); Serial.print(v2);
@@ -703,6 +701,7 @@ int checkTagReader() {
 
 #if FAKEREADERTEST
   MFRC522::Uid uid = { 0, 0, 0 };
+
   static unsigned long test = 0;
   if (millis() - test > 15000) {
     uid = { 4, { 1, 2, 3, 4}, 0 };
@@ -720,7 +719,7 @@ int checkTagReader() {
   MFRC522::Uid uid = mfrc522.uid;
 #endif
 
-  if (!uid.size)
+  if (uid.size == 0)
     return 0;
 
   lasttag[0] = 0;
@@ -744,8 +743,15 @@ int checkTagReader() {
 
   return 1;
 }
-
 void loop() {
+#ifdef DEBUG
+  static int last_debug = 0;
+  if (millis()-last_debug > 1500) {
+    Log.print("State: ");
+    Log.println(machinestateName[machinestate]);
+  }
+#endif
+  
   handleMachineState();
   tock();
 
@@ -761,18 +767,19 @@ void loop() {
 
   static unsigned long last_wifi_ok = 0;
   if (WiFi.status() != WL_CONNECTED) {
+    Debug.println("Lost WiFi connection.");
     if (machinestate <= WAITINGFORCARD)
       machinestate = NOCONN;
     if ( millis() - last_wifi_ok > 10000) {
       Log.println("Connection dead for 10 seconds now -- Rebooting...");
       ESP.restart();
     }
-  } else { 
+  } else {
     if (machinestate == NOCONN)
       machinestate == WAITINGFORCARD;
     last_wifi_ok = millis();
   };
-  
+
 #ifdef OTA
   ArduinoOTA.handle();
 #endif
@@ -781,15 +788,16 @@ void loop() {
 
   static unsigned long last_mqtt_connect_try = 0;
   if (!client.connected()) {
+    Debug.println("Lost MQTT connection.");
     if (machinestate <= WAITINGFORCARD)
       machinestate = NOCONN;
-    if (millis() - last_mqtt_connect_try > 5000) {
+    if (millis() - last_mqtt_connect_try > 5000 || last_mqtt_connect_try == 0) {
       reconnectMQTT();
       last_mqtt_connect_try = millis();
-    } 
+    }
   } else {
     if (machinestate == NOCONN)
-      machinestate == WAITINGFORCARD;
+      machinestate = WAITINGFORCARD;
   };
 
 #ifdef DEBUG3
