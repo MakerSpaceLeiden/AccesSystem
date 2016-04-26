@@ -40,9 +40,9 @@ const char* mqtt_server = "space.makerspaceleiden.nl";
 
 // MQTT topics are constructed from <prefix> / <dest> / <sender>
 //
-const char *mqtt_topic_prefix = "test";
-const char *moi = "woodbandsawnode";    // Name of the sender
-const char *machine = "woodbandsaw";
+const char *mqtt_topic_prefix = "makerspace/ac";
+const char *moi = "circlesawnode";    // Name of the sender
+const char *machine = "circlesaw";
 const char *master = "master";    // Destination for commands
 const char *logpath = "log";       // Destination for human readable text/logging info.
 
@@ -441,7 +441,7 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   memcpy(payload, payload_theirs, length);
   payload[length] = 0;
 
-  Debug.print("["); Log.print(topic); Log.print("] ");
+  Debug.print("["); Debug.print(topic); Debug.print("] ");
   Debug.print((char *)payload);
   Debug.println();
 
