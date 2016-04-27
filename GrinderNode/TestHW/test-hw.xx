@@ -1,0 +1,65 @@
+#include <MFRC522.h>
+
+#define RFID_SS     2
+#define RFID_RESET  16
+
+#define LED         0
+
+#define RELAY      15 
+
+#define OPTO1       4
+#define OPTO2       5
+
+MFRC522 mfrc522(RFID_SS, RFID_RESET);
+
+void setup() {
+  Serial.begin(115200);
+  while (!Serial);    // Do nothing if no serial port is opened (added for Arduinos based on ATMEGA32U4)
+
+  Serial.println("\n\nStarting " __FILE__ " " __DATE__ "/" __TIME__ );
+
+  pinMode(RELAY, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
+  pinMode(LED, OUTPUT);
+  pinMode(OPTO1, INPUT);     // Initialize the BUILTIN_LED pin as an output
+  pinMode(OPTO2, INPUT);     // Initialize the BUILTIN_LED pin as an output
+
+  SPI.begin();      // Init SPI bus
+  mfrc522.PCD_Init();   // Init MFRC522
+  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
+}
+
+unsigned int i = 0;
+void loop() {
+  Serial.print(i++);
+  Serial.println("  Tock");
+  delay(1000);
+
+  int v1 = digitalRead(OPTO1);
+  int v2 = digitalRead(OPTO2);
+  
+  Serial.print("Optocoupler values: O1=");
+  Serial.print(v1);
+  Serial.print(" O2=");
+  Serial.println(v2);
+
+  digitalWrite(RELAY, i & 2);
+  digitalWrite(LED, i & 1);
+  // mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
+
+      // Look for new cards
+  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+
+  // Select one of the cards
+  if ( ! mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
+  // mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
+  Serial.print("Card: ");
+  for(int j = 0; j < mfrc522.uid.size; j++) {
+    if (j) Serial.print("-");
+    Serial.print(mfrc522.uid.uidByte[j]);
+  }
+  Serial.println();
+}
