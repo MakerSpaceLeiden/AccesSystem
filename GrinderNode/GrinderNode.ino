@@ -52,7 +52,6 @@ const char *passwd = ACNODE_PASSWD;
 
 // Enduser visible Timeouts
 //
-const unsigned int   DUSTEXTRACT_TO      = (5 * 1000); // 5 seconds extra DUSTEXTRACT on
 const unsigned int   IDLE_TO        = (20 * 60 * 1000); // Auto disable/off after 20 minutes.
 const unsigned int   CHECK_TO       = (3 * 1000); // Wait up to 3 second for result of card ok check.
 
@@ -115,12 +114,8 @@ machinestates_t machinestate;
 
 void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length);
 
-typedef enum { LED_OFF, LED_SLOW, LED_FAST, LED_ON } ledstate;
+typedef enum { LED_OFF, LED_SLOW, LED_FAST, LED_FLASH, LED_HICK, LED_PANIC, LED_ON, NEVERSET } ledstate;
 ledstate red;
-
-const unsigned int DFAST = 100;      // 10 times/second - swap/flash
-const unsigned int DSLOW  = 5 * DFAST; // twice a second.
-const unsigned int DMAX  = 1000;     // we in effect for updates every second - even when in steady state.
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -176,40 +171,50 @@ size_t Log::write(uint8_t c) {
 }
 Log Log;
 
-ledstate lastred;
-void restoreLeds() {
-  int r = 0;
+ledstate lastred = NEVERSET;
+
+#if !digitalPinHasPWM(PIN_LED)
+#error "Cannot do PWN on the PIN_LED"
+#endif
+
+void setRedLED(ledstate state) {
   switch (lastred) {
-    case LED_OFF: r = 0; break;
-    case LED_SLOW: r =  (millis() / DSLOW) & 1; break;
-    case LED_FAST: r = (millis() / DFAST) & 1; break;
-    case LED_ON: r = 1;
+    case LED_OFF: 
+      analogWrite(PIN_LED, 0);
+      digitalWrite(PIN_LED, 0);
+      break;
+    case LED_ON: 
+      analogWrite(PIN_LED, 0);
+      digitalWrite(PIN_LED, 1);
+      break;
+    case LED_SLOW:
+      analogWriteFreq(1);
+      analogWrite(PIN_LED, PWMRANGE / 2);
+      break;
+    case LED_FAST:
+      analogWriteFreq(3);
+      analogWrite(PIN_LED, PWMRANGE / 2);
+      break;
+    case LED_FLASH:
+      analogWriteFreq(2);
+      analogWrite(PIN_LED, PWMRANGE / 5);
+      break;
+    case LED_PANIC:
+      analogWriteFreq(10);
+      analogWrite(PIN_LED, PWMRANGE / 2);
+      break;
+    case LED_HICK:
+      analogWriteFreq(2);
+      analogWrite(PIN_LED, PWMRANGE * 4 / 6);
+      break;
   }
-  digitalWrite(PIN_LED, r);
 }
-
-void tock() {
-  static unsigned long lasttock = 0;
-  unsigned d  = DMAX;
-
-  if (red == LED_SLOW)
-    d = DSLOW;
-
-  if (red == LED_FAST)
-    d = DFAST;
-
-  if (millis() - lasttock < d && lastred == red)
-    return;
-
-  lastred = red; lasttock = millis();
-  restoreLeds();
-}
-
 
 void tock1second() {
   unsigned long now = millis();
-  while (millis() - now < 1000)
-    tock();
+  while (millis() - now < 1000) {
+    delay(10);
+  }
 }
 
 void setup() {
@@ -222,8 +227,7 @@ void setup() {
   pinMode(PIN_OPTO1, INPUT);
   pinMode(PIN_OPTO2, INPUT);
 
-  red = LED_FAST;
-  tock();
+  setRedLED(LED_FAST);
 
   Log.begin(mqtt_topic_prefix, 115200);
   Log.println("\n\n\nBuild: " BUILD);
@@ -233,15 +237,14 @@ void setup() {
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && (millis() - start < 5000)) {
-    tock();
     delay(100);
   };
 
   if (WiFi.status() != WL_CONNECTED) {
     Log.print("Connection to <"); Log.print(ssid); Log.println("> failed! Rebooting...");
     for (int i = 0; i < 50; i++) {
+      setRedLED(LED_PANIC);
       delay(100);
-      tock();
     }
     ESP.restart();
   }
@@ -262,6 +265,7 @@ void setup() {
     Log.printf("%c%c%c%cProgress: %u%% ", 27, '[', '1', 'G', (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
+    setRedLED(LED_PANIC);
     Log.printf("Error[%u]: ", error);
     if (error == OTA_AUTH_ERROR) Log.println("OTA: Auth Failed");
     else if (error == OTA_BEGIN_ERROR) Log.println("OTA: Begin Failed");
@@ -287,8 +291,7 @@ void setup() {
   client.setCallback(mqtt_callback);
 
   machinestate = WAITINGFORCARD;
-  red = LED_ON;
-  tock();
+  setRedLED(LED_ON);
 }
 
 const char * state2str(int state) {
@@ -331,6 +334,7 @@ const char * hmacToHex(const unsigned char * hmac) {
   static char hex[2 * HASH_LENGTH + 1];
   const char q2c[] = "0123456789abcdef";
   char * p = hex;
+  
   for (int i = 0; i < HASH_LENGTH; i++) {
     *p++ = q2c[hmac[i] >> 4];
     *p++ = q2c[hmac[i] & 15];
@@ -367,12 +371,10 @@ void send(const char *payload) {
   snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, moi);
 
   msg[0] = 0;
-  strcat(msg, "SIG/1.0 ");
-  strcat(msg, hmacAsHex(passwd, beat, topic, payload));
-  strcat(msg, " ");
-  strcat(msg, beat);
-  strcat(msg, " ");
-  strcat(msg, payload);
+  snprintf("SIG/1.0 %s %s %s",sizeof(msg), 
+        hmacAsHex(passwd, beat, topic, payload), 
+        beat, payload);
+
   client.publish(topic, msg);
 
   Debug.print("Sending ");
@@ -525,10 +527,9 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
 
   if (!strncmp("denied", rest, 6) || !strncmp("unknown", rest, 7)) {
     Log.println("Flash LEDS");
-    red = LED_FAST;
+    setRedLED(LED_FAST);
     tock1second();
-    red = LED_OFF;
-    tock();
+    setRedLED(LED_OFF);
     return;
   };
 
@@ -588,26 +589,26 @@ void handleMachineState() {
     case SWERROR:
     case NOCONN:
     case NOTINUSE:
-      red = LED_FAST;
+      setRedLED(LED_FAST);
       break;
     case WRONGFRONTSWITCHSETTING:
-      red = LED_SLOW;
+      setRedLED(LED_SLOW);
       break;
     case WAITINGFORCARD:
-      red = LED_OFF;
+      setRedLED(LED_OFF);
       break;
     case CHECKING:
-      red = LED_OFF;
+      setRedLED(LED_OFF);
       if (millis() - laststatechange > CHECK_TO)
         machinestate = WAITINGFORCARD;
       break;
     case DENIED:
-      red = LED_FAST;
+      setRedLED(LED_FAST);
       if (millis() - laststatechange > 500)
         machinestate = WAITINGFORCARD;
       break;
     case ENERGIZED:
-      red = LED_ON;
+      setRedLED(LED_ON);
       if (laststatechange < ENERGIZED) {
         send("event energized");
       };
@@ -619,7 +620,7 @@ void handleMachineState() {
       relayenergized = 1;
       break;
     case RUNNING:
-      red = LED_ON;
+      setRedLED(LED_ON);
       relayenergized = 1;
       break;
   };
@@ -688,7 +689,6 @@ void loop() {
 #endif
 
   handleMachineState();
-  tock();
 
   // Keepting time is a bit messy; the millis() wrap around and
   // the SPI access to the reader seems to mess with the millis().
