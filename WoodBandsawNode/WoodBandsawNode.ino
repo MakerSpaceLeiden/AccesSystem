@@ -40,9 +40,9 @@ const char* mqtt_server = "space.makerspaceleiden.nl";
 
 // MQTT topics are constructed from <prefix> / <dest> / <sender>
 //
-const char *mqtt_topic_prefix = "makerspace/ac";
-const char *moi = "circlesawnode";    // Name of the sender
-const char *machine = "circlesaw";
+const char *mqtt_topic_prefix = "test";
+const char *moi = "woodbandsawnode";    // Name of the sender
+const char *machine = "woodbandsaw";
 const char *master = "master";    // Destination for commands
 const char *logpath = "log";       // Destination for human readable text/logging info.
 
@@ -101,7 +101,6 @@ typedef enum {
   DUSTEXTRACT                     // Letting dust control do its thing; then drop back to ENERGIZED.
 } machinestates_t;
 
-#ifdef DEBUG
 char * machinestateName[] = {
   "Software Error", "Out of order", "No network",
   "Current overload tripped",
@@ -113,7 +112,6 @@ char * machinestateName[] = {
   "Running",
   "Postrun Dust extraction"
 };
-#endif
 
 static machinestates_t laststate;
 unsigned long laststatechange = 0;
@@ -423,13 +421,17 @@ void reconnectMQTT() {
     char topic[MAX_TOPIC];
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
     client.subscribe(topic);
-    Debug.print("Subscribed to "); Debug.println(topic);
+    Debug.print("Subscribed to "); 
+    Debug.println(topic);
 
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, master);
     client.subscribe(topic);
-    Debug.print("Subscribed to "); Debug.println(topic);
+    Debug.print("Subscribed to "); 
+    Debug.println(topic);
 
-    send("announce");
+    char buff[MAX_MSG];
+    snprintf(buff, sizeof(buff), "announce %s", WiFi.localIP());
+    send(buff);
   } else {
     Log.print("failed : ");
     Log.println(state2str(client.state()));
@@ -451,21 +453,22 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   };
   char * p = (char *)payload;
 
-#define SEP(tok, err) tok = strsepspace(&p); if (!tok) { Log.println(err); return; }
+#define SEP(tok, err) char *  tok = strsepspace(&p); if (!tok) { Log.println(err); return; }
 
-  char * SEP(sig, "No SIG header");
+  SEP(sig, "No SIG header");
+  
   if (strncmp(sig, "SIG/1", 5)) {
-    Log.print("Unknown signature format <"); Log.print(sig); Log.println(">");
+    Log.print("Unknown signature format <"); Log.print(sig); Log.println("> - ignoring.");
     return;
   }
-
-  char * SEP(hmac, "No HMAC");
-  char * SEP(beat, "No BEAT");
+  SEP(hmac, "No HMAC");
+  SEP(beat, "No BEAT");
+  
   char * rest = p;
 
   const char * hmac2 = hmacAsHex(passwd, beat, topic, rest);
   if (strcasecmp(hmac2, hmac)) {
-    Log.println("Faulty checksum - ignoring.");
+    Log.println("Invalid signature - ignoring.");
     return;
   }
   unsigned long  b = strtoul(beat, NULL, 10);
@@ -475,6 +478,7 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   };
 
   unsigned long delta = llabs((long long) b - (long long)beatCounter);
+
   // If we are still in the first hour of 1970 - accept any signed time;
   // otherwise - only accept things in a 4 minute window either side.
   //
@@ -495,6 +499,20 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   }
 
   if (!strcmp("beat", rest)) {
+    return;
+  }
+
+  if (!strncmp("ping", rest, 4)) {
+    char buff[MAX_MSG];
+    snprintf(buff, sizeof(buff), "ack %s %s %s", master, moi, WiFi.localIP());
+    send(buff);    
+    return;
+  }
+
+  if (!strncmp("state", rest, 4)) {
+    char buff[MAX_MSG];
+    snprintf(buff, sizeof(buff), "state %d %s", machinestate, machinestateName[machinestate]);
+    send(buff);    
     return;
   }
 
@@ -553,6 +571,7 @@ void handleMachineState() {
   pinMode(PIN_OPTO1, INPUT); pinMode(PIN_OPTO2, INPUT);
   lastdischarge = millis();
 #endif
+
   unsigned int v1 = 0, v2 = 0;
   pinMode(PIN_OPTO1, OUTPUT); pinMode(PIN_OPTO2, OUTPUT);
   digitalWrite(PIN_OPTO1, 0);  digitalWrite(PIN_OPTO2, 0);
