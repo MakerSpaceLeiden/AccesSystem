@@ -736,8 +736,6 @@ int checkTagReader() {
     return 0;
 
   MFRC522::Uid uid = mfrc522.uid;
-#endif
-
   if (uid.size == 0)
     return 0;
 
