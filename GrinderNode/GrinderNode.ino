@@ -1,15 +1,4 @@
-#ifdef ARDUINO_ESP8266_ESP12
-// We guess that ESP12 devices have enough memory for OTA. Unfortunately there is
-// no #define of the memory specified in the tools menu/hardware/boarts.txt file.
-//
 #define OTA
-#endif
-
-// While the ESP01s generally have a lot less memory. Our code needs to stay
-// below 236KB ( (512/2-4KB-16KB) in order to allow OTA on a 512kB flash.
-//
-#ifdef ARDUINO_ESP8266_ESP01
-#endif
 
 #include <ESP8266WiFi.h>
 
@@ -39,7 +28,7 @@ const char* mqtt_server = "space.makerspaceleiden.nl";
 
 // MQTT topics are constructed from <prefix> / <dest> / <sender>
 //
-const char *mqtt_topic_prefix = "test";
+const char *mqtt_topic_prefix = "makerspace/ac";
 const char *moi = "grindernode";    // Name of the sender
 const char *machine = "grinder";
 const char *master = "master";    // Destination for commands
@@ -53,7 +42,7 @@ const char *passwd = ACNODE_PASSWD;
 // Enduser visible Timeouts
 //
 const unsigned int   IDLE_TO        = (20 * 60 * 1000); // Auto disable/off after 20 minutes.
-const unsigned int   CHECK_TO       = (3 * 1000); // Wait up to 3 second for result of card ok check.
+const unsigned int   CHECK_TO       = (3500); // Wait up to 3.5 second for result of card ok check.
 
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 const unsigned int   MAX_TOPIC      = 64;
@@ -67,22 +56,25 @@ const unsigned int   MAX_BEAT       = 16;
 const uint8_t PIN_RFID_SS    = 2;
 const uint8_t PIN_RFID_RST   = 16;
 
-const uint8_t PIN_LED        = 0; // red led to ground, green led to rail (with extra resistor to ensure boot from flash)
-
+const uint8_t PIN_LED        = 0; // red led to ground - led mounted inside start button.
 const uint8_t PIN_POWER      = 15; // pulled low when not in use.
 
-const uint8_t PIN_OPTO1      = 4; // front-switch 'off' -- capacitor charged by diode; needs to be pulled to ground to empty.
-const uint8_t PIN_OPTO2      = 5; // relay energized -- capacitor charged by diode; needs to be pulled to ground to empty.
+// GPIO4 - 10k pullup (not removed yet).
+const uint8_t PIN_OPTO_OPERATOR      = 4; // front-switch 'off' -- capacitor charged by diode; needs to be pulled to ground to empty.
+const uint8_t PIN_OPTO_ENERGIZED     = 5; // relay energized -- capacitor charged by diode; needs to be pulled to ground to empty.
+
+// The RFID reader itself is connected to the
+// hardwired MISO/MOSI and CLK pins (12, 13, 14)
 
 // Comment out to reduce debugging output.
 //
-// #define DEBUG  yes
+#define DEBUG  yes
 
 // While we avoid using #defines, as per https://www.arduino.cc/en/Reference/Define, in above - in below
 // case - the compiler was found to procude better code if done the old-fashioned way.
 //
 #ifdef DEBUG
-#define Debug Log
+#define Debug Serial
 #else
 #define Debug if (0) Log
 #endif
@@ -93,6 +85,7 @@ typedef enum {
   DENIED,                     // we got a denied from the master -- flash an LED and then return to WAITINGFORCARD
   CHECKING,                   // we are are waiting for the master to respond -- flash an LED and then return to WAITINGFORCARD
   WAITINGFORCARD,             // waiting for card.
+  POWERED,                    // Relay powered.
   ENERGIZED,                  // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
   RUNNING,                    // Running - go to DUSTEXTRACT once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
   NOTINUSE,
@@ -104,6 +97,7 @@ const char *machinestateName[NOTINUSE] = {
   "Tag Denied",
   "Checking tag",
   "Waiting for card to be presented",
+  "Relay powered",
   "Energized",
   "Running",
 };
@@ -112,10 +106,12 @@ static machinestates_t laststate;
 unsigned long laststatechange = 0;
 machinestates_t machinestate;
 
-void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length);
+typedef enum { LED_OFF, LED_FAST, LED_ON, NEVERSET } ledstate;
 
-typedef enum { LED_OFF, LED_SLOW, LED_FAST, LED_FLASH, LED_HICK, LED_PANIC, LED_ON, NEVERSET } ledstate;
-ledstate red;
+ledstate lastred = NEVERSET;
+ledstate red = NEVERSET;
+
+void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length);
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -171,51 +167,29 @@ size_t Log::write(uint8_t c) {
 }
 Log Log;
 
-ledstate lastred = NEVERSET;
 
-#if !digitalPinHasPWM(PIN_LED)
-#error "Cannot do PWN on the PIN_LED"
-#endif
+// #if !digitalPinHasPWM(PIN_LED)
+// #error "Cannot do PWN on the PIN_LED"
+// #endif
 
-void setRedLED(ledstate state) {
+void setRedLED(int state) {
+  lastred = (ledstate) state;
   switch (lastred) {
-    case LED_OFF: 
+    case LED_OFF:
       analogWrite(PIN_LED, 0);
       digitalWrite(PIN_LED, 0);
-      break;
-    case LED_ON: 
-      analogWrite(PIN_LED, 0);
-      digitalWrite(PIN_LED, 1);
-      break;
-    case LED_SLOW:
-      analogWriteFreq(1);
-      analogWrite(PIN_LED, PWMRANGE / 2);
       break;
     case LED_FAST:
       analogWriteFreq(3);
       analogWrite(PIN_LED, PWMRANGE / 2);
       break;
-    case LED_FLASH:
-      analogWriteFreq(2);
-      analogWrite(PIN_LED, PWMRANGE / 5);
-      break;
-    case LED_PANIC:
-      analogWriteFreq(10);
-      analogWrite(PIN_LED, PWMRANGE / 2);
-      break;
-    case LED_HICK:
-      analogWriteFreq(2);
-      analogWrite(PIN_LED, PWMRANGE * 4 / 6);
+    case LED_ON:
+      analogWrite(PIN_LED, 0);
+      digitalWrite(PIN_LED, 1);
       break;
   }
 }
 
-void tock1second() {
-  unsigned long now = millis();
-  while (millis() - now < 1000) {
-    delay(10);
-  }
-}
 
 void setup() {
   pinMode(PIN_POWER, OUTPUT);
@@ -224,8 +198,8 @@ void setup() {
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, 1);
 
-  pinMode(PIN_OPTO1, INPUT);
-  pinMode(PIN_OPTO2, INPUT);
+  pinMode(PIN_OPTO_ENERGIZED, INPUT);
+  pinMode(PIN_OPTO_OPERATOR, INPUT);
 
   setRedLED(LED_FAST);
 
@@ -242,10 +216,6 @@ void setup() {
 
   if (WiFi.status() != WL_CONNECTED) {
     Log.print("Connection to <"); Log.print(ssid); Log.println("> failed! Rebooting...");
-    for (int i = 0; i < 50; i++) {
-      setRedLED(LED_PANIC);
-      delay(100);
-    }
     ESP.restart();
   }
 
@@ -265,7 +235,7 @@ void setup() {
     Log.printf("%c%c%c%cProgress: %u%% ", 27, '[', '1', 'G', (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    setRedLED(LED_PANIC);
+    setRedLED(LED_FAST);
     Log.printf("Error[%u]: ", error);
     if (error == OTA_AUTH_ERROR) Log.println("OTA: Auth Failed");
     else if (error == OTA_BEGIN_ERROR) Log.println("OTA: Begin Failed");
@@ -334,7 +304,7 @@ const char * hmacToHex(const unsigned char * hmac) {
   static char hex[2 * HASH_LENGTH + 1];
   const char q2c[] = "0123456789abcdef";
   char * p = hex;
-  
+
   for (int i = 0; i < HASH_LENGTH; i++) {
     *p++ = q2c[hmac[i] >> 4];
     *p++ = q2c[hmac[i] & 15];
@@ -365,15 +335,14 @@ const char * hmacAsHex(const char *passwd, const char * beatAsString, const char
 void send(const char *payload) {
   char msg[ MAX_MSG];
   char beat[MAX_BEAT], topic[MAX_TOPIC];
-  // uint8_t* hash;
-  
+
   snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
   snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, moi);
 
   msg[0] = 0;
-  snprintf("SIG/1.0 %s %s %s",sizeof(msg), 
-        hmacAsHex(passwd, beat, topic, payload), 
-        beat, payload);
+  snprintf(msg, sizeof(msg), "SIG/1.0 %s %s %s",
+           hmacAsHex(passwd, beat, topic, payload),
+           beat, payload);
 
   client.publish(topic, msg);
 
@@ -473,7 +442,8 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   // If we are still in the first hour of 1970 - accept any signed time;
   // otherwise - only accept things in a 4 minute window either side.
   //
-  if (((!strcmp("beat", rest) || !strcmp("announce", rest)) &&  beatCounter < 3600) || (delta < 120)) {
+  //  if (((!strcmp("beat", rest) || !strcmp("announce", rest)) &&  beatCounter < 3600) || (delta < 120)) {
+  if ((beatCounter < 3600) || (delta < 120)) {
     beatCounter = b;
     if (delta > 10) {
       Log.print("Adjusting beat by "); Log.print(delta); Log.println(" seconds.");
@@ -521,14 +491,14 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   }
 
   if (!strncmp("approved", rest, 8) || !strncmp("energize", rest, 8)) {
-    machinestate = ENERGIZED;
+    machinestate = POWERED;
     return;
   }
 
   if (!strncmp("denied", rest, 6) || !strncmp("unknown", rest, 7)) {
     Log.println("Flash LEDS");
     setRedLED(LED_FAST);
-    tock1second();
+    delay(1000);
     setRedLED(LED_OFF);
     return;
   };
@@ -543,9 +513,12 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   return;
 }
 
+unsigned int tock;
 void handleMachineState() {
-  int relayState = digitalRead(PIN_OPTO1);
-  int operatorSwitchState = digitalRead(PIN_OPTO2);
+  tock++;
+
+  int relayState = digitalRead(PIN_OPTO_ENERGIZED);
+  int operatorSwitchState = digitalRead(PIN_OPTO_OPERATOR);
 
   int r = 0;
   if (relayState) r |= 1;
@@ -553,7 +526,9 @@ void handleMachineState() {
 
   switch (r) {
     case 0: // On/off switch 'on' - blocking energizing.
-      if (machinestate >= ENERGIZED) {
+      if (machinestate == RUNNING) {
+        send("event stop-pressed");
+      } else if (machinestate >= POWERED) {
         send("event powerdown");
         machinestate = WAITINGFORCARD;
       } else if (machinestate != WRONGFRONTSWITCHSETTING && machinestate > NOCONN) {
@@ -562,17 +537,29 @@ void handleMachineState() {
       }
       break;
     case 1: // On/off switch in the proper setting, ok to energize.
+      if (machinestate > POWERED) {
+        send("event stop-pressed");
+        machinestate = WAITINGFORCARD;
+      }
       if (machinestate == WRONGFRONTSWITCHSETTING) {
         send("event frontswitchokagain");
         machinestate = WAITINGFORCARD;
       };
       break;
     case 3: // Relay energized, but not running.
+      if (machinestate == POWERED) {
+        send("event start-pressed");
+        machinestate = ENERGIZED;
+      };
       if (machinestate == RUNNING) {
         send("event halted");
         machinestate = ENERGIZED;
       } else if (machinestate < ENERGIZED && machinestate > NOCONN) {
-        send("event spuriousbuttonpress?");
+        static int last_spur_detect = 0;
+        if (millis() - last_spur_detect > 500) {
+          send("event spuriousbuttonpress?");
+        };
+        last_spur_detect = millis();
       };
       break;
     case 2: // Relay engergized and running.
@@ -592,21 +579,27 @@ void handleMachineState() {
       setRedLED(LED_FAST);
       break;
     case WRONGFRONTSWITCHSETTING:
-      setRedLED(LED_SLOW);
+      setRedLED(tock & 1 ? LED_OFF : LED_ON);
       break;
     case WAITINGFORCARD:
-      setRedLED(LED_OFF);
+      setRedLED(tock & 127 ? LED_OFF : LED_ON);
       break;
     case CHECKING:
-      setRedLED(LED_OFF);
-      if (millis() - laststatechange > CHECK_TO)
+      setRedLED(LED_FAST);
+      if (millis() - laststatechange > CHECK_TO) {
+        setRedLED(LED_OFF);
+        Log.print("D=");
+        Log.print(millis() - laststatechange);
+        Log.println("Returning to waiting for card - no response.");
         machinestate = WAITINGFORCARD;
+      };
       break;
     case DENIED:
       setRedLED(LED_FAST);
       if (millis() - laststatechange > 500)
         machinestate = WAITINGFORCARD;
       break;
+    case POWERED:
     case ENERGIZED:
       setRedLED(LED_ON);
       if (laststatechange < ENERGIZED) {
@@ -672,7 +665,7 @@ int checkTagReader() {
   Sha256.write(uid.uidByte, uid.size);
   const char * tag_encoded = hmacToHex(Sha256.resultHmac());
 
-  char buff[250];
+  static char buff[MAX_MSG];
   snprintf(buff, sizeof(buff), "energize %s %s %s", moi, machine, tag_encoded);
   send(buff);
 
@@ -681,10 +674,22 @@ int checkTagReader() {
 void loop() {
 
 #ifdef DEBUG
-  static int last_debug = 0;
-  if (millis() - last_debug > 1500) {
+  static int last_debug = 0, last_debug_state = -1;
+  if (millis() - last_debug > 5000 || last_debug_state != machinestate) {
     Log.print("State: ");
-    Log.println(machinestateName[machinestate]);
+    Log.print(machinestateName[machinestate]);
+
+    int relayState = digitalRead(PIN_OPTO_ENERGIZED);
+    Log.print(" relay="); Log.print(relayState);
+
+    int operatorSwitchState = digitalRead(PIN_OPTO_OPERATOR);
+    Log.print(" operator="); Log.print(operatorSwitchState);
+
+    Log.print(" LED="); Log.print(lastred);
+    Log.println(".");
+
+    last_debug = millis();
+    last_debug_state = machinestate;
   }
 #endif
 
@@ -710,9 +715,6 @@ void loop() {
       ESP.restart();
     }
   } else {
-    if (machinestate == NOCONN)
-      machinestate = WAITINGFORCARD;
-
     last_wifi_ok = millis();
   };
 
@@ -724,10 +726,13 @@ void loop() {
 
   static unsigned long last_mqtt_connect_try = 0;
   if (!client.connected()) {
-    Debug.println("Lost MQTT connection.");
+    if (machinestate != NOCONN) {
+      Debug.print("No MQTT connection: ");
+      Debug.println(state2str(client.state()));
+    };
     if (machinestate <= WAITINGFORCARD)
       machinestate = NOCONN;
-    if (millis() - last_mqtt_connect_try > 5000 || last_mqtt_connect_try == 0) {
+    if (millis() - last_mqtt_connect_try > 3000 || last_mqtt_connect_try == 0) {
       reconnectMQTT();
       last_mqtt_connect_try = millis();
     }
@@ -744,8 +749,13 @@ void loop() {
   }
 #endif
 
-  if (machinestate == WAITINGFORCARD && millis() - laststatechange > 500)
-    if (checkTagReader())
-      machinestate = CHECKING;
+  if (machinestate >= WAITINGFORCARD && millis()-laststatechange > 1500) {
+    if (checkTagReader()) {
+      laststatechange = millis();
+      if (machinestate >= ENERGIZED)
+        machinestate = WAITINGFORCARD;
+      else
+        machinestate = CHECKING;
+    }
+  }
 }
-
