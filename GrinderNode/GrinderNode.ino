@@ -1,3 +1,7 @@
+// With the new OTA code -- All ESPs have
+// enough room for the code -- though still need
+// Over 328kB free to actually use it.
+//
 #define OTA
 
 #include <ESP8266WiFi.h>
