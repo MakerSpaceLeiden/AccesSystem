@@ -11,6 +11,7 @@ import os
 import hmac
 import daemon
 import setproctitle
+import socket
 
 import configargparse
 
@@ -210,10 +211,13 @@ class ACNode:
       data = "SIG/1.00 " + hexdigest + " " + beat + " " + payload 
 
       self.logger.debug("Sending @"+topic+": "+data)
-      publish.single(topic, data, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
+      try:
+         publish.single(topic, data, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
+      except:
+         self.logger.critical("Failed to send {}: '{}'".format(topic,data));
 
   def announce(self,dstnode):
-    return self.send(dstnode, "announce")
+    return self.send(dstnode, "announce " + socket.gethostbyname(socket.gethostname()));
 
   def on_connect(self, client, userdata, flags, rc):
     self.logger.info("(re)Connected to '" + self.cnf.mqtthost + "'")
@@ -295,9 +299,12 @@ class ACNode:
        self.logger.error("No secret defined for '{}' - ignored".format(node))
        return None
 
-    if delta > self.cnf.leeway and payload != 'announce':
-        self.logger.critical("Beats are {} seconds off (max leeway is {} seconds). ignoring.".format(delta,self.cnf.leeway))
-        return None
+    if delta > self.cnf.leeway:
+        if payload.find('announce') != 0:
+          self.logger.critical("Beats are {} seconds off (max leeway is {} seconds). ignoring.".format(delta,self.cnf.leeway))
+          return None
+        else:
+          self.logger.info("Beats are {} seconds off on an announce msg (max leeway is {} seconds).".format(delta,self.cnf.leeway))
        
     hexdigest = self.hexdigest(secret,theirbeat,topic,node,payload)
     if not hexdigest == sig:
@@ -316,7 +323,7 @@ class ACNode:
 
   def cmd_announce(self,path,node,theirbeat,payload):
     if node != self.cnf.node:
-       self.logger.info("Announce of {}".format(node))
+       self.logger.info("Announce of {} {}".format(node,payload))
     else:
        self.logger.debug("Ignoring my own restart message.")
 

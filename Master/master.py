@@ -39,7 +39,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
        newsecrets = {}
        for e in self.cnf.secrets:
          secret = self.cnf.secret
-         if e.find('='):
+         if e.find('=') > 0:
            node, secret = e.split('=',1)
          else:
            node = e
