@@ -35,6 +35,7 @@ void configureOTA() {
     };
   });
   ArduinoOTA.begin();
+  Log.println("OTA Enabled");
 }
 
 void otaLoop() {
