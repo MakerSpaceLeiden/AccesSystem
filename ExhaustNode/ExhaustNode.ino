@@ -34,15 +34,17 @@
 
 #include "MakerspaceMQTT.h"
 #include "Log.h"
+#include "LEDs.h"
 
+WiFiClient espClient;
+PubSubClient client(espClient);
 Log Log;
 
 #define BUILD  __FILE__ " " __DATE__ " " __TIME__
 
-
 #include "../../../../.passwd.h"
-
 #ifndef CONFIGAP
+// Hardcoded, compile time settings.
 const char ssid[34] = WIFI_NETWORK ;
 const char wifi_password[34] = WIFI_PASSWD;
 #endif
@@ -68,11 +70,6 @@ unsigned long laststatechange = 0;
 machinestates_t machinestate;
 unsigned long beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
-typedef enum { LED_OFF, LED_FLASH, LED_SLOW, LED_FAST, LED_ON, NEVERSET } LEDstate;
-
-WiFiClient espClient;
-PubSubClient client(espClient);
-
 void setup() {
   digitalWrite(LED_GREEN, 1);
   digitalWrite(RELAY, 0);
@@ -85,6 +82,8 @@ void setup() {
 
   setGreenLED(LED_FAST);
   setOrangeLED(LED_OFF);
+
+  SPI.begin(); // Init SPI bus
 
   Log.begin(mqtt_topic_prefix, 115200);
   Log.println("\n\n\nBuild: " BUILD);
@@ -132,13 +131,10 @@ void setup() {
 
 #ifdef OTA
   configureOTA();
-  Log.print("IP address (and OTA enabled): ");
-#else
-  Log.print("IP address: ");
 #endif
-  Log.println(WiFi.localIP());
 
-  SPI.begin();      // Init SPI bus
+  Log.print("IP address: ");
+  Log.println(WiFi.localIP());
 
 #ifdef HASRFID
   configureRFID(PIN_RFID_SS, PIN_RFID_RST);
@@ -154,7 +150,7 @@ void setup() {
 }
 
 
-void handleMachineState() {
+void machineLoop() {
 
   // If we hold the button long-ish; it will start flip-flopping
   // with a 3 second cycle; but short jab's will immediately
@@ -174,11 +170,12 @@ void handleMachineState() {
     } else
       send("event spurious-button-press");
   }
-
   if (digitalRead(PUSHBUTTON) == 1 && millis() - last_button_detect > 400) {
     last_button_detect =  0;
   }
 
+  // Go green if we just left some error state.
+  //
   if (laststate <= NOCONN && machinestate > NOCONN)
     setGreenLED(LED_ON);
 
@@ -204,17 +201,6 @@ void handleMachineState() {
   digitalWrite(RELAY, relayenergized);
 
   if (laststate != machinestate) {
-#ifdef DEBUG3
-    Serial.printf("State: <%s> to <%s>",
-                  machinestateName[laststate],
-                  machinestateName[machinestate]);
-
-    Serial.print(" 1="); Serial.print(v1);
-    Serial.print(" 2="); Serial.print(v2);
-    Serial.print(" red="); Serial.print(red);
-    Serial.print(" P="); Serial.print(relayenergized);
-    Serial.println();
-#endif
     laststate = machinestate;
     laststatechange = millis();
   }
@@ -227,12 +213,12 @@ void loop() {
   //
   static unsigned long last_loop = 0;
   if (millis() - last_loop >= 1000) {
-    unsigned long secs = (millis() - last_loop + 500) / 1000;
+    unsigned long secs = (millis() - last_loop + 499) / 1000;
     beatCounter += secs;
     last_loop = millis();
   }
 
-  handleMachineState();
+  machineLoop();
   client.loop();
   mqttLoop();
 
