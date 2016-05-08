@@ -2,10 +2,9 @@
 
 // Last tag swiped; as a string.
 //
-char lasttag[MAX_TAG_LEN * 4];      // 3 diigt byte and a dash or terminating \0. */
+char lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
 unsigned long lasttagbeat;          // Timestamp of last swipe.
 MFRC522 mfrc522;
-
 
 void configureRFID(uint8 sspin, uint8 rstpin) {
   mfrc522 = MFRC522(sspin, rstpin);

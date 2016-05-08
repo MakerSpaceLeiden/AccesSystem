@@ -1,6 +1,4 @@
 
-#include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson (change isnan()/isinf() to __builtin_isnXXX() if needed).
-
 #include <ESP8266WiFi.h>
 #include <Ticker.h>
 #include <WiFiUdp.h>
@@ -9,13 +7,15 @@
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
-
-#include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson (change isnan()/isinf() to __builtin_isnXXX() if needed).
 #include <PubSubClient.h>        // https://github.com/knolleary/
 
-#ifdef HASRFID
-#include <MFRC522.h>
-#endif
+// ArduinoJSON library -- from https://github.com/bblanchon/ArduinoJson 
+//
+// Depending on your version - if you get an osbcure error in
+// .../ArduinoJson/Polyfills/isNaN.hpp and isInfinity.hpp - then
+// isnan()/isinf() to __builtin_isnXXX() around line 34-36/
+//
+#include <ArduinoJson.h>         
 
 #include <SPI.h>
 #include <FS.h>

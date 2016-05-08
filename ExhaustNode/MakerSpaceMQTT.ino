@@ -56,7 +56,7 @@ const char * state2str(int state) {
 //
 const char * hmacToHex(const unsigned char * hmac) {
   static char hex[2 * HASH_LENGTH + 1];
-  const char q2c[] = "0123456789abcdef";
+  const char q2c[] = "0123456789abcdef"; // Do not 'uppercase' -- the HMACs are calculated over it - and hence are case sensitive.
   char * p = hex;
 
   for (int i = 0; i < HASH_LENGTH; i++) {

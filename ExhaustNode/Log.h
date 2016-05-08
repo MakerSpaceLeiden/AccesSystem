@@ -1,6 +1,9 @@
 #include "MakerspaceMQTT.h"
 #pragma once
 
+// 'tee' class - which will log both to serial and to
+// MQTT if the latter is alive.
+//
 class Log : public Print {
   public:
     void begin(const char * prefix, int speed);
@@ -10,6 +13,9 @@ class Log : public Print {
     size_t at;
 };
 
+// Wether or not to log at Debug message level. Doing so
+// may well leak sensitive details, like passwords.
+//
 #ifdef DEBUG
 #define Debug Serial
 #else

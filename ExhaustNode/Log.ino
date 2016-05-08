@@ -1,5 +1,5 @@
-// Quick 'tee' class - that sends all 'serial' port data also to the MQTT bus - to the 'log' topic
-// if such is possible/enabLED.
+// Simple 'tee' class - that sends all 'serial' port data also to the MQTT bus - to the 'log' topic
+// if such is possible/enabled.
 //
 #include "Log.h"
 
@@ -25,12 +25,6 @@ size_t Log::write(uint8_t c) {
 
   if (client.connected()) {
     logbuff[at++] = 0;
-#ifdef DEBUG4
-    Serial.print("debug: ");
-    Serial.print(at);
-    Serial.print(" ");
-    Serial.println(logbuff);
-#endif
     client.publish(logtopic, logbuff);
   };
   at = 0;

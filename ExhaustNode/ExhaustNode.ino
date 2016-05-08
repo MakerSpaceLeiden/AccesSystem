@@ -1,4 +1,19 @@
-
+/*
+ *    Copyright 2015-2016 Dirk-Willem van Gulik <dirkx@webweaving.org>
+ *                        Stichting Makerspace Leiden, the Netherlands.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 // Node MCU has a weird mapping...
 //
 #define LED_GREEN   16 // D0 -- LED inside the on/off toggle switch
@@ -43,6 +58,7 @@ Log Log;
 #define BUILD  __FILE__ " " __DATE__ " " __TIME__
 
 #include "../../../../.passwd.h"
+
 #ifndef CONFIGAP
 // Hardcoded, compile time settings.
 const char ssid[34] = WIFI_NETWORK ;
@@ -71,13 +87,11 @@ machinestates_t machinestate;
 unsigned long beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
 void setup() {
-  digitalWrite(LED_GREEN, 1);
-  digitalWrite(RELAY, 0);
+  digitalWrite(RELAY, 0); // Stop the relay from fluttering during pinMode() change.
+  pinMode(RELAY, OUTPUT);
 
-  pinMode(BUILTIN_LED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_ORANGE, OUTPUT);
-  pinMode(RELAY, OUTPUT);
   pinMode(PUSHBUTTON, INPUT);
 
   setGreenLED(LED_FAST);
@@ -95,6 +109,9 @@ void setup() {
 #ifdef CONFIGAP
   configBegin();
 
+  // Go into Config AP mode if the orange button is pressed
+  // just post powerup.
+  //
   static int debounce = 0;
   while (digitalRead(PUSHBUTTON) == 0 && debounce < 5) {
     debounce++;
@@ -113,7 +130,8 @@ void setup() {
   WiFi.begin(ssid, wifi_passwd);
 #endif
 
-  // Try up to 5 seconds to get a connection; and if that fails; reboot.
+  // Try up to 5 seconds to get a WiFi connection; and if that fails; reboot
+  // with a bit of a delay.
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && (millis() - start < 5000)) {
     delay(100);
@@ -130,6 +148,9 @@ void setup() {
   Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
 
 #ifdef OTA
+  // Only allow OTA post (any) Wifi portal config -- as otherwise the
+  // latter can timeout in the middle of an OTA update without ado.
+  //
   configureOTA();
 #endif
 
@@ -148,7 +169,6 @@ void setup() {
   debugListFS("/");
 #endif
 }
-
 
 void machineLoop() {
 
@@ -210,6 +230,7 @@ void machineLoop() {
 void loop() {
   // Keepting time is a bit messy; the millis() wrap around and
   // the SPI access to the reader seems to mess with the millis().
+  // So we revert to doing 'our own'.
   //
   static unsigned long last_loop = 0;
   if (millis() - last_loop >= 1000) {
