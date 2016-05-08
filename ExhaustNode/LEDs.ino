@@ -1,9 +1,5 @@
-Ticker greenLEDTicker;
-Ticker orangeLEDTicker;
 
-const char *ledstateName[ NEVERSET ] = { "off", "slow", "fast", "on" };
-LEDstate lastorange = NEVERSET;
-LEDstate lastgreen = NEVERSET;
+const char *ledstateName[ NEVERSET ] = { "off", "flash", "slow", "fast", "on" };
 
 void flipPin(uint8_t pin) {
   static unsigned int tock = 0;
@@ -39,12 +35,20 @@ void setLED(Ticker & t, uint8_t pin, int state) {
   }
 }
 
+// Note: we're using an int rather than a LEDstate -- as the latter
+// is not liked by Arduino its magic 'header detect' logic (1.5).
+//
+Ticker greenLEDTicker;
 void setGreenLED(int state) {
+  static LEDstate lastgreen = NEVERSET;
   if (lastgreen != state)
     setLED(greenLEDTicker, LED_GREEN, state);
   lastgreen = (LEDstate) state;
 }
+
+Ticker orangeLEDTicker;
 void setOrangeLED(int state) {
+  static LEDstate lastorange = NEVERSET;
   if (lastorange != state)
     setLED(orangeLEDTicker, LED_ORANGE, state);
   lastorange = (LEDstate) state;
