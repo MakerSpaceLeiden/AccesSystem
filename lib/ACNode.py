@@ -411,6 +411,6 @@ class ACNode:
       self.loop()
 
     self.logger.debug("Aborting loop.")
-    e = self.on_exit()
+    e = self.on_exit(None)
 
     return e 
