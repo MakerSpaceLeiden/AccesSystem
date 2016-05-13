@@ -18,6 +18,7 @@ class Log : public Print {
 //
 #ifdef DEBUG
 #define Debug Serial
+extern void debugFlash();
 #else
 #define Debug if (0) Log
 #endif
