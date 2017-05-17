@@ -1,5 +1,3 @@
-
-
 // With the new OTA code -- All ESPs have
 // enough room for the code -- though still need
 // Over 328kB free to actually use it.
@@ -16,6 +14,12 @@
 // debugging is only visible on the serial port.
 //
 // #define DEBUG  yes
+
+// When SYSLOGPORT is set - (debug) messages are also
+// sent out to the networks broadcast address (guessed from the
+// netmask; not picked up from DHCP).
+//
+// #define SYSLOGPORT (514)
 
 
 #include <ESP8266WiFi.h>
@@ -105,7 +109,7 @@ const uint8_t PIN_HALL       = A0;
 #ifdef DEBUG
 #define Debug Serial
 #else
-#define Debug Serial
+#define Debug if(0) Serial
 #endif
 
 typedef enum {
@@ -154,7 +158,6 @@ unsigned long beatCounter = 0;      // My own timestamp - manually kept due to S
 // Quick 'tee' class - that sends all 'serial' port data also to the MQTT bus - to the 'log' topic
 // if such is possible/enabled.
 //
-// #define SYSLOGPORT (514)
 
 class Log : public Print {
   public:
@@ -268,7 +271,9 @@ void saveSetup() {
   if (!configFile)
     return;
 
+#ifdef DEBUG
   json.printTo(Debug);
+#endif  
   json.printTo(configFile);
   configFile.close();
 }
@@ -351,7 +356,6 @@ bool loadSetup() {
          mqtt_port > 0 &&
          strlen(master) &&
          strlen(machine);
-
 }
 
 void setup() {
@@ -464,7 +468,9 @@ void setup() {
 
     wifiManager.setSaveConfigCallback(saveConfigCallback);
 
-    wifiManager.autoConnect();
+    char apname[128];
+    snprintf(apname,sizeof(apname),"%s Config", moi);
+    wifiManager.autoConnect(apname);
 
 #if DEBUG
     // we are not passing a name - so that each ESP generates its own unique name;
@@ -818,7 +824,8 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
       Debug.print("Adjusting beat by "); Debug.print(delta); Debug.println(" seconds.");
     }
   } else {
-    Log.print("Good message -- but beats ignored as they are too far off ("); Log.print(delta); Log.println(" seconds).");
+    Log.print("Good message -- but message ignored as beat is too far off ("); Log.print(delta); Log.println(" seconds).");
+    return;
   };
 
   // handle a perfectly good message.
