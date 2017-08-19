@@ -5,21 +5,21 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *     
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- *     
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// Node MCU has a weird mapping...
-//
-#define LED_GREEN   16 // D0 -- LED inside the on/off toggle switch
-#define LED_ORANGE  5  // D1 -- LED inside the orange, bottom, push button.
-#define RELAY       4  // D2 -- relay (220V, 10A on just the L)
-#define PUSHBUTTON  0  // D3 -- orange push button; 0=pressed, 1=released
+
+#define LED                0  // LED on the front; in the push/toggle button
+#define RELAY           15  // 5A relay that controls the output
+
+#define HALL            A0  // HALL sensor, ACS712 -- analog output with resitor bridge.
+#define HALL_RANGE       5  // Range of HALL sensor; 5 Ampere.
 
 // With the new OTA code -- All ESPs have
 // enough room for the code -- though still need
@@ -43,24 +43,53 @@
 //
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/
-
 #include <Ticker.h>
+#include <WiFiUdp.h>
+#include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h>
+#include <PubSubClient.h>        // https://github.com/knolleary/
 #include <SPI.h>
+#include <FS.h>
+#include <SPI.h>
+#include <FS.h>
+
+// ArduinoJSON library -- from https://github.com/bblanchon/ArduinoJson
+//
+// Depending on your version - if you get an osbcure error in
+// .../ArduinoJson/Polyfills/isNaN.hpp and isInfinity.hpp - then
+// isnan()/isinf() to __builtin_isnXXX() around line 34-36/
+//
+#include <ArduinoJson.h>
 
 #include "MakerspaceMQTT.h"
+#include "OTA.h"
+#include "RFID.h"
 #include "Log.h"
 #include "LEDs.h"
+#include "Signaling.h"
+#include "ConfigPortal.h"
+
+
+class Node : public ConfigPortal, public OTA, public RFID;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 Log Log;
+Node node;
+
+// ACNode acnode;
 
 #define BUILD  __FILE__ " " __DATE__ " " __TIME__
 
 #include "../../../../.passwd.h"
 
 #ifndef CONFIGAP
+
 // Hardcoded, compile time settings.
+//
 const char ssid[34] = WIFI_NETWORK ;
 const char wifi_password[34] = WIFI_PASSWD;
 #endif
@@ -70,15 +99,13 @@ typedef enum {
   SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
   WAITINGFORCARD,             // waiting for card.
   POWERED,                    // Relay powered.
-  // DUSTEXTRACT,
   NOTINUSE,
 } machinestates_t;
 
 const char *machinestateName[NOTINUSE] = {
   "Software Error", "Out of order", "No network",
-  "Fan off",
-  "Fan on",
-  // "Fan runout",
+  "Waiting for cardf",
+  "Powered on",
 };
 
 static machinestates_t laststate;
@@ -86,40 +113,65 @@ unsigned long laststatechange = 0;
 machinestates_t machinestate;
 unsigned long beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
+LED led;
+
+void signalStateToUser(signalState_t newState) {
+  switch (newState) {
+    case STATE_BOOTING:            // pre-interaction not ready state (as oposed to STATE_NORMAL_PLEASE_WAIT).
+      led = LED_FAST;
+      break;
+    case STATE_CONFIG:             // in configuration state (e.g. OTA) - waiting for the user to interact with it.
+      led = LED_SLOW;
+      break;
+    case STATE_UPDATE:             // being updated - user should not do anything.
+      led = LED_FAST;
+      break;
+    case STATE_NORMAL_READY:       // device can be interacted with it
+      led = LED_ON_SLOW;
+      break;
+    case STATE_NORMAL_ACTIVATED:   // device can be interacted with - it is 'on' or doing its thing.
+      led = LED_ON;
+      break;
+    case STATE_NORMAL_PLEASE_WAIT: // device is doing something - cannot be interacted with.
+      led = LED_FAST;
+      break;
+    case STATE_OFF:                // not currently used.
+    case STATE_ERROR:             // error; device is inoperable; user cannot do anything - device is trying to sort itself out.
+    case STATE_ERROR_HANG:         // error; device is inoperable; user cannot do anything (but powercycle, etc).
+    default:
+      led = LED_FAST;
+      break;
+  }
+}
+
 void setup() {
   digitalWrite(RELAY, 0); // Stop the relay from fluttering during pinMode() change.
   pinMode(RELAY, OUTPUT);
 
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_ORANGE, OUTPUT);
-  pinMode(PUSHBUTTON, INPUT);
-
-  setGreenLED(LED_FAST);
-  setOrangeLED(LED_OFF);
+  led.begin("red", LED);
+  signalStateToUser(STATE_BOOTING);
 
   SPI.begin(); // Init SPI bus
 
-  Log.begin(mqtt_topic_prefix, 115200);
+  Log.begin(node.mqtt_topic_prefix, node.logpath, 115200);
   Log.println("\n\n\nBuild: " BUILD);
 
 #ifdef DEBUG
   debugFlash();
 #endif
 
-#ifdef CONFIGAP
-  configBegin();
+  node = Node();
 
-  // Go into Config AP mode if the orange button is pressed
-  // just post powerup.
-  //
+#ifdef CONFIGAP
+#if 0
   static int debounce = 0;
   while (digitalRead(PUSHBUTTON) == 0 && debounce < 5) {
     debounce++;
     delay(5);
   };
-  if (debounce >= 5)  {
-    configPortal();
-  }
+  if (debounce >= 5)  
+    runConfigPortal();
+#endif
   configLoad();
 #endif
 
@@ -139,7 +191,7 @@ void setup() {
 
   if (WiFi.status() != WL_CONNECTED) {
     Log.printf("Connection to <%s>\n", WiFi.SSID().c_str());
-    setOrangeLED(LED_FAST);
+    orangeLED.setState(LED_FAST);
     Log.println("Rebooting...");
     delay(5000);
     ESP.restart();
@@ -151,7 +203,7 @@ void setup() {
   // Only allow OTA post (any) Wifi portal config -- as otherwise the
   // latter can timeout in the middle of an OTA update without ado.
   //
-  configureOTA();
+  configureOTA(nodename, (const char *)OTA_PASSWD);
 #endif
 
   Log.print("IP address: ");
@@ -163,7 +215,7 @@ void setup() {
   configureMQTT();
 
   machinestate = WAITINGFORCARD;
-  setGreenLED(LED_ON);
+  greenLED.setState(LED_ON);
 
 #ifdef DEBUG
   debugListFS("/");
@@ -197,7 +249,7 @@ void machineLoop() {
   // Go green if we just left some error state.
   //
   if (laststate <= NOCONN && machinestate > NOCONN)
-    setGreenLED(LED_ON);
+    led.setState(LED_ON);
 
   int relayenergized = 0;
   switch (machinestate) {
@@ -205,15 +257,16 @@ void machineLoop() {
     case SWERROR:
     case NOCONN:
     case NOTINUSE:
-      setGreenLED(LED_FAST);
+      led.setState(LED_FAST);
       break;
     case WAITINGFORCARD:
       if (machinestate <= NOCONN)
-        setGreenLED(LED_ON);
-      setOrangeLED(LED_FLASH);
+        led = LED_FLASH;
+      else
+        led = LED_SLOW;
       break;
     case POWERED:
-      setOrangeLED(LED_ON);
+      led = LED_ON;
       relayenergized = 1;
       break;
   };
