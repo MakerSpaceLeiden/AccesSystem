@@ -1,6 +1,11 @@
 #pragma once
+#include <sha256.h>
 
 #include <PubSubClient.h>        // https://github.com/knolleary/
+
+#ifndef HASH_LENGTH 
+#define HASH_LENGTH SHA256_BLOCK_SIZE
+#endif
 
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 // MQTT limits - which are partly ESP chip rather than protocol specific.
@@ -8,7 +13,7 @@
 #define MAX_TOPIC      64
 #define MAX_MSG        (MQTT_MAX_PACKET_SIZE - 32)
 #define MAX_TAG_LEN    10/* Based on the MFRC522 header */
-#define BEATFORMAT     "%012u" // hard-coded - it is part of the HMAC */
+#define BEATFORMAT     "%012lu" // hard-coded - it is part of the HMAC */
 #define MAX_BEAT       16
 
 #ifndef MQTT_DEFAULT_PORT

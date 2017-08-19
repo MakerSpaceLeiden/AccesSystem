@@ -1,5 +1,4 @@
 #include "MakerspaceMQTT.h"
-#include <sha256.h>
 
 #if MQTT_MAX_PACKET_SIZE < 256
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
@@ -16,7 +15,7 @@ char moi[MAX_NAME] = "exhaustnode";    // Name of the sender
 char machine[MAX_NAME] = "fan";
 char master[MAX_NAME] = "master";    // Destination for commands
 char logpath[MAX_NAME] = "log";       // Destination for human readable text/logging info.
-char passwd[MAX_NAME] = ACNODE_PASSWD;
+char passwd[MAX_NAME] = "none-set";
 
 const char * state2str(int state) {
 #ifdef DEBUG
@@ -121,14 +120,14 @@ char * strsepspace(char **p) {
 
 void reconnectMQTT() {
 
-  Debug.printf("Attempting MQTT connection to %s:%d (State : %s\n",
+  Debug.printf("Attempting MQTT connection to %s:%d (MQTT State : %s)\n",
                mqtt_server, mqtt_port, state2str(client.state()));
 
   //  client.connect(moi);
   //  client.subscribe(mqtt_topic_prefix);
 
   if (client.connect(moi)) {
-    Log.println("(re)connected " BUILD);
+    Debug.println("(re)connected " BUILD);
 
     char topic[MAX_TOPIC];
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
@@ -239,7 +238,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
 
 #ifdef HASRFID
   if (handleRFID(b, rest))
-  return;
+    return;
 #endif
 
   if (!strncmp("start", rest, 5)) {
@@ -264,7 +263,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
 }
 
 void mqttLoop() {
-    static unsigned long last_wifi_ok = 0;
+  static unsigned long last_wifi_ok = 0;
   if (WiFi.status() != WL_CONNECTED) {
     Debug.println("Lost WiFi connection.");
     if (machinestate <= WAITINGFORCARD)
@@ -281,18 +280,25 @@ void mqttLoop() {
   static unsigned long last_mqtt_connect_try = 0;
   if (!client.connected()) {
     if (machinestate != NOCONN) {
-      Debug.print("No MQTT connection: ");
+      Debug.print("No MQTT connection (currently in ");
+      Debug.print(machinestateName[machinestate]);
+      Debug.print("): ");
       Debug.println(state2str(client.state()));
     };
     if (machinestate <= WAITINGFORCARD)
       machinestate = NOCONN;
-    if (millis() - last_mqtt_connect_try > 3000 || last_mqtt_connect_try == 0) {
+
+    if (millis() - last_mqtt_connect_try > 10000 || last_mqtt_connect_try == 0) {
       reconnectMQTT();
       last_mqtt_connect_try = millis();
     }
   } else {
-    if (machinestate == NOCONN)
+    if (machinestate == NOCONN) {
+      Debug.println("We're connected - going into WAITING for card\n");
       machinestate = WAITINGFORCARD;
+    };
+    // try to ignore short lived wobbles.
+    last_mqtt_connect_try = millis();
   };
 }
 

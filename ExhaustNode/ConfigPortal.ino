@@ -9,13 +9,13 @@
 #include <WiFiManager.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/
 
-// ArduinoJSON library -- from https://github.com/bblanchon/ArduinoJson 
+// ArduinoJSON library -- from https://github.com/bblanchon/ArduinoJson - installed th
 //
 // Depending on your version - if you get an osbcure error in
 // .../ArduinoJson/Polyfills/isNaN.hpp and isInfinity.hpp - then
 // isnan()/isinf() to __builtin_isnXXX() around line 34-36/
 //
-#include <ArduinoJson.h>         
+#include <ArduinoJson.h>
 
 #include <SPI.h>
 #include <FS.h>
@@ -131,40 +131,43 @@ void configPortal() {
   }
 }
 
-void configLoad() {
+int configLoad() {
   File configFile = SPIFFS.open("/config.json", "r");
-  if (configFile) {
-    Serial.println("opening config file");
-    size_t size = configFile.size();
-    std::unique_ptr<char[]> buf(new char[size]);
+  if (!configFile) {
+    Log.println("No JSON config file - odd");
+    return 0;
+  }
+  Serial.println("opening config file");
+  size_t size = configFile.size();
+  std::unique_ptr<char[]> buf(new char[size]);
 
-    configFile.readBytes(buf.get(), size);
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.parseObject(buf.get());
-    if (json.success()) {
-      char tmp_port[32];
+  configFile.readBytes(buf.get(), size);
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& json = jsonBuffer.parseObject(buf.get());
+  if (!json.success()) {
+    Log.println("JSON invalid");
+    return 0;
+  };
+  char tmp_port[32];
+  int defined = 0;
 
 #define JSONR(d,v) { \
     const char * str = json[v]; \
-    if (str) strncpy(d,str,sizeof(d)); \
+    if (str) { strncpy(d,str,sizeof(d)); defined++; }; \
     Debug.printf("%s=\"%s\" ==> %s\n", v, str ? (strcmp(v,"passwd") ? str : "****") : "\\0",  (strcmp(v,"passwd") ? d : "****"));\
   }
-      JSONR(mqtt_server, "mqtt_server");
-      JSONR(tmp_port, "mqtt_port");
-      JSONR(moi, "moi");
-      JSONR(mqtt_topic_prefix, "prefix");
-      JSONR(passwd, "passwd");
-      JSONR(logpath, "logpath");
-      JSONR(master, "master");
-      JSONR(machine, "machine");
+  JSONR(mqtt_server, "mqtt_server");
+  JSONR(tmp_port, "mqtt_port");
+  JSONR(moi, "moi");
+  JSONR(mqtt_topic_prefix, "prefix");
+  JSONR(passwd, "passwd");
+  JSONR(logpath, "logpath");
+  JSONR(master, "master");
+  JSONR(machine, "machine");
 
-      int p = atoi(tmp_port);
-      if (p == 0) p = MQTT_DEFAULT_PORT;
-      if (p < 65564) mqtt_port = p;
-    } else { // if valid json
-      Log.println("JSON invalid - ignored.");
-    };
-  } else { // if configfile
-    Log.println("No JSON config file - odd");
-  };
+  int p = atoi(tmp_port);
+  if (p == 0) p = MQTT_DEFAULT_PORT;
+  if (p < 65564) mqtt_port = p;
+
+  return defined == 8;
 }

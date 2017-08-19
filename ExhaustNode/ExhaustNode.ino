@@ -1,3 +1,5 @@
+
+
 /*
  *    Copyright 2015-2016 Dirk-Willem van Gulik <dirkx@webweaving.org>
  *                        Stichting Makerspace Leiden, the Netherlands.
@@ -39,7 +41,7 @@
 // debugging is only visible on the serial port.
 //
 // #define DEBUG
-// #define DEBUG_ALIVE  // sent an i-am-alive ping every 3 seconds.
+#define DEBUG_ALIVE  // sent an i-am-alive ping every 3 seconds.
 //
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/
@@ -57,9 +59,10 @@ Log Log;
 
 #define BUILD  __FILE__ " " __DATE__ " " __TIME__
 
-#include "../../../../.passwd.h"
 
+#include "/Users/dirkx/.passwd.h"
 #ifndef CONFIGAP
+
 // Hardcoded, compile time settings.
 const char ssid[34] = WIFI_NETWORK ;
 const char wifi_password[34] = WIFI_PASSWD;
@@ -110,17 +113,17 @@ void setup() {
   configBegin();
 
   // Go into Config AP mode if the orange button is pressed
-  // just post powerup.
+  // just post powerup -- or if we have an issue loading the
+  // config.
   //
   static int debounce = 0;
   while (digitalRead(PUSHBUTTON) == 0 && debounce < 5) {
     debounce++;
     delay(5);
   };
-  if (debounce >= 5)  {
+  if (debounce >= 5 || configLoad() == 0)  {
     configPortal();
   }
-  configLoad();
 #endif
 
   WiFi.mode(WIFI_STA);
@@ -273,6 +276,10 @@ void loop() {
   if (millis() - last_debug > 5000 || last_debug_state != machinestate) {
     Log.print("State: ");
     Log.print(machinestateName[machinestate]);
+    Log.print(" Wifi= ");
+    Log.print(WiFi.status());
+    Log.print(" MQTT= ");
+    Log.print(client.state());
 
     Log.print(" Button="); Serial.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
     Log.print(" Relay="); Serial.print(digitalRead(RELAY)  ? "ON" : "off");

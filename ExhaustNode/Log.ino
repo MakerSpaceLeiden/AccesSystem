@@ -1,7 +1,12 @@
-// Simple 'tee' class - that sends all 'serial' port data also to the MQTT bus - to the 'log' topic
+// Simple 'tee' class - that sends all 'serial' port data also to the Syslog and/or MQTT bus - to the 'log' topic
 // if such is possible/enabled.
 //
+#include <WiFiUdp.h>
+
 #include "Log.h"
+
+WiFiUDP syslog;
+const uint16_t syslogPort = 514;
 
 void Log::begin(const char * prefix, int speed) {
   Serial.begin(speed);
@@ -11,6 +16,8 @@ void Log::begin(const char * prefix, int speed) {
   Serial.print("\n\n\n\n\n");
   snprintf(logtopic, sizeof(logtopic), "%s/%s/%s", prefix, logpath, moi);
   logbuff[0] = 0; at = 0;
+
+  syslog.begin(syslogPort);
   return;
 }
 
@@ -23,11 +30,21 @@ size_t Log::write(uint8_t c) {
   if (c != '\n' && at <= sizeof(logbuff) - 1)
     return r;
 
+  logbuff[at++] = 0;
+  at = 0;
+
   if (client.connected()) {
-    logbuff[at++] = 0;
     client.publish(logtopic, logbuff);
   };
-  at = 0;
+
+  if (WiFi.status() == WL_CONNECTED) {
+    syslog.beginPacket(WiFi.gatewayIP(), syslogPort);
+    syslog.write("<135>");
+    syslog.write(moi);
+    syslog.write(" ");
+    syslog.write(logbuff);
+    syslog.endPacket();
+  };
 
   return r;
 }

@@ -32,23 +32,27 @@ void setLED(Ticker & t, uint8_t pin, int state) {
       t.detach();
       digitalWrite(pin, 1);
       break;
+    case NEVERSET:
+    default:
+      break;
   }
 }
 
 // Note: we're using an int rather than a LEDstate -- as the latter
 // is not liked by Arduino its magic 'header detect' logic (1.5).
 //
+LEDstate lastgreen = NEVERSET;
 Ticker greenLEDTicker;
 void setGreenLED(int state) {
-  static LEDstate lastgreen = NEVERSET;
+  LEDstate lastgreen = NEVERSET;
   if (lastgreen != state)
     setLED(greenLEDTicker, LED_GREEN, state);
   lastgreen = (LEDstate) state;
 }
 
+LEDstate lastorange = NEVERSET;
 Ticker orangeLEDTicker;
 void setOrangeLED(int state) {
-  static LEDstate lastorange = NEVERSET;
   if (lastorange != state)
     setLED(orangeLEDTicker, LED_ORANGE, state);
   lastorange = (LEDstate) state;
