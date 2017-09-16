@@ -26,16 +26,13 @@ class ActuatorACNode(ACNode):
   last_tag_shown = None
   last_tag_beat = None
 
-  def send_request(self, command, target_node, target_machine, tag_uid, beat = None):
-      if not beat:
-         beat = self.beat()
-
+  def send_request(self, command, target_node, target_machine, tag_uid):
       # Track what tags we ask approval for - so we can log it slightly nicer once
       # we get the approval back.
       self.last_tag_shown = tag_uid
-      self.last_tag_beat = beat
+      self.last_tag_beat = self.beat()
 
-      return super().send_request(command, target_node, target_machine, tag_uid,beat)
+      return super().send_request(command, target_node, target_machine, tag_uid)
 
   def cmd_approved(self,path,node,theirbeat,payload):
     acl, cmd, machine, beat = self.parse_request(payload) or (None, None, None, None)

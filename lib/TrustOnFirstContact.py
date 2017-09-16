@@ -6,16 +6,16 @@ import sys
 import os
 import base64 
 import socket
+import traceback
 
 import axolotl_curve25519 as curve
 
 # For older version of python use:
 # from Cryptodome import Random
 from Crypto import Random
+import ACNodeBase
 
-from ACNode import ACNode
-
-class TrustOnFirstContact(ACNode):
+class TrustOnFirstContact(ACNodeBase.ACNodeBase):
 
   def __init__(self):
     super().__init__()
@@ -73,6 +73,7 @@ class TrustOnFirstContact(ACNode):
     super().parseArguments()
 
   def announce(self,dstnode):
+
     if self.cnf.privatekey:
         bp = base64.b64encode(self.cnf.privatekey).decode('ASCII')
         return self.send(dstnode, "announce " + socket.gethostbyname(socket.gethostname()) + " " + bp)
@@ -84,25 +85,36 @@ class TrustOnFirstContact(ACNode):
        cmd, ip, pubkey = payload.split(" ")
        pubkey = base64.b64decode(pubkey)
        if len(pubkey) != 32:
-             self.logger.error("Ignoring malformed private key of node {}".format(node))
+             self.logger.error("Ignoring malformed public key of node {}".format(node))
              return None
 
        if self.pubkeys[ node ]:
           if self.pubkey[node] == pubkey:
-                  self.logger.debug("Ignoring (unchanged) private key of node {}".format(node))
+                  self.logger.debug("Ignoring (unchanged) public key of node {}".format(node))
                   return super().cmd_announce()
                   return None
 
-          self.logger.info ("Ignoring (changed) private key of node {}".format(node))
+          self.logger.info ("Ignoring (changed) public key of node {}".format(node))
           return None
 
-       self.logger.info("Learned a private key of node {} on first contact.".format(node))
+       self.logger.info("Learned a public key of node {} on first contact.".format(node))
        self.pubkeys[ node ] = pubkey
+
+       if self.cnf.privatekey:
+           session_key = curve.calculateAgreement(self.cnf.privatekey, pubkey)
+           self.sharedkey[ node ] = hashlib.sha256(session_key).digest()
+
     except:
        self.logger.error("Error parsing announce. Ignored.");
        return None
 
-    return super().cmd_announce()
+    return super().cmd_announce(path,node,theirbeat,payload)
+
+  def secret(self, node = None):
+    if self.sharedkey[ node ]:
+       return self.sharedkey[ node ]
+
+    return self.secret()
 
 # Allow this class to auto instanciate if
 # we run it on its own.

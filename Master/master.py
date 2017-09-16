@@ -48,13 +48,17 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
 
        self.cnf.secrets = newsecrets
 
-  def announce(self,dstnode):
+  def announce(self, dstnode):
     # We announce to all our constituents (a normal node just
     # Announces to the master). If needed - this can trigger
     # the nodes to do things like wipe a cache, sync time, etc.
     #
-    for dstnode in self.cnf.secrets:
-       self.send(dstnode, "announce")
+    if dstnode == self.cnf.master:
+       for dstnode in self.cnf.secrets:
+          self.announce(dstnode)
+       return
+
+    super().announce(dstnode)
 
   # Handle a note reporting back the most recently swiped
   # node -- generally in response to a reveal-tag command
