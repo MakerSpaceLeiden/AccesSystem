@@ -41,6 +41,7 @@ class ACNodeBase:
   commands = {}
   forever = 0
   default_pidfile = "/var/run/master.pid"
+  looptimeout = 0.2
 
   def __init__(self,description='ACNodeBase', cnf_file=None):
 
@@ -251,7 +252,12 @@ class ACNodeBase:
    self.logger.debug("Setting up the connection to '"+self.cnf.mqtthost+"'")
 
   def loop(self):
-    self.client.loop()
+    # We should consider using PAHO its 'External event loop support'
+    # so we can sit idle when nothing is happening with a bit more ease.
+    # As currently our (low) timeout is just there to be responsive to
+    # things like card swipes. While in fact for most use cases we can
+    # make the sit-tight 'endless'.
+    self.client.loop(timeout=self.looptimeout)
 
   def initialize(self):
     self.parseArguments()

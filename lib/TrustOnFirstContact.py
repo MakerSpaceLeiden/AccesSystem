@@ -7,19 +7,21 @@ import os
 import base64 
 import socket
 import traceback
+import hashlib
 
 import axolotl_curve25519 as curve
 
 # For older version of python use:
 # from Cryptodome import Random
 from Crypto import Random
-import ACNodeBase
+import SharedSecret
 
-class TrustOnFirstContact(ACNodeBase.ACNodeBase):
+class TrustOnFirstContact(SharedSecret.SharedSecret):
+  sharedkey = {}
+  pubkeys = {}
 
   def __init__(self):
     super().__init__()
-
     self.commands[ 'announce' ] = self.cmd_announce
 
   def setup(self):
@@ -81,14 +83,16 @@ class TrustOnFirstContact(ACNodeBase.ACNodeBase):
     return super().announce(dstnode)
 
   def cmd_announce(self,path,node,theirbeat,payload):
+
     try:
        cmd, ip, pubkey = payload.split(" ")
        pubkey = base64.b64decode(pubkey)
+
        if len(pubkey) != 32:
              self.logger.error("Ignoring malformed public key of node {}".format(node))
              return None
 
-       if self.pubkeys[ node ]:
+       if node in self.pubkeys:
           if self.pubkey[node] == pubkey:
                   self.logger.debug("Ignoring (unchanged) public key of node {}".format(node))
                   return super().cmd_announce()
@@ -102,19 +106,26 @@ class TrustOnFirstContact(ACNodeBase.ACNodeBase):
 
        if self.cnf.privatekey:
            session_key = curve.calculateAgreement(self.cnf.privatekey, pubkey)
-           self.sharedkey[ node ] = hashlib.sha256(session_key).digest()
+           self.sharedkey[ node ] = hashlib.sha256(session_key).hexdigest()
+
+           self.logger.debug("Calculates shared secret with node {} testing with ping.".format(node))
 
     except:
        self.logger.error("Error parsing announce. Ignored.");
        return None
 
+    self.send(node, "ping")
+
     return super().cmd_announce(path,node,theirbeat,payload)
 
   def secret(self, node = None):
-    if self.sharedkey[ node ]:
+    print("RQ secret "+node)
+
+    if node in self.sharedkey:
        return self.sharedkey[ node ]
 
-    return self.secret()
+    print("Passing up for node {} -- know: {}".format(node,' '.join(self.sharedkey.keys())))
+    return super().secret()
 
 # Allow this class to auto instanciate if
 # we run it on its own.

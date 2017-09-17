@@ -12,6 +12,7 @@ import hmac
 import daemon
 import setproctitle
 import socket
+import traceback
 
 import configargparse
 
@@ -69,6 +70,7 @@ class SharedSecret(ACNodeBase.ACNodeBase):
       return tag_encoded
     
   def send(self,dstnode,payload, beat= None):
+      print("+++SEND"+payload)
       if not beat:
          beat = self.beat()
 
@@ -128,9 +130,11 @@ class SharedSecret(ACNodeBase.ACNodeBase):
 
     self.logger.debug("Good message.")
     cmd = payload.split(' ')[0]
+
     if cmd == 'announce':
         self.cmd_announce(path,node,theirbeat,payload)
         return None
+
     if cmd == 'beat':
         self.cmd_beat(path,node,theirbeat,payload)
         return None
@@ -138,8 +142,13 @@ class SharedSecret(ACNodeBase.ACNodeBase):
     return payload
 
   def cmd_announce(self,path,node,theirbeat,payload):
+    # traceback.print_stack()
+
     if node != self.cnf.node:
        self.logger.info("Announce of {} {}".format(node,payload))
+       if node == self.cnf.master:
+           self.logger.debug("re-announce to (restarted) master")
+           self.announce(self.cnf.master)
     else:
        self.logger.debug("Ignoring my own restart message.")
 
