@@ -47,6 +47,7 @@ const char *passwd = ACNODE_PASSWD;
 //
 const unsigned int   IDLE_TO        = (20 * 60 * 1000); // Auto disable/off after 20 minutes.
 const unsigned int   CHECK_TO       = (3500); // Wait up to 3.5 second for result of card ok check.
+const unsigned int   AUTOOFF_TO     = (2 * IDLE_TO);
 
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 const unsigned int   MAX_TOPIC      = 64;
@@ -66,6 +67,8 @@ const uint8_t PIN_POWER      = 15; // pulled low when not in use.
 // GPIO4 - 10k pullup (not removed yet).
 const uint8_t PIN_OPTO_OPERATOR      = 4; // front-switch 'off' -- capacitor charged by diode; needs to be pulled to ground to empty.
 const uint8_t PIN_OPTO_ENERGIZED     = 5; // relay energized -- capacitor charged by diode; needs to be pulled to ground to empty.
+
+// const uint8_t PIN_AUTOOFF 9;
 
 // The RFID reader itself is connected to the
 // hardwired MISO/MOSI and CLK pins (12, 13, 14)
@@ -92,6 +95,7 @@ typedef enum {
   POWERED,                    // Relay powered.
   ENERGIZED,                  // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
   RUNNING,                    // Running - go to DUSTEXTRACT once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
+  AUTOOFF,                    // Pseudo state - auto off after a slight idle to allow logging traffic to escape
   NOTINUSE,
 } machinestates_t;
 
@@ -587,6 +591,13 @@ void handleMachineState() {
       break;
     case WAITINGFORCARD:
       setRedLED(tock & 127 ? LED_OFF : LED_ON);
+#ifdef PIN_AUTOOFF
+      if (millis() - laststatechange > AUTOOFF_TO) {
+        send("event autoff");
+        Log.println("Machine not used for too long; auto off.");
+        machinestate = AUTOOFF;
+      }
+#endif
       break;
     case CHECKING:
       setRedLED(LED_FAST);
@@ -611,7 +622,7 @@ void handleMachineState() {
       };
       if (millis() - laststatechange > IDLE_TO) {
         send("event toolongidle");
-        Log.println("Machine not used for more than 20 minutes; revoking access.");
+        Log.println("Machine not used for too long; revoking access.");
         machinestate = WAITINGFORCARD;
       }
       relayenergized = 1;
@@ -619,6 +630,15 @@ void handleMachineState() {
     case RUNNING:
       setRedLED(LED_ON);
       relayenergized = 1;
+      break;
+    case AUTOOFF:
+#ifdef PIN_AUTOOFF
+      if (millis() - laststatechange > 1000) {
+        digitalWrite(PIN_POWER, 0);
+        pinMode(PIN_AUTOOFF, OUTPUT);
+        digitalWrite(PIN_AUTOOFF, 1);
+      }
+#endif
       break;
   };
 
@@ -753,7 +773,7 @@ void loop() {
   }
 #endif
 
-  if (machinestate >= WAITINGFORCARD && millis()-laststatechange > 1500) {
+  if (machinestate >= WAITINGFORCARD && millis() - laststatechange > 1500) {
     if (checkTagReader()) {
       laststatechange = millis();
       if (machinestate >= ENERGIZED)
