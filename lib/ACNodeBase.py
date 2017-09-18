@@ -94,14 +94,18 @@ class ACNodeBase:
     loglevel=logging.ERROR
 
     if self.cnf.verbose:
-      loglevel=logging.INFO
+        loglevel=logging.INFO
+        FORMAT="%(asctime)s %(levelname)s %(message)s"
 
     if self.cnf.debug:
         loglevel=logging.DEBUG
+        FORMAT="%(asctime)s %(levelname)s %(message)s\n\t%(pathname)s:%(lineno)d %(module)s %(funcName)s"
 
+    logging.basicConfig(format=FORMAT)
+    
     self.logger = logging.getLogger()
     self.logger.setLevel(loglevel)
-
+    
     self.logtopic = self.cnf.topic + "/log/" + self.cnf.node
     if not self.cnf.no_mqtt_log:
       self.logger.addHandler(MqttHandler.MqttHandler(

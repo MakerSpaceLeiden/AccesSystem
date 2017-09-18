@@ -151,7 +151,7 @@ class TrustOnFirstContact(Beat.Beat):
                 self.logger.info ("Ignoring (changed) public key of node {}".format(msg['node']))
                 return None
 
-            self.logger.info("Potentially learned a public key of node {} on first contact - checking signature next.".format(msg['node']))
+            self.logger.debug("Potentially learned a public key of node {} on first contact - checking signature next.".format(msg['node']))
     else:
         publickey = self.pubkeys[ msg['node'] ]
     
