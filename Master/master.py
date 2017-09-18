@@ -48,31 +48,33 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
 
        self.cnf.secrets = newsecrets
 
-  def announce(self,dstnode):
+  def announce(self, dstnode):
     # We announce to all our constituents (a normal node just
     # Announces to the master). If needed - this can trigger
     # the nodes to do things like wipe a cache, sync time, etc.
     #
-    for dstnode in self.cnf.secrets:
-       self.send(dstnode, "announce")
+    if dstnode == self.cnf.master:
+       for dstnode in self.cnf.secrets:
+          self.announce(dstnode)
+       return
+
+    super().announce(dstnode)
 
   # Handle a note reporting back the most recently swiped
   # node -- generally in response to a reveal-tag command
   # from us.
   #
-  def cmd_lastused(self,path,node,theirbeat,payload):
-    try:
-      cmd, tag = payload.split()
-    except:
-      self.logger.error("Could not parse lastused payload '{}' -- ignored.".format(payload))
+  def cmd_lastused(self,msg):
+    cmd, tag = self.split_payload(msg)
+    if not cmd or not tag:
       return
 
     self.logger.info("Unknown tag {} reportedly used at {}".format(tag,node))
 
     self.send_email( "An unknown tag ({}) was reportedly used at node {} around {}.".format(tag,node,time.asctime()), "Unknown tag {} used at {}".format(tag,node))
 
-  def cmd_approve(self,path,node,theirbeat,payload):
-    cmd, target_node, target_machine, tag_encoded = self.parse_request(payload) or (None, None, None, None)
+  def cmd_approve(self,msg):
+    cmd, target_node, target_machine, tag_encoded = self.split_payload(msg) or (None, None, None, None)
     if not target_node:
        return
 
