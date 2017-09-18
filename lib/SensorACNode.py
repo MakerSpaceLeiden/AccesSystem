@@ -44,7 +44,7 @@ class SensorACNode(ACNode):
       self.last_tag = tag_uid
       return super().send_request(command, target_node, target_machine, tag_uid)
 
-  def cmd_revealtag(self,path,node,nonce,payload):
+  def cmd_revealtag(self,msg):
     if not self.last_tag:
        self.logger.info("Asked to reveal a tag - but nothing swiped.")
        return
@@ -54,16 +54,16 @@ class SensorACNode(ACNode):
     self.logger.info("Reporting last-tag swiped at {}: {}".format(self.cnf.node, tag))
     self.send(self.cnf.master,"lastused " + tag)
 
-  def cmd_denied(self,path,node,payload):
-    acl, cmd , machine = self.parse_request(payload) or (None, None, None)
+  def cmd_denied(self,msg):
+    acl, cmd , machine = self.split_payload(msg) or (None, None, None)
     if not cmd:
        return
 
     self.logger.info("Tag denied at station {} for {}".format(node,machine))
     return
 
-  def cmd_unknown(self,path,node,payload):
-    acl, cmd , machine = self.parse_request(payload) or (None, None, None )
+  def cmd_unknown(self,msg):
+    acl, cmd , machine = self.split_payload(msg) or (None, None, None )
     if not cmd:
        return
 

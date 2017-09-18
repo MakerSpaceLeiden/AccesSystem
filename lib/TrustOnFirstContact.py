@@ -8,6 +8,7 @@ import base64
 import socket
 import traceback
 import hashlib
+import linecache
 
 import axolotl_curve25519 as curve
 
@@ -15,14 +16,15 @@ import axolotl_curve25519 as curve
 # from Cryptodome import Random
 from Crypto import Random
 import SharedSecret
+import Beat
 
-class TrustOnFirstContact(SharedSecret.SharedSecret):
+class TrustOnFirstContact(Beat.Beat):
   sharedkey = {}
   pubkeys = {}
 
   def __init__(self):
     super().__init__()
-    self.commands[ 'announce' ] = self.cmd_announce
+    self.commands[ 'welcome' ] = self.cmd_welcome
 
   def setup(self):
     super().setup()
@@ -32,16 +34,21 @@ class TrustOnFirstContact(SharedSecret.SharedSecret):
               self.logger.critical("Either generate a new key; or set one. Not both. Aborting.")
               sys.exit(1);
 
-       self.logger.info("Regenerating private key");
-
        randm32 = Random.new().read(32)
        self.cnf.privatekey = curve.generatePrivateKey(randm32)
-       self.cnf.publickey = curve.generatePublicKey(self.cnf.privatekey)
 
        if self.cnf.privatekeyfile:
-           if 32 != open(self.cnf.privatekeyfile,"wb").write(self.cnf.privatekey):
-              self.logger.critical("Failed to write the privatekeyfile");
+           if os.path.isfile(self.cnf.privatekey):
+              self.logger.critical("Refusing to overwrite existing private key. Aborting.")
               sys.exit(1);
+
+           if 32 != open(self.cnf.privatekeyfile,"wb").write(self.cnf.privatekey):
+              self.logger.critical("Failed to write the newly generated privatekeyfile. Aborting.");
+              sys.exit(1);
+
+           self.logger.info("Wrote out newly generated private key");
+       else:
+           self.logger.info("Using empheral private key");
 
     if self.cnf.privatekey:
           # base64 decode it - and check it is 32 bytes.
@@ -61,7 +68,10 @@ class TrustOnFirstContact(SharedSecret.SharedSecret):
     if self.cnf.tofconly and not self.cnf.privatekey:
          self.logger.critical("No private key - cannot do TOFC . Aborting.")
          sys.exit(1);
- 
+
+    self.cnf.publickey = curve.generatePublicKey(self.cnf.privatekey)
+    self.pubkeys[ self.cnf.node ] =self.cnf.publickey
+    
   def parseArguments(self):
     self.parser.add('--privatekey','-K',
          help='Private Curve25519 key (Default: unset, auto generated')
@@ -74,58 +84,118 @@ class TrustOnFirstContact(SharedSecret.SharedSecret):
 
     super().parseArguments()
 
-  def announce(self,dstnode):
+  def send(self, dstnode, payload):
+     if not self.cnf.privatekey:
+        return super().send(dstnode, payload)
 
-    if self.cnf.privatekey:
-        bp = base64.b64encode(self.cnf.privatekey).decode('ASCII')
-        return self.send(dstnode, "announce " + socket.gethostbyname(socket.gethostname()) + " " + bp)
+     payload = self.beat()+" "+payload
 
-    return super().announce(dstnode)
+     randm64 = Random.new().read(64)
+     signature = curve.calculateSignature(randm64, self.cnf.privatekey, payload.encode('ASCII'))
+     signature = base64.b64encode(signature).decode('ASCII')
 
-  def cmd_announce(self,path,node,theirbeat,payload):
+     super().send(dstnode, "SIG/2.0 "+signature+" "+payload, raw=True)
 
+  def extract_validated_payload(self, msg):
+
+    if not msg['payload'].startswith("SIG/2"):
+        return super().extract_validated_payload(msg)
+
+    beat = int(self.beat())
     try:
-       cmd, ip, pubkey = payload.split(" ")
-       pubkey = base64.b64decode(pubkey)
+        hdr, sig, payload = msg['payload'].split(' ',2)
+        sig = base64.b64decode(sig)
+        
+        msg['hdr'] = hdr
+        msg['sig'] = sig
+        msg['payload'] = payload
 
-       if len(pubkey) != 32:
-             self.logger.error("Ignoring malformed public key of node {}".format(node))
-             return None
+        signed_payload = msg['payload']
+        
+        if not super().extract_validated_payload(msg):
+           return None
+        
+        clean_payload = msg['payload']
 
-       if node in self.pubkeys:
-          if self.pubkey[node] == pubkey:
-                  self.logger.debug("Ignoring (unchanged) public key of node {}".format(node))
-                  return super().cmd_announce()
-                  return None
+        cmd = msg['payload'].split(" ")[0]
+    except Exception as e:
+        self.logger.warning("Could not parse curve25519 signature from payload '{}' -- ignored {}".format(msg['payload'],str(e)))
+        return None
 
-          self.logger.info ("Ignoring (changed) public key of node {}".format(node))
-          return None
-
-       self.logger.info("Learned a public key of node {} on first contact.".format(node))
-       self.pubkeys[ node ] = pubkey
-
-       if self.cnf.privatekey:
-           session_key = curve.calculateAgreement(self.cnf.privatekey, pubkey)
-           self.sharedkey[ node ] = hashlib.sha256(session_key).hexdigest()
-
-           self.logger.debug("Calculates shared secret with node {} testing with ping.".format(node))
-
-    except:
-       self.logger.error("Error parsing announce. Ignored.");
+    if len(sig) != 64:
+       self.logger.error("Signature wrong length for '{}' - ignored".format(msg['node']))
        return None
 
-    self.send(node, "ping")
+    # Process TOFU information if we do not (yet) know the public key
+    # without validating the signature.
+    #
+    if not msg['node'] in self.pubkeys:
+       if cmd == 'announce' or cmd == 'welcome':
+            try:
+                cmd, ip, pubkey = clean_payload.split(" ")
 
-    return super().cmd_announce(path,node,theirbeat,payload)
+            except Exception as e:
+                self.logger.error("Error parsing announce. Ignored. "+str(e))
+                return None
 
-  def secret(self, node = None):
-    print("RQ secret "+node)
+            publickey = base64.b64decode(pubkey)
+            if len(publickey) != 32:
+                    self.logger.error("Ignoring malformed public key of node {}".format(msg['node']))
+                    return None
 
-    if node in self.sharedkey:
-       return self.sharedkey[ node ]
+            if msg['node'] in self.pubkeys:
+                if self.pubkeys[msg['node']] == publickey:
+                        self.logger.debug("Ignoring (unchanged) public key of node {}".format(msg['node']))
+                        return None
 
-    print("Passing up for node {} -- know: {}".format(node,' '.join(self.sharedkey.keys())))
-    return super().secret()
+                self.logger.info ("Ignoring (changed) public key of node {}".format(msg['node']))
+                return None
+
+            self.logger.info("Potentially learned a public key of node {} on first contact - checking signature next.".format(msg['node']))
+    else:
+        publickey = self.pubkeys[ msg['node'] ]
+    
+    if not self.cnf.privatekey:
+        return None
+
+    # Note: this is the payload `as of now' -- not the further decoded/stripped of its beat payload.
+    # Because we also (want to) have the signature cover the beat - to prevent replay.
+    # Todo: consider a nonce.
+    if curve.verifySignature(publickey, signed_payload.encode(), sig):
+        self.logger.warning("Invalid signatured for {} - ignored".format(msg['node']))
+        return None
+
+    if not msg['node'] in self.pubkeys:
+        self.pubkeys[ msg['node'] ] = publickey
+        self.logger.info("Learned a public key of node {} on first contact.".format(msg['node']))
+
+        session_key = curve.calculateAgreement(self.cnf.privatekey, publickey)
+        self.sharedkey[ msg['node'] ] = hashlib.sha256(session_key).hexdigest()
+
+        self.logger.debug("Calculated shared secret with node {}.".format(msg['node']))
+
+    # self.logger.debug("Good signature.")
+    msg['validated'] = 20
+    
+    return msg
+
+  def send_tofu(self, prefix, dstnode):
+    bp = base64.b64encode(self.cnf.publickey).decode('ASCII')
+    return self.send(dstnode, prefix + " " + socket.gethostbyname(socket.gethostname()) + " " + bp)
+
+  def announce(self,dstnode):
+    self.send_tofu('announce', dstnode)
+
+  def welcome(self,dstnode):
+    self.send_tofu('welcome', dstnode)
+
+  def cmd_welcome(self, msg):
+    # self.tofu(msg)
+    pass
+
+  def cmd_announce(self,msg):
+    self.welcome(msg['node'])
+    return super().cmd_announce(msg)
 
 # Allow this class to auto instanciate if
 # we run it on its own.

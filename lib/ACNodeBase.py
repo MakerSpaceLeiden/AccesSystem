@@ -28,7 +28,6 @@ default_host = 'localhost'
 default_sub = default_node
 default_protocol = "publish.MQTTv311"
 default_machine = 'deur'
-default_leeway = 30
 
 class ACNodeBase:
   cnf = None
@@ -49,6 +48,8 @@ class ACNodeBase:
     if cnf_file: 
       files = (cnf_file)
     self.parser = configargparse.ArgParser(default_config_files=files)
+
+    self.commands[ 'announce' ] = self.cmd_announce
 
   def parseArguments(self):
     self.parser.add('-c', '--config', is_config_file=True,  
@@ -79,9 +80,6 @@ class ACNodeBase:
         help='Disable syslogging (defautl on)'),
     self.parser.add('-l','--logfile', type=configargparse.FileType('w+'), 
         help='Append log entries to specified file (default: none)'),
-
-    self.parser.add('--leeway', action='store', default=default_leeway, type=int,
-         help='Beat leeway, in seconds (default: '+str(default_leeway)+' seconds).')
 
     self.parser.add('--pidfile', action='store', default = self.default_pidfile,
          help='File to write PID to, (Default: '+self.default_pidfile+').')
@@ -135,23 +133,26 @@ class ACNodeBase:
       data = command + " " + target_node + " " + target_machine + " " + tag_encoded
       self.send(self.cnf.master, data)
  
-  def parse_request(self, payload):
+  def split_payload(self, msg):
     command = None
 
     try:
-      elems = payload.split()
+      elems = msg['payload'].split()
       return(elems)
 
     except:
       self.logger.debug("Cannot parse payload '{}' ; ignored".format(payload))
       return None
 
+    msg['elems'] = elems
     return None
  
-  def send(self,dstnode,payload):
-      topic = self.cnf.topic+ "/" + dstnode + "/" + self.cnf.node 
+  def send(self,dstnode,payload,raw=False):
+      # traceback.print_stack()
+      
+      topic = self.cnf.topic+ "/" + dstnode + "/" + self.cnf.node
 
-      self.logger.debug("Sending @"+topic+": "+payload)
+      self.logger.debug(">>>>Sending @"+topic+": "+payload)
       try:
          publish.single(topic, payload, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
       except:
@@ -180,48 +181,65 @@ class ACNodeBase:
     self.logger.info("(re)Subscribed.")
     self.announce(self.cnf.master)
 
-  def parse_topic(self, topic):
+  def parse_topic(self, msg):
     try:
-      path = topic.split('/')
-      destination = path[-2]
-      node = path[-1]
-    except:
-      self.logger.warning("Message topic '{0}' could not be parsed -- ignored.".format(topic))
-      return None, None, None
+      msg['path'] = msg['topic'].split('/')
+      msg['destination'] = msg['path'][-2]
+      msg['node'] = msg['path'][-1]
+    except Exception as e:
+      self.logger.warning("Message topic '{}' could not be parsed: {} -- ignored.".format(msg['topic'],str(e)))
+      return None
+    
+    return msg
 
-    return path, destination, node
+  def cmd_announce(self,msg):
+    # traceback.print_stack()
 
-  def extract_validated_payload(self, node, topic, path, payload):
-    return payload
+    # if it is not me
+    if msg['node'] != self.cnf.node:
+         self.logger.info("Announce of {} {}".format(msg['node'],msg['payload']))
+    else:
+       self.logger.debug("Ignoring my own restart/announce message.")
+
+    return None
+         
+  def extract_validated_payload(self, msg):
+    self.logger.debug("Unversioned payload (ignored): ".format(payload))
+    return None
 
   def on_message(self,client, userdata, message):
-    topic = message.topic
-    self.logger.debug("@%s: : %s",topic, message.payload)
+    msg = {
+        'topic': message.topic,
+        'payload': None,
+        'validated': 0
 
-    path, moi, node = self.parse_topic(topic)
-    if not path:
-       return None
 
-    payload = None
+    }
     try:
-      payload = message.payload.decode('ASCII')
+      self.logger.debug("<<<<Reccing @"+message.topic+": "+message.payload.decode('ASCII'))
     except:
-      self.logger.warning("Non ascii equest '{0}' -- ignored".format(message.payload))
-      return None
+      pass
 
-    topic = message.topic
-    payload = self.extract_validated_payload(node, topic, path, payload)
-
-    if not payload:
+    if not self.parse_topic(msg):
         return None
 
-    cmd = payload.split(' ')[0]
+    try:
+        msg['payload'] = message.payload.decode('ASCII')
+
+        if not self.extract_validated_payload(msg):
+            return None
+
+        cmd = msg['payload'].split(' ')[0]
+    except Exception as e:
+      self.logger.warning("Could not parse request {}:{}' -- ignored".format(message.payload, str(e)))
+      return None
+
     if cmd in self.commands:
         self.logger.debug("Handling command '{}' with {}:{}()".format(cmd,self.commands[cmd].__class__.__name__, self.commands[cmd].__name__))
-        return self.commands[cmd](path,node,payload)
+        return self.commands[cmd](msg)
 
-    self.logger.debug("No mapping for {} - deferring to <{}> for handling by {}".format(cmd, payload,self.__class__.__name__))
-    return payload
+    self.logger.debug("No mapping for {} - deferring <{}> for handling by {}".format(cmd, msg['payload'],self.__class__.__name__))
+    return None
 
   # Capture SIGINT for cleanup when the script is aborted
   def end_read(self,signal,frame):
@@ -235,7 +253,6 @@ class ACNodeBase:
       return(e)
 
   def connect(self):
-
    try:
       self.client = mqtt.Client()
       self.client.connect(self.cnf.mqtthost)

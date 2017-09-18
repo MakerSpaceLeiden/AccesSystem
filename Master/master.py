@@ -64,19 +64,17 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
   # node -- generally in response to a reveal-tag command
   # from us.
   #
-  def cmd_lastused(self,path,node,theirbeat,payload):
-    try:
-      cmd, tag = payload.split()
-    except:
-      self.logger.error("Could not parse lastused payload '{}' -- ignored.".format(payload))
+  def cmd_lastused(self,msg):
+    cmd, tag = self.split_payload(msg)
+    if not cmd or not tag:
       return
 
     self.logger.info("Unknown tag {} reportedly used at {}".format(tag,node))
 
     self.send_email( "An unknown tag ({}) was reportedly used at node {} around {}.".format(tag,node,time.asctime()), "Unknown tag {} used at {}".format(tag,node))
 
-  def cmd_approve(self,path,node,theirbeat,payload):
-    cmd, target_node, target_machine, tag_encoded = self.parse_request(payload) or (None, None, None, None)
+  def cmd_approve(self,msg):
+    cmd, target_node, target_machine, tag_encoded = self.split_payload(msg) or (None, None, None, None)
     if not target_node:
        return
 

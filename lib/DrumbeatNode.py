@@ -26,6 +26,9 @@ class DrumbeatNode(ACNode.ACNode):
       self.last_time = time.time()
       self.send(self.cnf.node, "beat")
 
+      for node in self.cnf.secrets.keys():
+         self.send(node, "beat")
+
     super().loop()
 
 # Allow this class to auto instanciate if

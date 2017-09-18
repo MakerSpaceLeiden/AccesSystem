@@ -34,8 +34,8 @@ class ActuatorACNode(ACNode):
 
       return super().send_request(command, target_node, target_machine, tag_uid)
 
-  def cmd_approved(self,path,node,theirbeat,payload):
-    acl, cmd, machine, beat = self.parse_request(payload) or (None, None, None, None)
+  def cmd_approved(self,msg):
+    acl, cmd, machine, beat = self.split_payload(msg) or (None, None, None, None)
     if not acl:
        return
 
