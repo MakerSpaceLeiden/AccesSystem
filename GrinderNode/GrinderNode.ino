@@ -2,6 +2,7 @@
 // enough room for the code -- though still need
 // Over 328kB free to actually use it.
 //
+#define BUILD  __FILE__ " " __DATE__ " " __TIME__
 #define OTA
 
 #include <ESP8266WiFi.h>
@@ -16,9 +17,21 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define BUILD  __FILE__ " " __DATE__ " " __TIME__
-
+// For the HMAX of the SIG/1.0 protocol
 #include <sha256.h>
+
+// Curve25519 related (and SIG/2.0 protocol)
+#include <Curve25519.h>
+#include <Crypto.h>
+#include <base64.hpp>
+#include <RNG.h>
+#include <AES.h>
+#include <CTR.h>
+#include <EEPROM.h>
+
+#define RNG_APP_TAG BUILD
+#define RNG_EEPROM_ADDRESS 950 // XXX re-arrange once we got a clean struct for the flash.
+
 
 #if MQTT_MAX_PACKET_SIZE < 256
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
@@ -198,6 +211,75 @@ void setRedLED(int state) {
   }
 }
 
+
+void kickoff_RNG() {
+  // Attempt to get a half decent seed soon after boot. We ought to pospone all operations
+  // to the run loop - well after DHCP has gotten is into business.
+  //
+  // Note that Wifi/BT should be on according to:
+  //    https://github.com/espressif/esp-idf/blob/master/components/esp32/hw_random.c
+  //
+  RNG.begin(RNG_APP_TAG, RNG_EEPROM_ADDRESS);
+
+  SHA256 Sha256;
+  uint8_t seed[ 32 ];
+  for (int i = 0; i < 25; i++) {
+    uint32_t r = trng(); // RANDOM_REG32 ; // Or esp_random(); for the ESP32 in recent libraries.
+    Sha256.update(&r, sizeof(r));
+    delay(10);
+  }
+  Sha256.finalize(seed, sizeof(seed));
+  RNG.stir(seed, 32, 100);
+}
+
+void maintain_rng() {
+  uint32_t seed = trng();
+  RNG.stir(seed, 32, 100);
+}
+
+typedef struct eeprom_rec {
+  uint32_t version;
+  uint8_t flags;
+  uint8_t node_private[32];
+  uint8_t node_public[32]; // TBD that we cannot recreate it at runtime.
+  uint8_t sessionke[32]y;
+} eeprom_rec_t;
+
+uint8_t node_public[32];
+uint8_t node_private[32];
+uint8_t sessionke[32];
+
+// Ideally called from the runloop - i.e. late once we have
+// entropy from wifi/etc.
+//
+void setup_curve25519() {
+  EEPROM.begin(512);
+  for (int adr = 0; adr < sizeof(eeprom_rec_t) ; adr++)
+    ((uint8_t *)eeprom_rec)[adr] = EEPROM.read(adr);
+
+  if (eeprom_rec.version != 0x0100) {
+    Serial.println("EEPROM not understood; wiping.");
+    bzero((uint8_t *)eeprom_rec, sizeof(eeprom_rec))
+    eeprom_rec.version = 0x0100;
+  }
+
+  if (eeprom_rec.flags & 1) {
+    // regenerate the public key ?? we cannot in this lib ?
+    return;
+  }
+
+  Serial.println("EEPROM has no keypair - renerating.");
+
+  Curve25519::dh1(node_public, node_private);
+  memcpy(eeprom_rec.node_private, node_private, sizeof(node_private));
+  memcpy(eeprom_rec.node_public, node_public, sizeof(node_public));
+
+  bzero(eeprom_rec.sessionkey, sizeof(sessionke));
+  eeprom_rec.flags |= 1;
+
+  for (int adr = 0; adr < sizeof(eeprom_rec_t) ; adr++)
+    EEPROM.write(adr, ((uint8_t *)eeprom_rec)[adr]);
+}
 
 void setup() {
   pinMode(PIN_POWER, OUTPUT);
@@ -406,7 +488,7 @@ void reconnectMQTT() {
   }
 }
 
-void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
+void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   char payload[MAX_MSG];
   memcpy(payload, payload_theirs, length);
   payload[length] = 0;
@@ -696,6 +778,7 @@ int checkTagReader() {
   return 1;
 }
 void loop() {
+  maintain_rng();
 
 #ifdef DEBUG
   static int last_debug = 0, last_debug_state = -1;
