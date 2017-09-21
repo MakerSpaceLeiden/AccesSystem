@@ -13,6 +13,7 @@ import daemon
 import setproctitle
 import socket
 import traceback
+import linecache
 
 import configargparse
 
@@ -114,8 +115,8 @@ class ACNodeBase:
     if self.cnf.logfile:
       self.logger.addHandler(logging.StreamHandler(stream=self.cnf.logfile))
 
-    if self.cnf.verbose:
-       self.logger.addHandler(logging.StreamHandler())
+    # if self.cnf.verbose:
+    #   self.logger.addHandler(logging.StreamHandler())
 
     if not self.cnf.no_syslog:
        self.logger.addHandler(logging.handlers.SysLogHandler())
@@ -141,7 +142,7 @@ class ACNodeBase:
     command = None
 
     try:
-      elems = msg['payload'].split()
+      elems = msg['payload'].split(' ')
       return(elems)
 
     except:
@@ -229,13 +230,22 @@ class ACNodeBase:
 
     try:
         msg['payload'] = message.payload.decode('ASCII')
-
+        
         if not self.extract_validated_payload(msg):
             return None
 
         cmd = msg['payload'].split(' ')[0]
     except Exception as e:
       self.logger.warning("Could not parse request {}:{}' -- ignored".format(message.payload, str(e)))
+      if 1:
+            exc_type, exc_obj, tb = sys.exc_info()
+            f = tb.tb_frame
+            lineno = tb.tb_lineno
+            filename = f.f_code.co_filename
+            linecache.checkcache(filename)
+            line = linecache.getline(filename, lineno, f.f_globals)
+            self.logger.debug('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
+
       return None
 
     if cmd in self.commands:

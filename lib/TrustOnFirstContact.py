@@ -11,6 +11,8 @@ import hashlib
 import linecache
 
 import axolotl_curve25519 as curve
+import ed25519 as ed25519
+from Crypto.Cipher import AES
 
 # For older version of python use:
 # from Cryptodome import Random
@@ -21,7 +23,8 @@ import Beat
 class TrustOnFirstContact(Beat.Beat):
   sharedkey = {}
   pubkeys = {}
-
+  
+  
   def __init__(self):
     super().__init__()
     self.commands[ 'welcome' ] = self.cmd_welcome
@@ -33,16 +36,15 @@ class TrustOnFirstContact(Beat.Beat):
        if self.cnf.privatekey:
               self.logger.critical("Either generate a new key; or set one. Not both. Aborting.")
               sys.exit(1);
-
-       randm32 = Random.new().read(32)
-       self.cnf.privatekey = curve.generatePrivateKey(randm32)
+              
+       privatekey, publickey = ed25519.create_keypair()
 
        if self.cnf.privatekeyfile:
-           if os.path.isfile(self.cnf.privatekey):
+           if os.path.isfile(self.cnf.privatekeyfile):
               self.logger.critical("Refusing to overwrite existing private key. Aborting.")
               sys.exit(1);
 
-           if 32 != open(self.cnf.privatekeyfile,"wb").write(self.cnf.privatekey):
+           if 32 != open(self.cnf.privatekeyfile,"wb").write(privatekey.to_seed()):
               self.logger.critical("Failed to write the newly generated privatekeyfile. Aborting.");
               sys.exit(1);
 
@@ -51,26 +53,31 @@ class TrustOnFirstContact(Beat.Beat):
            self.logger.info("Using empheral private key");
 
     if self.cnf.privatekey:
-          # base64 decode it - and check it is 32 bytes.
-         # self.cnf.privatekey = base64.b64decode(self.cnf.privatekey)
+         seed = base64.b64decode(self.cnf.privatekey)
 
-         if len(self.cnf.privatekey) != 32:
+         if len(seed) != 32:
              self.logger.critical("Command line private key not exactly 32 bytes. aborting.");
              sys.exit(1);
+             self.cnf.privatekey = ed25519.SigningKey(seed)
     else:
         if self.cnf.privatekeyfile:
-             self.cnf.privatekey = open(self.cnf.privatekeyfile,"rb").read(32)
+             seed = open(self.cnf.privatekeyfile,"rb").read(32)
 
-             if len(self.cnf.privatekey) != 32:
+             if len(seed) != 32:
                  self.logger.critical("Private key in file is not exactly 32 bytes. aborting.");
                  sys.exit(1);
-      
+
+    self.cnf.privatekey = ed25519.SigningKey(seed)
+
     if self.cnf.tofconly and not self.cnf.privatekey:
          self.logger.critical("No private key - cannot do TOFC . Aborting.")
          sys.exit(1);
 
-    self.cnf.publickey = curve.generatePublicKey(self.cnf.privatekey)
-    self.pubkeys[ self.cnf.node ] =self.cnf.publickey
+    self.cnf.publickey = self.cnf.privatekey.get_verifying_key()
+    self.pubkeys[ self.cnf.node ] = self.cnf.publickey
+
+    self.session_priv = curve.generatePrivateKey(Random.new().read(32));
+    self.session_pub =  curve.generatePublicKey(self.session_priv);
     
   def parseArguments(self):
     self.parser.add('--privatekey','-K',
@@ -89,22 +96,22 @@ class TrustOnFirstContact(Beat.Beat):
         return super().send(dstnode, payload)
 
      payload = self.beat()+" "+payload
-
-     randm64 = Random.new().read(64)
-     signature = curve.calculateSignature(randm64, self.cnf.privatekey, payload.encode('ASCII'))
+     signature = self.cnf.privatekey.sign(payload.encode('ASCII'))
      signature = base64.b64encode(signature).decode('ASCII')
 
-     super().send(dstnode, "SIG/2.0 "+signature+" "+payload, raw=True)
+     payload =  "SIG/2.0 "+signature+" "+payload
+     
+     super().send(dstnode, payload, raw=True)
 
   def extract_validated_payload(self, msg):
-
+   try:
     if not msg['payload'].startswith("SIG/2"):
         return super().extract_validated_payload(msg)
 
     beat = int(self.beat())
     try:
-        hdr, sig, payload = msg['payload'].split(' ',2)
-        sig = base64.b64decode(sig)
+        hdr, b64sig, payload = msg['payload'].split(' ',2)
+        sig = base64.b64decode(b64sig)
         
         msg['hdr'] = hdr
         msg['sig'] = sig
@@ -129,10 +136,10 @@ class TrustOnFirstContact(Beat.Beat):
     # Process TOFU information if we do not (yet) know the public key
     # without validating the signature.
     #
-    if not msg['node'] in self.pubkeys:
-       if cmd == 'announce' or cmd == 'welcome':
+    seskey = None
+    if cmd == 'announce' or cmd == 'welcome':
             try:
-                cmd, ip, pubkey = clean_payload.split(" ")
+                cmd, ip, pubkey, seskey  = clean_payload.split(" ")
 
             except Exception as e:
                 self.logger.error("Error parsing announce. Ignored. "+str(e))
@@ -140,19 +147,26 @@ class TrustOnFirstContact(Beat.Beat):
 
             publickey = base64.b64decode(pubkey)
             if len(publickey) != 32:
-                    self.logger.error("Ignoring malformed public key of node {}".format(msg['node']))
+                    self.logger.error("Ignoring malformed signing public key of node {}".format(msg['node']))
+                    return None
+
+            publickey = ed25519.VerifyingKey(pubkey, encoding="base64")
+            
+            seskey = base64.b64decode(seskey)
+            if len(seskey) != 32:
+                    self.logger.error("Ignoring malformed session public key of node {}".format(msg['node']))
                     return None
 
             if msg['node'] in self.pubkeys:
-                if self.pubkeys[msg['node']] == publickey:
-                        self.logger.debug("Ignoring (unchanged) public key of node {}".format(msg['node']))
-                        return None
-
-                self.logger.info ("Ignoring (changed) public key of node {}".format(msg['node']))
-                return None
-
-            self.logger.debug("Potentially learned a public key of node {} on first contact - checking signature next.".format(msg['node']))
+                if self.pubkeys[msg['node']] != publickey:
+                   self.logger.info ("Ignoring (changed) public key of node {}".format(msg['node']))
+                   return None
+            else:
+                 self.logger.debug("Potentially learned a public key of node {} on first contact - checking signature next.".format(msg['node']))
     else:
+        if not msg['node'] in self.pubkeys:
+            self.logger.info ("No public key for node {} -- ignoring.".format(msg['node']))
+            return None
         publickey = self.pubkeys[ msg['node'] ]
     
     if not self.cnf.privatekey:
@@ -161,28 +175,73 @@ class TrustOnFirstContact(Beat.Beat):
     # Note: this is the payload `as of now' -- not the further decoded/stripped of its beat payload.
     # Because we also (want to) have the signature cover the beat - to prevent replay.
     # Todo: consider a nonce.
-    if curve.verifySignature(publickey, signed_payload.encode(), sig):
-        self.logger.warning("Invalid signatured for {} - ignored".format(msg['node']))
+    try:
+        publickey.verify(b64sig, signed_payload.encode('ASCII'), encoding="base64")
+        self.logger.debug("Good signature on " + signed_payload)
+    except ed25519.BadSignatureError:
+        self.logger.warning("Bad signature for {} - ignored".format(msg['node']))
+        return None
+    except Exception as e:
+        self.logger.warning("Invalid signature for {}: {} -- ignored.".format(msg['node'], str(e)))
         return None
 
     if not msg['node'] in self.pubkeys:
         self.pubkeys[ msg['node'] ] = publickey
         self.logger.info("Learned a public key of node {} on first contact.".format(msg['node']))
 
-        session_key = curve.calculateAgreement(self.cnf.privatekey, publickey)
-        self.sharedkey[ msg['node'] ] = hashlib.sha256(session_key).hexdigest()
+    if (cmd == 'announce' or cmd == 'welcome') and seskey:
+        session_key = curve.calculateAgreement(self.session_priv, seskey)
+        self.sharedkey[ msg['node'] ] = hashlib.sha256(session_key).digest()
 
-        self.logger.debug("Calculated shared secret with node {}.".format(msg['node']))
+        self.logger.debug("(Re)calculated shared secret with node {}.".format(msg['node']))
 
-    # self.logger.debug("Good signature.")
     msg['validated'] = 20
-    
-    return msg
+  
+   except Exception as e:
+        if 1:
+            exc_type, exc_obj, tb = sys.exc_info()
+            f = tb.tb_frame
+            lineno = tb.tb_lineno
+            filename = f.f_code.co_filename
+            linecache.checkcache(filename)
+            line = linecache.getline(filename, lineno, f.f_globals)
+            self.logger.debug('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
+   return msg
 
   def send_tofu(self, prefix, dstnode):
-    bp = base64.b64encode(self.cnf.publickey).decode('ASCII')
-    return self.send(dstnode, prefix + " " + socket.gethostbyname(socket.gethostname()) + " " + bp)
+    bp = self.cnf.publickey.to_bytes();
+    bp = base64.b64encode(bp).decode('ASCII')
+    
+    sp = base64.b64encode(self.session_pub).decode('ASCII')
+    
+    return self.send(dstnode, prefix + " " + socket.gethostbyname(socket.gethostname()) + " " + bp + " " + sp)
 
+  def session_decrypt(self, msg, cyphertext):
+    node = msg[ 'node']
+    
+    if not node in self.sharedkey:
+        self.logger.info("No session key for node {} - not decrypting.".format(node))
+        return;
+    
+    try:
+        iv, cyphertext = cyphertext.split('.')
+        
+        iv = base64.b64decode(iv)
+        cyphertext = base64.b64decode(cyphertext)
+        
+        if len(iv) != 16:
+            self.logger.info("Invalid IV")
+            return None
+
+        cipher = AES.new(self.sharedkey[ node ], AES.MODE_CBC, iv )
+        # Our padding is, for now, just spaces.
+        # XXX change to PKCS#5
+        return cipher.decrypt(cyphertext).decode().rstrip()
+        
+    except Exception as e:
+        self.logger.error("Error in decryption: {}".format(str(e)))
+        return None
+        
   def announce(self,dstnode):
     self.send_tofu('announce', dstnode)
 

@@ -17,21 +17,26 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-// For the HMAX of the SIG/1.0 protocol
+// Hardware random generator.
+#include <esp8266-trng.h>
+
+// For the HMAC of the SIG/1.0 protocol
 #include <sha256.h>
 
-// Curve25519 related (and SIG/2.0 protocol)
-#include <Curve25519.h>
+// Curve/Ed25519 related (and SIG/2.0 protocol)
 #include <Crypto.h>
-#include <base64.hpp>
+#include <Curve25519.h>
+#include <Ed25519.h>
 #include <RNG.h>
 #include <AES.h>
 #include <CTR.h>
+#include <CBC.h>
+
+#include <base64.hpp>
+
+#include <GDBStub.h>
+
 #include <EEPROM.h>
-
-#define RNG_APP_TAG BUILD
-#define RNG_EEPROM_ADDRESS 950 // XXX re-arrange once we got a clean struct for the flash.
-
 
 #if MQTT_MAX_PACKET_SIZE < 256
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
@@ -45,7 +50,8 @@ const char* mqtt_server = "space.makerspaceleiden.nl";
 
 // MQTT topics are constructed from <prefix> / <dest> / <sender>
 //
-const char *mqtt_topic_prefix = "makerspace/ac";
+// const char *mqtt_topic_prefix = "makerspace/ac";
+const char *mqtt_topic_prefix = "test";
 const char *moi = "grindernode";    // Name of the sender
 const char *machine = "grinder";
 const char *master = "master";    // Destination for commands
@@ -86,9 +92,44 @@ const uint8_t PIN_OPTO_ENERGIZED     = 5; // relay energized -- capacitor charge
 // The RFID reader itself is connected to the
 // hardwired MISO/MOSI and CLK pins (12, 13, 14)
 
+#define ED59919_SIGLEN          (64)
+#define CURVE259919_KEYLEN      (32)
+#define CURVE259919_SESSIONLEN  (CURVE259919_KEYLEN)
+
+// Data stored persistently (in th
+//
+typedef struct __attribute__ ((packed)) {
+#define EEPROM_VERSION (0x0103)
+  uint16_t version;
+  uint8_t flags;
+  uint8_t spare;
+
+  // Ed25519 key (Curve25519 key in Edwards y space)
+  uint8_t node_privatesign[CURVE259919_KEYLEN];
+  uint8_t master_publicsignkey[CURVE259919_KEYLEN];
+
+} eeprom_t;
+eeprom_t eeprom;
+
+uint8_t node_publicsign[CURVE259919_KEYLEN];
+
+// Curve25519 key (In montgomery x space) - not kept in
+// persistent storage as we renew on reboot in a PFS
+// sort of 'light' mode.
+//
+uint8_t node_publicsession[CURVE259919_KEYLEN];
+uint8_t node_privatesession[CURVE259919_KEYLEN];
+uint8_t sessionkey[CURVE259919_SESSIONLEN];
+
+#define CRYPTO_HAS_PRIVATE_KEYS (1<<0)
+#define CRYPTO_HAS_MASTER_TOFU (1<<1)
+
+#define RNG_APP_TAG BUILD
+#define RNG_EEPROM_ADDRESS (sizeof(eeprom)+4)
+
 // Comment out to reduce debugging output.
 //
-#define DEBUG  yes
+// #define DEBUG  yes
 
 // While we avoid using #defines, as per https://www.arduino.cc/en/Reference/Define, in above - in below
 // case - the compiler was found to procude better code if done the old-fashioned way.
@@ -105,6 +146,8 @@ typedef enum {
   DENIED,                     // we got a denied from the master -- flash an LED and then return to WAITINGFORCARD
   CHECKING,                   // we are are waiting for the master to respond -- flash an LED and then return to WAITINGFORCARD
   WAITINGFORCARD,             // waiting for card.
+  BOOTING,                    // device still booting up.
+  NOTOFU,                     // No trust on first use -- not learned keys of the master yet.
   POWERED,                    // Relay powered.
   ENERGIZED,                  // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
   RUNNING,                    // Running - go to DUSTEXTRACT once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
@@ -118,9 +161,12 @@ const char *machinestateName[NOTINUSE] = {
   "Tag Denied",
   "Checking tag",
   "Waiting for card to be presented",
+  "Booting",
+  "Awaiting Master TOFU",
   "Relay powered",
   "Energized",
   "Running",
+  "Auto shutdown initiated"
 };
 
 static machinestates_t laststate;
@@ -166,6 +212,12 @@ void Log::begin(const char * prefix, int speed) {
 size_t Log::write(uint8_t c) {
   size_t r = Serial.write(c);
 
+  if (at >= MAX_MSG) {
+    Serial.println("LOGBUGGER overflow.");
+    Serial.println(logbuff);
+    at = 0;
+  }
+
   if (c >= 32)
     logbuff[ at++ ] = c;
 
@@ -208,9 +260,11 @@ void setRedLED(int state) {
       analogWrite(PIN_LED, 0);
       digitalWrite(PIN_LED, 1);
       break;
+    case NEVERSET:
+    default:
+      break;
   }
 }
-
 
 void kickoff_RNG() {
   // Attempt to get a half decent seed soon after boot. We ought to pospone all operations
@@ -221,64 +275,79 @@ void kickoff_RNG() {
   //
   RNG.begin(RNG_APP_TAG, RNG_EEPROM_ADDRESS);
 
-  SHA256 Sha256;
-  uint8_t seed[ 32 ];
+  Sha256.init();
   for (int i = 0; i < 25; i++) {
     uint32_t r = trng(); // RANDOM_REG32 ; // Or esp_random(); for the ESP32 in recent libraries.
-    Sha256.update(&r, sizeof(r));
+    Sha256.write((char*)&r, sizeof(r));
     delay(10);
-  }
-  Sha256.finalize(seed, sizeof(seed));
-  RNG.stir(seed, 32, 100);
+  };
+  RNG.stir(Sha256.result(), 256, 100);
+
+  RNG.setAutoSaveTime(60);
 }
 
 void maintain_rng() {
+  RNG.loop();
+
+  if (RNG.available(256))
+    return;
+
   uint32_t seed = trng();
-  RNG.stir(seed, 32, 100);
+  RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
 }
 
-typedef struct eeprom_rec {
-  uint32_t version;
-  uint8_t flags;
-  uint8_t node_private[32];
-  uint8_t node_public[32]; // TBD that we cannot recreate it at runtime.
-  uint8_t sessionke[32]y;
-} eeprom_rec_t;
+#define EEPROM_PRIVATE_OFFSET (0x100)
+void load_eeprom() {
+  for (size_t adr = 0; adr < sizeof(eeprom); adr++)
+    ((uint8_t *)&eeprom)[adr] = EEPROM.read(EEPROM_PRIVATE_OFFSET + adr);
+}
 
-uint8_t node_public[32];
-uint8_t node_private[32];
-uint8_t sessionke[32];
+void save_eeprom() {
+  for (size_t adr = 0; adr < sizeof(eeprom); adr++)
+    EEPROM.write(EEPROM_PRIVATE_OFFSET + adr,  ((uint8_t *)&eeprom)[adr]);
+  EEPROM.commit();
+}
 
-// Ideally called from the runloop - i.e. late once we have
+// Ideally called from the runloop - i.e. late once we have at least a modicum of
 // entropy from wifi/etc.
 //
-void setup_curve25519() {
-  EEPROM.begin(512);
-  for (int adr = 0; adr < sizeof(eeprom_rec_t) ; adr++)
-    ((uint8_t *)eeprom_rec)[adr] = EEPROM.read(adr);
+int setup_curve25519() {
+  load_eeprom();
 
-  if (eeprom_rec.version != 0x0100) {
-    Serial.println("EEPROM not understood; wiping.");
-    bzero((uint8_t *)eeprom_rec, sizeof(eeprom_rec))
-    eeprom_rec.version = 0x0100;
+  if (eeprom.version != EEPROM_VERSION) {
+    Log.print("EEPROM Version ");
+    Log.print(eeprom.version, HEX);
+    Log.println(": not understood; wiping.");
+
+    bzero((uint8_t *)&eeprom, sizeof(eeprom));
+    eeprom.version = EEPROM_VERSION;
   }
 
-  if (eeprom_rec.flags & 1) {
-    // regenerate the public key ?? we cannot in this lib ?
-    return;
+  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS)
+    Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
+
+  if (millis() - laststatechange < 1000)
+    return -1;
+
+  Log.println("Generating Curve25519 session keypair");
+
+  Curve25519::dh1(node_publicsession, node_privatesession);
+  bzero(sessionkey, sizeof(sessionkey));
+
+  if (eeprom.flags & CRYPTO_HAS_MASTER_TOFU) {
+    Debug.print("EEPROM Version ");
+    Debug.print(eeprom.version, HEX);
+    Debug.println(" contains all needed keys and is TOFU to a master with public key: ");
+    return 0;
   }
 
-  Serial.println("EEPROM has no keypair - renerating.");
+  Ed25519::generatePrivateKey(eeprom.node_privatesign);
+  Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
 
-  Curve25519::dh1(node_public, node_private);
-  memcpy(eeprom_rec.node_private, node_private, sizeof(node_private));
-  memcpy(eeprom_rec.node_public, node_public, sizeof(node_public));
+  eeprom.flags |= CRYPTO_HAS_PRIVATE_KEYS;
 
-  bzero(eeprom_rec.sessionkey, sizeof(sessionke));
-  eeprom_rec.flags |= 1;
-
-  for (int adr = 0; adr < sizeof(eeprom_rec_t) ; adr++)
-    EEPROM.write(adr, ((uint8_t *)eeprom_rec)[adr]);
+  save_eeprom();
+  return 0;
 }
 
 void setup() {
@@ -292,6 +361,8 @@ void setup() {
   pinMode(PIN_OPTO_OPERATOR, INPUT);
 
   setRedLED(LED_FAST);
+
+  EEPROM.begin(1024);
 
   Log.begin(mqtt_topic_prefix, 115200);
   Log.println("\n\n\nBuild: " BUILD);
@@ -350,8 +421,11 @@ void setup() {
   client.setServer(mqtt_server, 1883);
   client.setCallback(mqtt_callback);
 
-  machinestate = WAITINGFORCARD;
+  kickoff_RNG();
+
+  machinestate = BOOTING;
   setRedLED(LED_ON);
+
 }
 
 const char * state2str(int state) {
@@ -424,22 +498,37 @@ const char * hmacAsHex(const char *passwd, const char * beatAsString, const char
 
 void send(const char *payload) {
   char msg[ MAX_MSG];
-  char beat[MAX_BEAT], topic[MAX_TOPIC];
-
-  snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
+  char beat[MAX_BEAT];
+  const char *vs = "?.??";
+  
+  char topic[MAX_TOPIC];
   snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, moi);
 
-  msg[0] = 0;
-  snprintf(msg, sizeof(msg), "SIG/1.0 %s %s %s",
-           hmacAsHex(passwd, beat, topic, payload),
-           beat, payload);
+  snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
+
+  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+    vs = "2.0";
+    uint8_t signature[ED59919_SIGLEN];
+
+    char tosign[MAX_MSG];
+    size_t len = snprintf(tosign, sizeof(tosign), "%s %s", beat, payload);
+
+    Serial.println("Ed25519::sig\n");
+    Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, len);
+
+    char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
+    encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
+    
+    snprintf(msg, sizeof(msg), "SIG/%s %s %s", vs, sigb64, tosign);
+  } else {
+    vs = "1.0";
+    const char * sig  = hmacAsHex(passwd, beat, topic, payload);
+    snprintf(msg, sizeof(msg), "SIG/%s %s %s %s", vs, sig, beat, payload);
+  }
+
+  // Debug.print(">>>");  Debug.println(msg);
 
   client.publish(topic, msg);
-
-  Debug.print("Sending ");
-  Debug.print(topic);
-  Debug.print(": ");
-  Debug.println(msg);
 }
 
 char * strsepspace(char **p) {
@@ -452,7 +541,33 @@ char * strsepspace(char **p) {
     (*p)++;
     return q;
   }
+  if (*q)
+    return q;
   return NULL;
+}
+
+void send_helo(const char * helo) {
+  char buff[MAX_MSG];
+
+  IPAddress myIp = WiFi.localIP();
+  snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", helo, myIp[0], myIp[1], myIp[2], myIp[3]);
+
+  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+    char b64[128];
+
+    // Add ED25519 signing/non-repudiation key
+    strncat(buff, " ", sizeof(buff));
+    encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
+    strncat(buff, b64, sizeof(buff));
+
+    // Add Curve25519 session/confidentiality key
+    strncat(buff, " ", sizeof(buff));
+    encode_base64((unsigned char *)(node_publicsession), sizeof(node_publicsession), (unsigned char *)b64);
+    strncat(buff, b64, sizeof(buff));
+  }
+
+  Log.println(buff);
+  send(buff);
 }
 
 void reconnectMQTT() {
@@ -478,10 +593,7 @@ void reconnectMQTT() {
     Debug.print("Subscribed to ");
     Debug.println(topic);
 
-    char buff[MAX_MSG];
-    IPAddress myIp = WiFi.localIP();
-    snprintf(buff, sizeof(buff), "announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
-    send(buff);
+    send_helo((char *)"announce");
   } else {
     Log.print("failed : ");
     Log.println(state2str(client.state()));
@@ -490,6 +602,10 @@ void reconnectMQTT() {
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   char payload[MAX_MSG];
+
+  if (length >= sizeof(payload))
+    length = sizeof(payload) - 1;
+
   memcpy(payload, payload_theirs, length);
   payload[length] = 0;
 
@@ -503,24 +619,86 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   };
   char * p = (char *)payload;
 
-#define SEP(tok, err) char *  tok = strsepspace(&p); if (!tok) { Log.println(err); return; }
-
-  SEP(sig, "No SIG header");
-
-  if (strncmp(sig, "SIG/1", 5)) {
-    Log.print("Unknown signature format <"); Log.print(sig); Log.println("> - ignoring.");
-    return;
+#define SEP(tok, err) char *  tok = strsepspace(&p); if (!tok) { Log.print("Malformed/missing " err ": " ); Log.println(p); return; }
+#define B64D(base64str, bin, what) { \
+    if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
+      Log.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
+      return; \
+    }; \
+    decode_base64((unsigned char *)base64str, bin); \
   }
-  SEP(hmac, "No HMAC");
-  SEP(beat, "No BEAT");
 
+  SEP(version, "SIG header");
+  SEP(sig, "HMAC");
+
+  uint8_t * signkey = eeprom.master_publicsignkey;
+
+  char signed_payload[MAX_MSG];
+  strncpy(signed_payload, p, sizeof(signed_payload));
+  SEP(beat, "BEAT");
   char * rest = p;
 
-  const char * hmac2 = hmacAsHex(passwd, beat, topic, rest);
-  if (strcasecmp(hmac2, hmac)) {
-    Log.println("Invalid signature - ignoring.");
+  bool newtofu = false;
+  bool newsession = false;
+
+  unsigned char pubencr_tmp[CURVE259919_KEYLEN];
+
+  if (!strncmp(version, "SIG/1", 5)) {
+    const char * hmac2 = hmacAsHex(passwd, beat, topic, p);
+    if (strcasecmp(hmac2, sig)) {
+      Log.println("Invalid HMAC signature - ignoring.");
+      return;
+    }
+  } else if (!strncmp(version, "SIG/2", 5)) {
+    unsigned char pubsign_tmp[CURVE259919_KEYLEN];
+    uint8_t signature[ED59919_SIGLEN];
+
+    bool tofu = (eeprom.flags & CRYPTO_HAS_MASTER_TOFU) ? true : false;
+
+    B64D(sig, signature, "Ed25519 signature");
+    SEP(cmd, "command");
+
+    if (strcmp(cmd, "welcome") == 0  || strcmp(cmd, "announce") == 0) {
+      newsession = true;
+
+      SEP(host_ip, "IP address");
+      SEP(master_publicsignkey_b64, "B64 public signing key");
+      SEP(master_publicencryptkey_b64, "B64 public encryption key");
+
+      B64D(master_publicsignkey_b64, pubsign_tmp, "Ed25519 public key");
+      B64D(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key");
+
+      if (tofu) {
+        if (memcmp(eeprom.master_publicsignkey, pubsign_tmp, sizeof(pubsign_tmp))) {
+          Log.println("Sender has changed its public signing key(s) - ignoring.");
+          return;
+        }
+        Debug.println("Known Ed25519 signature on message.");
+      } else {
+        Debug.println("Unknown Ed25519 signature on message - giving the benefit of the doubt.");
+        signkey = pubsign_tmp;
+
+        // We are not setting the TOFU flag in the EEPROM yet, as we've not yet checked
+        // for reply by means of the beat.
+        //
+        newtofu = true;
+      }
+
+      if (!tofu && !newtofu) {
+        Log.println("Cannot (yet) validate signature - ignoring while waiting for welcome/announce");
+        return;
+      };
+    };
+    Serial.println("Ed25519::verify\n");
+    if (!Ed25519::verify(signature, signkey, signed_payload, strlen(signed_payload))) {
+      Log.println("Invalid Ed25519 signature on message - ignoring.");
+      return;
+    };
+  } else {
+    Log.print("Unknown signature format <"); Log.print(version); Log.println("> - ignoring.");
     return;
-  }
+  };
+
   unsigned long  b = strtoul(beat, NULL, 10);
   if (!b) {
     Log.print("Unparsable beat - ignoring.");
@@ -529,10 +707,8 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
 
   unsigned long delta = llabs((long long) b - (long long)beatCounter);
 
-  // If we are still in the first hour of 1970 - accept any signed time;
   // otherwise - only accept things in a 4 minute window either side.
   //
-  //  if (((!strcmp("beat", rest) || !strcmp("announce", rest)) &&  beatCounter < 3600) || (delta < 120)) {
   if ((beatCounter < 3600) || (delta < 120)) {
     beatCounter = b;
     if (delta > 10) {
@@ -542,10 +718,58 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     }
   } else {
     Log.print("Good message -- but beats ignored as they are too far off ("); Log.print(delta); Log.println(" seconds).");
+    return;
   };
 
-  // handle a perfectly good message.
+  if (newtofu) {
+    Debug.println("TOFU for Ed25519 key of master, stored in persistent store..");
+    memcpy(eeprom.master_publicsignkey, signkey, sizeof(eeprom.master_publicsignkey));
+
+    eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
+    save_eeprom();
+  }
+  if (newsession) {
+    // Allways allow for the updating of session keys. On every welcome/announce. Provided that
+    // the signature matched.
+
+    // We need to copy the key as 'dh2()' will wipe its inputs as a side effect of the calculation.
+    // Which usually makes sense -- but not in our case - as we're async and may react to both
+    // a welcome and an announce -- so regenerating it on both would confuse matters.
+    //
+    // XX to do - consider regenerating it after a welcome; and go through replay attack options.
+    //
+    uint8_t tmp_private[CURVE259919_KEYLEN];
+
+    memcpy(sessionkey, pubencr_tmp, sizeof(pubencr_tmp));
+    memcpy(tmp_private, node_privatesession, sizeof(node_privatesession));
+    Serial.println("Curve25519::dh2\n");
+    Curve25519::dh2(sessionkey, tmp_private);
+
+
+    Sha256.init();
+    Sha256.write((char*)&sessionkey, sizeof(sessionkey));
+    memcpy(sessionkey, Sha256.result(), sizeof(sessionkey));
+
+#if 0
+    unsigned char key_b64[128];
+    encode_base64(sessionkey, sizeof(sessionkey), key_b64);
+    Serial.print("RAW session key: "); Serial.println((char *)key_b64);
+    encode_base64(sessionkey, sizeof(sessionkey), key_b64);
+    Serial.print("HASHed session key: "); Serial.println((char *)key_b64);
+#endif
+
+    Log.print("(Re)calculated session key - slaved to ");
+    Log.println(topic);
+
+    eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
+  };
+
   if (!strcmp("announce", rest)) {
+    send_helo((char *)"welcome");
+    return;
+  }
+
+  if (!strcmp("welcome", rest)) {
     return;
   }
 
@@ -570,6 +794,11 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   }
 
   if (!strncmp("revealtag", rest, 9)) {
+    if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+      Log.println("Ignoring reveal command. Already passed encrypted.");
+      return;
+    };
+
     if (b < lasttagbeat) {
       Log.println("Asked to reveal a tag I no longer have a record off, ignoring.");
       return;
@@ -607,8 +836,13 @@ unsigned int tock;
 void handleMachineState() {
   tock++;
 
+#if 0
   int relayState = digitalRead(PIN_OPTO_ENERGIZED);
   int operatorSwitchState = digitalRead(PIN_OPTO_OPERATOR);
+#else
+  int relayState = 1;
+  int operatorSwitchState = 0;
+#endif
 
   int r = 0;
   if (relayState) r |= 1;
@@ -647,7 +881,7 @@ void handleMachineState() {
       } else if (machinestate < ENERGIZED && machinestate > NOCONN) {
         static int last_spur_detect = 0;
         if (millis() - last_spur_detect > 500) {
-          send("event spuriousbuttonpress?");
+          send("event spurious buttonpress?");
         };
         last_spur_detect = millis();
       };
@@ -662,6 +896,18 @@ void handleMachineState() {
 
   int relayenergized = 0;
   switch (machinestate) {
+    // XXX we git a slight challenge here - if above hardware state is funny - then
+    // we may get into a situation where we skip BOOTING and NOTOFU.
+    //
+    case BOOTING:
+      if (setup_curve25519() == 0) {
+        machinestate = NOTOFU;
+      }
+      break;
+    case NOTOFU:
+      if (eeprom.flags & CRYPTO_HAS_MASTER_TOFU)
+        machinestate = WAITINGFORCARD;
+      break;
     case OUTOFORDER:
     case SWERROR:
     case NOCONN:
@@ -685,8 +931,6 @@ void handleMachineState() {
       setRedLED(LED_FAST);
       if (millis() - laststatechange > CHECK_TO) {
         setRedLED(LED_OFF);
-        Log.print("D=");
-        Log.print(millis() - laststatechange);
         Log.println("Returning to waiting for card - no response.");
         machinestate = WAITINGFORCARD;
       };
@@ -745,6 +989,15 @@ void handleMachineState() {
 }
 
 int checkTagReader() {
+#if 1
+  static unsigned long last = 0;
+  if (millis() - last < 10*1000)
+    return 0;
+    
+  last = millis();
+
+  MFRC522::Uid uid = { .size = 8, .uidByte = { 1, 2, 3, 4, 5, 6, 7, 8 } };
+#else
   if ( ! mfrc522.PICC_IsNewCardPresent())
     return 0;
 
@@ -755,6 +1008,7 @@ int checkTagReader() {
   MFRC522::Uid uid = mfrc522.uid;
   if (uid.size == 0)
     return 0;
+#endif
 
   lasttag[0] = 0;
   for (int i = 0; i < uid.size; i++) {
@@ -764,12 +1018,55 @@ int checkTagReader() {
   }
   lasttagbeat = beatCounter;
 
-  char beatAsString[ MAX_BEAT ];
-  snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
-  Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
-  Sha256.print(beatAsString);
-  Sha256.write(uid.uidByte, uid.size);
-  const char * tag_encoded = hmacToHex(Sha256.resultHmac());
+  char tmp[MAX_MSG];
+  const char * tag_encoded;
+  if (!eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+    char beatAsString[ MAX_BEAT ];
+    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
+    Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
+    Sha256.print(beatAsString);
+    Sha256.write(uid.uidByte, uid.size);
+    tag_encoded = hmacToHex(Sha256.resultHmac());
+  } else {
+    CBC<AES256> cipher;
+    uint8_t iv[16];
+    RNG.rand(iv, sizeof(iv));
+
+    if (!cipher.setKey(sessionkey, cipher.keySize())) {
+      Log.println("FAIL setKey");
+      return 0;
+    }
+
+    if (!cipher.setIV(iv, cipher.ivSize())) {
+      Log.println("FAIL setIV");
+      return 0;
+    }
+
+    size_t len = strlen(lasttag) + 16;
+    int paddedlen = len & ~15;
+
+    uint8_t output[ paddedlen ], output_b64[ paddedlen * 2 ], iv_b64[ 32 ];
+
+    snprintf(tmp, sizeof(tmp), "%s                ", lasttag);
+
+    cipher.encrypt(output, (uint8_t *)tmp, paddedlen);
+
+    encode_base64(iv, sizeof(iv), iv_b64);
+    encode_base64(output, paddedlen, output_b64);
+
+#if 0
+    unsigned char key_b64[128];  encode_base64(sessionkey, sizeof(sessionkey), key_b64);
+    Serial.print("Plain len="); Serial.println(strlen(lasttag));
+    Serial.print("Paddd len="); Serial.println(paddedlen);
+    Serial.print("Key Size="); Serial.println(cipher.keySize());
+    Serial.print("IV Size="); Serial.println(cipher.ivSize());
+    Serial.print("IV="); Serial.println((char *)iv_b64);
+    Serial.print("Key="); Serial.println((char *)key_b64);
+    Serial.print("Cypher="); Serial.println((char *)output_b64);
+#endif
+    snprintf(tmp, sizeof(tmp), "%s.%s", iv_b64, output_b64);
+    tag_encoded = tmp;
+  }
 
   static char buff[MAX_MSG];
   snprintf(buff, sizeof(buff), "energize %s %s %s", moi, machine, tag_encoded);
@@ -777,6 +1074,7 @@ int checkTagReader() {
 
   return 1;
 }
+
 void loop() {
   maintain_rng();
 
@@ -846,6 +1144,12 @@ void loop() {
   } else {
     if (machinestate == NOCONN)
       machinestate = WAITINGFORCARD;
+
+    // Rekey if we're connected and more than 30 seconds out of touch - or had a beat skip.
+    static unsigned long lst = beatCounter;
+    if (beatCounter - lst > 100)
+      send_helo("announce");
+    lst = beatCounter;
   };
 
 #ifdef DEBUG3

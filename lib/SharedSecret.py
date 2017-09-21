@@ -86,6 +86,7 @@ class SharedSecret(Beat.Beat):
     return HMAC.hexdigest()
 
   def extract_validated_payload(self, msg):
+   try:
     if not msg['payload'].startswith("SIG/1"):
         return super().extract_validated_payload(msg)
        
@@ -121,7 +122,17 @@ class SharedSecret(Beat.Beat):
         return None
 
     msg['validated'] = 10
-    return msg
+   except Exception as e:
+         if 1:
+            exc_type, exc_obj, tb = sys.exc_info()
+            f = tb.tb_frame
+            lineno = tb.tb_lineno
+            filename = f.f_code.co_filename
+            linecache.checkcache(filename)
+            line = linecache.getline(filename, lineno, f.f_globals)
+            self.logger.debug('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
+
+   return msg
 
   def parse_topic(self, msg):
     if not super().parse_topic(msg):

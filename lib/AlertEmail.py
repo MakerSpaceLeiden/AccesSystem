@@ -43,7 +43,10 @@ class AlertEmail(ACNode):
     super().parseArguments()
 
   def send_email(self,mailmsg,mailsubject, to = None):
-
+    if not self.cnf.alertto:
+        self.logger.debug("No alert email sent - not configured.")
+        return
+    
     msg = MIMEText(mailmsg)
 
     COMMASPACE = ', '
