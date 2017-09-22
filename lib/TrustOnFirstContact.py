@@ -20,6 +20,9 @@ from Crypto import Random
 import SharedSecret
 import Beat
 
+# Note - not checking for illegal padding.
+pkcs7_unpad = lambda s : s[0:-ord(s[-1])]
+
 class TrustOnFirstContact(Beat.Beat):
   sharedkey = {}
   pubkeys = {}
@@ -216,6 +219,7 @@ class TrustOnFirstContact(Beat.Beat):
     
     return self.send(dstnode, prefix + " " + socket.gethostbyname(socket.gethostname()) + " " + bp + " " + sp)
 
+
   def session_decrypt(self, msg, cyphertext):
     node = msg[ 'node']
     
@@ -234,9 +238,7 @@ class TrustOnFirstContact(Beat.Beat):
             return None
 
         cipher = AES.new(self.sharedkey[ node ], AES.MODE_CBC, iv )
-        # Our padding is, for now, just spaces.
-        # XXX change to PKCS#5
-        return cipher.decrypt(cyphertext).decode().rstrip()
+        return pkcs7_unpad(cipher.decrypt(cyphertext).decode())
         
     except Exception as e:
         self.logger.error("Error in decryption: {}".format(str(e)))

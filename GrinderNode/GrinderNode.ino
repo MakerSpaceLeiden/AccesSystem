@@ -309,9 +309,9 @@ void save_eeprom() {
 }
 
 void wipe_eeprom() {
-    bzero((uint8_t *)&eeprom, sizeof(eeprom));
-    eeprom.version = EEPROM_VERSION;
-    save_eeprom();
+  bzero((uint8_t *)&eeprom, sizeof(eeprom));
+  eeprom.version = EEPROM_VERSION;
+  save_eeprom();
 }
 
 // Ideally called from the runloop - i.e. late once we have at least a modicum of
@@ -321,7 +321,7 @@ int setup_curve25519() {
   load_eeprom();
 
   if (eeprom.version != EEPROM_VERSION) {
-    Log.printf("EEPROM Version %04x not understood -- clearing.",eeprom.version );
+    Log.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
     wipe_eeprom();
   }
 
@@ -386,7 +386,7 @@ void setup() {
     ESP.restart();
   }
 
-  Log.printf("Wifi connected to <%s> OK.\n", ssid); 
+  Log.printf("Wifi connected to <%s> OK.\n", ssid);
 #ifdef OTA
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname(moi);
@@ -519,7 +519,7 @@ void send(const char * topic, const char * payload) {
     rec->payload = strdup(payload);
     rec->nxt = NULL;
   }
-  
+
   if (!rec || !(rec->topic) || !(rec->payload)) {
     Serial.println("Out of memory");
     Serial.flush();
@@ -533,7 +533,7 @@ void send(const char * topic, const char * payload) {
   // us to add things to the queue while in something works on it.
   //
   publish_rec_t ** p = &publish_queue;
-  while(*p) p=&(*p)->nxt;
+  while (*p) p = &(*p)->nxt;
   *p = rec;
 }
 
@@ -1047,7 +1047,7 @@ int checkTagReader() {
 
   last = millis();
 
-  MFRC522::Uid uid = { .size = 8, .uidByte = { 1, 2, 3, 4, 5, 6, 7, 8 } };
+  MFRC522::Uid uid = { .size = 5, .uidByte = { 1, 1, 2, 3, 5 } };
 #else
   if ( ! mfrc522.PICC_IsNewCardPresent())
     return 0;
@@ -1069,7 +1069,6 @@ int checkTagReader() {
   }
   lasttagbeat = beatCounter;
 
-  char tmp[MAX_MSG];
   const char * tag_encoded;
   if (!eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
     char beatAsString[ MAX_BEAT ];
@@ -1093,15 +1092,22 @@ int checkTagReader() {
       return 0;
     }
 
-    size_t len = strlen(lasttag) + 16;
-    int paddedlen = len & ~15;
+    // PKCS#7 padding - as traditionally used with AES.
+    // https://www.ietf.org/rfc/rfc2315.txt 
+    // -- section 10.3, page 21 Note 2.
+    //
+    size_t len = strlen(lasttag);
+    int pad = 16 - (len % 16); // cipher.blockSize();
+    if (pad == 0) pad = 16; //cipher.blockSize();
 
-    uint8_t output[ paddedlen ], output_b64[ paddedlen * 2 ], iv_b64[ 32 ];
+    size_t paddedlen = len + pad;
+    uint8_t input[ paddedlen ], output[ paddedlen ], output_b64[ paddedlen * 4 / 3 + 4  ], iv_b64[ 32 ];
+    strcpy((char *)input, lasttag);
 
-    snprintf(tmp, sizeof(tmp), "%s                ", lasttag);
+    for (int i = 0; i < pad; i++)
+      input[len + i] = pad;
 
-    cipher.encrypt(output, (uint8_t *)tmp, paddedlen);
-
+    cipher.encrypt(output, (uint8_t *)input, paddedlen);
     encode_base64(iv, sizeof(iv), iv_b64);
     encode_base64(output, paddedlen, output_b64);
 
@@ -1115,6 +1121,8 @@ int checkTagReader() {
     Serial.print("Key="); Serial.println((char *)key_b64);
     Serial.print("Cypher="); Serial.println((char *)output_b64);
 #endif
+
+    char tmp[MAX_MSG];
     snprintf(tmp, sizeof(tmp), "%s.%s", iv_b64, output_b64);
     tag_encoded = tmp;
   }
@@ -1200,7 +1208,7 @@ void loop() {
     // Rekey if we're connected and more than 30 seconds out of touch - or had a beat skip.
     static unsigned long lst = 0;
     if (beatCounter - lst > 100) {
-      Debug.println("(Re)Announce after a long hiatus/beat reset.");
+      Log.println("(Re)Announce after a long hiatus/beat reset.");
       send_helo("announce");
     }
     lst = beatCounter;
