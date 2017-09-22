@@ -4,6 +4,9 @@
 //
 #define BUILD  __FILE__ " " __DATE__ " " __TIME__
 #define OTA
+// #define DEBUG  yes
+// Run without the hardware.
+#define FAKEMODE
 
 #include <ESP8266WiFi.h>
 
@@ -34,7 +37,9 @@
 
 #include <base64.hpp>
 
+#ifdef DEBUG
 #include <GDBStub.h>
+#endif
 
 #include <EEPROM.h>
 
@@ -96,6 +101,13 @@ const uint8_t PIN_OPTO_ENERGIZED     = 5; // relay energized -- capacitor charge
 #define CURVE259919_KEYLEN      (32)
 #define CURVE259919_SESSIONLEN  (CURVE259919_KEYLEN)
 
+#if HASH_LENGTH != CURVE259919_SESSIONLEN
+#error SHA256 "hash should be the same size as the session key"
+#endif
+#if HASH_LENGTH != 32 // AES256::keySize() 
+#error SHA256 "hash should be the same size as the encryption key"
+#endif
+
 // Data stored persistently (in th
 //
 typedef struct __attribute__ ((packed)) {
@@ -126,19 +138,6 @@ uint8_t sessionkey[CURVE259919_SESSIONLEN];
 
 #define RNG_APP_TAG BUILD
 #define RNG_EEPROM_ADDRESS (sizeof(eeprom)+4)
-
-// Comment out to reduce debugging output.
-//
-// #define DEBUG  yes
-
-// While we avoid using #defines, as per https://www.arduino.cc/en/Reference/Define, in above - in below
-// case - the compiler was found to procude better code if done the old-fashioned way.
-//
-#ifdef DEBUG
-#define Debug Serial
-#else
-#define Debug if (0) Log
-#endif
 
 typedef enum {
   SWERROR, OUTOFORDER, NOCONN, // some error - machine disabled.
@@ -179,6 +178,7 @@ ledstate lastred = NEVERSET;
 ledstate red = NEVERSET;
 
 void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length);
+void send(const char * topic, const char * payload);
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -210,35 +210,35 @@ void Log::begin(const char * prefix, int speed) {
 }
 
 size_t Log::write(uint8_t c) {
+#ifndef GDBSTUB_H
   size_t r = Serial.write(c);
-
-  if (at >= MAX_MSG) {
-    Serial.println("LOGBUGGER overflow.");
-    Serial.println(logbuff);
-    at = 0;
-  }
+#endif
 
   if (c >= 32)
     logbuff[ at++ ] = c;
+  logbuff[at] = 0;
 
-  if (c != '\n' && at <= sizeof(logbuff) - 1)
-    return r;
+  if (c == '\n' || at + 2 >= sizeof(logbuff)) {
+    if (client.connected())
+      send(logtopic, logbuff);
+    at = 0;
+  }
 
-  if (client.connected()) {
-    logbuff[at++] = 0;
-#ifdef DEBUG4
-    Serial.print("debug: ");
-    Serial.print(at);
-    Serial.print(" ");
-    Serial.println(logbuff);
-#endif
-    client.publish(logtopic, logbuff);
-  };
-  at = 0;
-
-  return r;
+  return 1;
 }
 Log Log;
+
+#if 0
+#define Log if (0) Log
+#define Debug if (0) Log
+#else
+#ifdef DEBUG
+// #define Debug Serial
+#define Debug Log
+#else
+#define Debug if (0) Log
+#endif
+#endif
 
 
 // #if !digitalPinHasPWM(PIN_LED)
@@ -289,7 +289,7 @@ void kickoff_RNG() {
 void maintain_rng() {
   RNG.loop();
 
-  if (RNG.available(256))
+  if (RNG.available(1024 * 4))
     return;
 
   uint32_t seed = trng();
@@ -308,6 +308,12 @@ void save_eeprom() {
   EEPROM.commit();
 }
 
+void wipe_eeprom() {
+    bzero((uint8_t *)&eeprom, sizeof(eeprom));
+    eeprom.version = EEPROM_VERSION;
+    save_eeprom();
+}
+
 // Ideally called from the runloop - i.e. late once we have at least a modicum of
 // entropy from wifi/etc.
 //
@@ -315,14 +321,11 @@ int setup_curve25519() {
   load_eeprom();
 
   if (eeprom.version != EEPROM_VERSION) {
-    Log.print("EEPROM Version ");
-    Log.print(eeprom.version, HEX);
-    Log.println(": not understood; wiping.");
-
-    bzero((uint8_t *)&eeprom, sizeof(eeprom));
-    eeprom.version = EEPROM_VERSION;
+    Log.printf("EEPROM Version %04x not understood -- clearing.",eeprom.version );
+    wipe_eeprom();
   }
 
+  ESP.wdtFeed();
   if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS)
     Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
 
@@ -331,17 +334,18 @@ int setup_curve25519() {
 
   Log.println("Generating Curve25519 session keypair");
 
+  ESP.wdtFeed();
   Curve25519::dh1(node_publicsession, node_privatesession);
   bzero(sessionkey, sizeof(sessionkey));
 
   if (eeprom.flags & CRYPTO_HAS_MASTER_TOFU) {
-    Debug.print("EEPROM Version ");
-    Debug.print(eeprom.version, HEX);
-    Debug.println(" contains all needed keys and is TOFU to a master with public key: ");
+    Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);
     return 0;
   }
 
+  ESP.wdtFeed();
   Ed25519::generatePrivateKey(eeprom.node_privatesign);
+  ESP.wdtFeed();
   Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
 
   eeprom.flags |= CRYPTO_HAS_PRIVATE_KEYS;
@@ -351,6 +355,8 @@ int setup_curve25519() {
 }
 
 void setup() {
+  Serial.begin(115200);
+
   pinMode(PIN_POWER, OUTPUT);
   digitalWrite(PIN_POWER, 0);
 
@@ -376,18 +382,19 @@ void setup() {
   };
 
   if (WiFi.status() != WL_CONNECTED) {
-    Log.print("Connection to <"); Log.print(ssid); Log.println("> failed! Rebooting...");
+    Log.printf("Connection to <%s> failed, rebooting\n", ssid);
     ESP.restart();
   }
 
-  Log.print("Wifi connected to <"); Log.print(ssid); Log.println(">.");
+  Log.printf("Wifi connected to <%s> OK.\n", ssid); 
 #ifdef OTA
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname(moi);
   ArduinoOTA.setPassword((const char *)OTA_PASSWD);
 
   ArduinoOTA.onStart([]() {
-    Log.println("OTA process started.");
+    Log.println("OTA process started. Wiping keys.");
+    wipe_eeprom();
   });
   ArduinoOTA.onEnd([]() {
     Log.println("OTA process completed. Resetting.");
@@ -404,8 +411,7 @@ void setup() {
     else if (error == OTA_RECEIVE_ERROR) Log.println("OTA: Receive Failed");
     else if (error == OTA_END_ERROR) Log.println("OTA: End Failed");
     else {
-      Log.print("OTA: Error: ");
-      Log.println(error);
+      Log.printf("OTA: Error: %s\n", error);
     };
   });
 
@@ -425,7 +431,6 @@ void setup() {
 
   machinestate = BOOTING;
   setRedLED(LED_ON);
-
 }
 
 const char * state2str(int state) {
@@ -489,21 +494,75 @@ const unsigned char * hmacBytes(const char *passwd, const char * beatAsString, c
   return Sha256.resultHmac();
 }
 
+// We're having a bit of an issue with publishing within/near the reconnect and mqtt callback. So we
+// queue the message up - to have them send in the runloop; much later. We also do the signing that
+// late - as this also seeems to occasionally hit some (stackdepth?) limit.
+//
+typedef struct publish_rec {
+  char * topic;
+  char * payload;
+  struct publish_rec * nxt;
+} publish_rec_t;
+publish_rec_t *publish_queue = NULL;
+
+void send(const char * topic, const char * payload) {
+  char _topic[MAX_TOPIC];
+
+  if (topic == NULL) {
+    snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, moi);
+    topic = _topic;
+  }
+
+  publish_rec_t * rec = (publish_rec_t *)malloc(sizeof(publish_rec_t));
+  if (rec) {
+    rec->topic = strdup(topic);
+    rec->payload = strdup(payload);
+    rec->nxt = NULL;
+  }
+  
+  if (!rec || !(rec->topic) || !(rec->payload)) {
+    Serial.println("Out of memory");
+    Serial.flush();
+#ifdef DEBUG
+    *((int*)0) = 0;
+#else
+    ESP.restart();//    ESP.reset();
+#endif
+  };
+  // We append at the very end -- this preserves order -and- allows
+  // us to add things to the queue while in something works on it.
+  //
+  publish_rec_t ** p = &publish_queue;
+  while(*p) p=&(*p)->nxt;
+  *p = rec;
+}
+
+void publish_loop() {
+  if (!publish_queue)
+    return;
+  publish_rec_t * rec = publish_queue;
+  publish(rec->topic, rec->payload);
+
+  publish_queue = rec->nxt;
+  free(rec->topic);
+  free(rec->payload);
+  free(rec);
+}
+
 const char * hmacAsHex(const char *passwd, const char * beatAsString, const char * topic, const char *payload)
 {
   const unsigned char * hmac = hmacBytes(passwd, beatAsString, topic, payload);
   return hmacToHex(hmac);
 }
 
-
-void send(const char *payload) {
+// Note - doing any logging/publish in below is 'risky' - as
+// it may lead to an endless loop.
+//
+void publish(const char *topic, const char *payload) {
   char msg[ MAX_MSG];
-  char beat[MAX_BEAT];
   const char *vs = "?.??";
-  
-  char topic[MAX_TOPIC];
-  snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, moi);
 
+  char beat[MAX_BEAT];
   snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
 
   if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
@@ -513,20 +572,18 @@ void send(const char *payload) {
     char tosign[MAX_MSG];
     size_t len = snprintf(tosign, sizeof(tosign), "%s %s", beat, payload);
 
-    Serial.println("Ed25519::sig\n");
+    ESP.wdtFeed();
     Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, len);
 
     char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
     encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
-    
+
     snprintf(msg, sizeof(msg), "SIG/%s %s %s", vs, sigb64, tosign);
   } else {
     vs = "1.0";
     const char * sig  = hmacAsHex(passwd, beat, topic, payload);
     snprintf(msg, sizeof(msg), "SIG/%s %s %s %s", vs, sig, beat, payload);
   }
-
-  // Debug.print(">>>");  Debug.println(msg);
 
   client.publish(topic, msg);
 }
@@ -567,7 +624,7 @@ void send_helo(const char * helo) {
   }
 
   Log.println(buff);
-  send(buff);
+  send(NULL, buff);
 }
 
 void reconnectMQTT() {
@@ -609,7 +666,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   memcpy(payload, payload_theirs, length);
   payload[length] = 0;
 
-  Debug.print("["); Debug.print(topic); Debug.print("] ");
+  Debug.print("["); Debug.print(topic); Debug.print("] <<: ");
   Debug.print((char *)payload);
   Debug.println();
 
@@ -669,7 +726,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
       B64D(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key");
 
       if (tofu) {
-        if (memcmp(eeprom.master_publicsignkey, pubsign_tmp, sizeof(pubsign_tmp))) {
+        if (memcmp(eeprom.master_publicsignkey, pubsign_tmp, sizeof(eeprom.master_publicsignkey))) {
           Log.println("Sender has changed its public signing key(s) - ignoring.");
           return;
         }
@@ -689,7 +746,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
         return;
       };
     };
-    Serial.println("Ed25519::verify\n");
+    ESP.wdtFeed();
     if (!Ed25519::verify(signature, signkey, signed_payload, strlen(signed_payload))) {
       Log.println("Invalid Ed25519 signature on message - ignoring.");
       return;
@@ -740,12 +797,12 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     //
     uint8_t tmp_private[CURVE259919_KEYLEN];
 
-    memcpy(sessionkey, pubencr_tmp, sizeof(pubencr_tmp));
-    memcpy(tmp_private, node_privatesession, sizeof(node_privatesession));
-    Serial.println("Curve25519::dh2\n");
+    memcpy(sessionkey, pubencr_tmp, sizeof(sessionkey));
+    memcpy(tmp_private, node_privatesession, sizeof(tmp_private));
+    ESP.wdtFeed();
     Curve25519::dh2(sessionkey, tmp_private);
 
-
+    ESP.wdtFeed();
     Sha256.init();
     Sha256.write((char*)&sessionkey, sizeof(sessionkey));
     memcpy(sessionkey, Sha256.result(), sizeof(sessionkey));
@@ -758,22 +815,25 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     Serial.print("HASHed session key: "); Serial.println((char *)key_b64);
 #endif
 
-    Log.print("(Re)calculated session key - slaved to ");
-    Log.println(topic);
+    Log.printf("(Re)calculated session key - slaved to %s\n", topic);
 
     eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
   };
 
-  if (!strcmp("announce", rest)) {
+  if (!strncmp("announce", rest, 8)) {
+    Debug.println("pre welcome in handler");
+    ESP.wdtFeed();
     send_helo((char *)"welcome");
+    ESP.wdtFeed();
+    Debug.println("post welcome in handler");
     return;
   }
 
-  if (!strcmp("welcome", rest)) {
+  if (!strncmp("welcome", rest, 7)) {
     return;
   }
 
-  if (!strcmp("beat", rest)) {
+  if (!strncmp("beat", rest, 4)) {
     return;
   }
 
@@ -782,14 +842,14 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     IPAddress myIp = WiFi.localIP();
 
     snprintf(buff, sizeof(buff), "ack %s %s %d.%d.%d.%d", master, moi, myIp[0], myIp[1], myIp[2], myIp[3]);
-    send(buff);
+    send(NULL, buff);
     return;
   }
 
   if (!strncmp("state", rest, 4)) {
     char buff[MAX_MSG];
     snprintf(buff, sizeof(buff), "state %d %s", machinestate, machinestateName[machinestate]);
-    send(buff);
+    send(NULL, buff);
     return;
   }
 
@@ -805,7 +865,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     };
     char buff[MAX_MSG];
     snprintf(buff, sizeof(buff), "lastused %s", lasttag);
-    send(buff);
+    send(NULL, buff);
     return;
   }
 
@@ -824,11 +884,11 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
 
   if (!strcmp("outoforder", rest)) {
     machinestate = OUTOFORDER;
-    send("event outoforder");
+    send(NULL, "event outoforder");
     return;
   }
 
-  Debug.print("Do not know what to do with <"); Log.print(rest); Log.println("> - ignoring.");
+  Log.printf("Do not know what to do with <%s>, ignoring.\n", rest);
   return;
 }
 
@@ -836,12 +896,12 @@ unsigned int tock;
 void handleMachineState() {
   tock++;
 
-#if 0
-  int relayState = digitalRead(PIN_OPTO_ENERGIZED);
-  int operatorSwitchState = digitalRead(PIN_OPTO_OPERATOR);
-#else
+#ifdef FAKEMODE
   int relayState = 1;
   int operatorSwitchState = 0;
+#else
+  int relayState = digitalRead(PIN_OPTO_ENERGIZED);
+  int operatorSwitchState = digitalRead(PIN_OPTO_OPERATOR);
 #endif
 
   int r = 0;
@@ -851,44 +911,44 @@ void handleMachineState() {
   switch (r) {
     case 0: // On/off switch 'on' - blocking energizing.
       if (machinestate == RUNNING) {
-        send("event stop-pressed");
+        send(NULL, "event stop-pressed");
       } else if (machinestate >= POWERED) {
-        send("event powerdown");
+        send(NULL, "event powerdown");
         machinestate = WAITINGFORCARD;
       } else if (machinestate != WRONGFRONTSWITCHSETTING && machinestate > NOCONN) {
-        send("event frontswitchfail");
+        send(NULL, "event frontswitchfail");
         machinestate = WRONGFRONTSWITCHSETTING;
       }
       break;
     case 1: // On/off switch in the proper setting, ok to energize.
       if (machinestate > POWERED) {
-        send("event stop-pressed");
+        send(NULL, "event stop-pressed");
         machinestate = WAITINGFORCARD;
       }
       if (machinestate == WRONGFRONTSWITCHSETTING) {
-        send("event frontswitchokagain");
+        send(NULL, "event frontswitchokagain");
         machinestate = WAITINGFORCARD;
       };
       break;
     case 3: // Relay energized, but not running.
       if (machinestate == POWERED) {
-        send("event start-pressed");
+        send(NULL, "event start-pressed");
         machinestate = ENERGIZED;
       };
       if (machinestate == RUNNING) {
-        send("event halted");
+        send(NULL, "event halted");
         machinestate = ENERGIZED;
       } else if (machinestate < ENERGIZED && machinestate > NOCONN) {
         static int last_spur_detect = 0;
         if (millis() - last_spur_detect > 500) {
-          send("event spurious buttonpress?");
+          send(NULL, "event spurious buttonpress?");
         };
         last_spur_detect = millis();
       };
       break;
     case 2: // Relay engergized and running.
       if (machinestate != RUNNING && machinestate > WAITINGFORCARD) {
-        send("event running");
+        send(NULL, "event running");
         machinestate = RUNNING;
       }
       break;
@@ -921,7 +981,7 @@ void handleMachineState() {
       setRedLED(tock & 127 ? LED_OFF : LED_ON);
 #ifdef PIN_AUTOOFF
       if (millis() - laststatechange > AUTOOFF_TO) {
-        send("event autoff");
+        send(NULL, "event autoff");
         Log.println("Machine not used for too long; auto off.");
         machinestate = AUTOOFF;
       }
@@ -944,10 +1004,10 @@ void handleMachineState() {
     case ENERGIZED:
       setRedLED(LED_ON);
       if (laststatechange < ENERGIZED) {
-        send("event energized");
+        send(NULL, "event energized");
       };
       if (millis() - laststatechange > IDLE_TO) {
-        send("event toolongidle");
+        send(NULL, "event toolongidle");
         Log.println("Machine not used for too long; revoking access.");
         machinestate = WAITINGFORCARD;
       }
@@ -972,16 +1032,7 @@ void handleMachineState() {
 
   if (laststate != machinestate) {
 #if DEBUG3
-    Serial.print("State: <");
-    Serial.print(machinestateName[laststate]);
-    Serial.print("> to <");
-    Serial.print(machinestateName[machinestate]);
-    Serial.print(">");
-    Serial.print(" 1="); Serial.print(v1);
-    Serial.print(" 2="); Serial.print(v2);
-    Serial.print(" red="); Serial.print(red);
-    Serial.print(" P="); Serial.print(relayenergized);
-    Serial.println();
+    Serial.printf("State: <%s> to <%s> 1=%d 2=%d red=%d P=%d\n", machinestateName[laststate], machinestateName[machinestate], v1, v2 red, relayenergized);
 #endif
     laststate = machinestate;
     laststatechange = millis();
@@ -989,11 +1040,11 @@ void handleMachineState() {
 }
 
 int checkTagReader() {
-#if 1
+#ifdef FAKEMODE
   static unsigned long last = 0;
-  if (millis() - last < 10*1000)
+  if (millis() - last < 10 * 1000)
     return 0;
-    
+
   last = millis();
 
   MFRC522::Uid uid = { .size = 8, .uidByte = { 1, 2, 3, 4, 5, 6, 7, 8 } };
@@ -1070,7 +1121,7 @@ int checkTagReader() {
 
   static char buff[MAX_MSG];
   snprintf(buff, sizeof(buff), "energize %s %s %s", moi, machine, tag_encoded);
-  send(buff);
+  send(NULL, buff);
 
   return 1;
 }
@@ -1128,6 +1179,7 @@ void loop() {
 #endif
 
   client.loop();
+  publish_loop();
 
   static unsigned long last_mqtt_connect_try = 0;
   if (!client.connected()) {
@@ -1146,19 +1198,22 @@ void loop() {
       machinestate = WAITINGFORCARD;
 
     // Rekey if we're connected and more than 30 seconds out of touch - or had a beat skip.
-    static unsigned long lst = beatCounter;
-    if (beatCounter - lst > 100)
+    static unsigned long lst = 0;
+    if (beatCounter - lst > 100) {
+      Debug.println("(Re)Announce after a long hiatus/beat reset.");
       send_helo("announce");
+    }
     lst = beatCounter;
   };
 
 #ifdef DEBUG3
   static unsigned long last_beat = 0;
   if (millis() - last_beat > 3000 && client.connected()) {
-    send("ping");
+    send(NULL, "ping");
     last_beat = millis();
   }
 #endif
+
 
   if (machinestate >= WAITINGFORCARD && millis() - laststatechange > 1500) {
     if (checkTagReader()) {
