@@ -321,7 +321,7 @@ int setup_curve25519() {
   load_eeprom();
 
   if (eeprom.version != EEPROM_VERSION) {
-    Log.printf("EEPROM Version %04x not understood -- clearing.", eeprom.version );
+    Log.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
     wipe_eeprom();
   }
 
@@ -1047,7 +1047,7 @@ int checkTagReader() {
 
   last = millis();
 
-  MFRC522::Uid uid = { .size = 8, .uidByte = { 1, 2, 3, 4, 5, 6, 7, 8 } };
+  MFRC522::Uid uid = { .size = 5, .uidByte = { 1, 1, 2, 3, 5 } };
 #else
   if ( ! mfrc522.PICC_IsNewCardPresent())
     return 0;
