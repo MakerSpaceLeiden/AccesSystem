@@ -2,7 +2,11 @@
 // enough room for the code -- though still need
 // Over 328kB free to actually use it.
 //
+#define BUILD  __FILE__ " " __DATE__ " " __TIME__
 #define OTA
+// #define DEBUG  yes
+// Run without the hardware.
+#define FAKEMODE
 
 #include <ESP8266WiFi.h>
 
@@ -16,9 +20,28 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define BUILD  __FILE__ " " __DATE__ " " __TIME__
+// Hardware random generator.
+#include <esp8266-trng.h>
 
+// For the HMAC of the SIG/1.0 protocol
 #include <sha256.h>
+
+// Curve/Ed25519 related (and SIG/2.0 protocol)
+#include <Crypto.h>
+#include <Curve25519.h>
+#include <Ed25519.h>
+#include <RNG.h>
+#include <AES.h>
+#include <CTR.h>
+#include <CBC.h>
+
+#include <base64.hpp>
+
+#ifdef DEBUG
+#include <GDBStub.h>
+#endif
+
+#include <EEPROM.h>
 
 #if MQTT_MAX_PACKET_SIZE < 256
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
@@ -32,7 +55,8 @@ const char* mqtt_server = "space.makerspaceleiden.nl";
 
 // MQTT topics are constructed from <prefix> / <dest> / <sender>
 //
-const char *mqtt_topic_prefix = "makerspace/ac";
+// const char *mqtt_topic_prefix = "makerspace/ac";
+const char *mqtt_topic_prefix = "test";
 const char *moi = "grindernode";    // Name of the sender
 const char *machine = "grinder";
 const char *master = "master";    // Destination for commands
@@ -47,6 +71,7 @@ const char *passwd = ACNODE_PASSWD;
 //
 const unsigned int   IDLE_TO        = (20 * 60 * 1000); // Auto disable/off after 20 minutes.
 const unsigned int   CHECK_TO       = (3500); // Wait up to 3.5 second for result of card ok check.
+const unsigned int   AUTOOFF_TO     = (2 * IDLE_TO);
 
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 const unsigned int   MAX_TOPIC      = 64;
@@ -67,21 +92,52 @@ const uint8_t PIN_POWER      = 15; // pulled low when not in use.
 const uint8_t PIN_OPTO_OPERATOR      = 4; // front-switch 'off' -- capacitor charged by diode; needs to be pulled to ground to empty.
 const uint8_t PIN_OPTO_ENERGIZED     = 5; // relay energized -- capacitor charged by diode; needs to be pulled to ground to empty.
 
+// const uint8_t PIN_AUTOOFF 9;
+
 // The RFID reader itself is connected to the
 // hardwired MISO/MOSI and CLK pins (12, 13, 14)
 
-// Comment out to reduce debugging output.
-//
-#define DEBUG  yes
+#define ED59919_SIGLEN          (64)
+#define CURVE259919_KEYLEN      (32)
+#define CURVE259919_SESSIONLEN  (CURVE259919_KEYLEN)
 
-// While we avoid using #defines, as per https://www.arduino.cc/en/Reference/Define, in above - in below
-// case - the compiler was found to procude better code if done the old-fashioned way.
-//
-#ifdef DEBUG
-#define Debug Serial
-#else
-#define Debug if (0) Log
+#if HASH_LENGTH != CURVE259919_SESSIONLEN
+#error SHA256 "hash should be the same size as the session key"
 #endif
+#if HASH_LENGTH != 32 // AES256::keySize() 
+#error SHA256 "hash should be the same size as the encryption key"
+#endif
+
+// Data stored persistently (in th
+//
+typedef struct __attribute__ ((packed)) {
+#define EEPROM_VERSION (0x0103)
+  uint16_t version;
+  uint8_t flags;
+  uint8_t spare;
+
+  // Ed25519 key (Curve25519 key in Edwards y space)
+  uint8_t node_privatesign[CURVE259919_KEYLEN];
+  uint8_t master_publicsignkey[CURVE259919_KEYLEN];
+
+} eeprom_t;
+eeprom_t eeprom;
+
+uint8_t node_publicsign[CURVE259919_KEYLEN];
+
+// Curve25519 key (In montgomery x space) - not kept in
+// persistent storage as we renew on reboot in a PFS
+// sort of 'light' mode.
+//
+uint8_t node_publicsession[CURVE259919_KEYLEN];
+uint8_t node_privatesession[CURVE259919_KEYLEN];
+uint8_t sessionkey[CURVE259919_SESSIONLEN];
+
+#define CRYPTO_HAS_PRIVATE_KEYS (1<<0)
+#define CRYPTO_HAS_MASTER_TOFU (1<<1)
+
+#define RNG_APP_TAG BUILD
+#define RNG_EEPROM_ADDRESS (sizeof(eeprom)+4)
 
 typedef enum {
   SWERROR, OUTOFORDER, NOCONN, // some error - machine disabled.
@@ -89,9 +145,12 @@ typedef enum {
   DENIED,                     // we got a denied from the master -- flash an LED and then return to WAITINGFORCARD
   CHECKING,                   // we are are waiting for the master to respond -- flash an LED and then return to WAITINGFORCARD
   WAITINGFORCARD,             // waiting for card.
+  BOOTING,                    // device still booting up.
+  NOTOFU,                     // No trust on first use -- not learned keys of the master yet.
   POWERED,                    // Relay powered.
   ENERGIZED,                  // Got the OK; go to RUNNING once the green button at the back is pressed & operator switch is on.
   RUNNING,                    // Running - go to DUSTEXTRACT once the front switch is set to 'off' or to WAITINGFORCARD if red is pressed.
+  AUTOOFF,                    // Pseudo state - auto off after a slight idle to allow logging traffic to escape
   NOTINUSE,
 } machinestates_t;
 
@@ -101,9 +160,12 @@ const char *machinestateName[NOTINUSE] = {
   "Tag Denied",
   "Checking tag",
   "Waiting for card to be presented",
+  "Booting",
+  "Awaiting Master TOFU",
   "Relay powered",
   "Energized",
   "Running",
+  "Auto shutdown initiated"
 };
 
 static machinestates_t laststate;
@@ -116,6 +178,7 @@ ledstate lastred = NEVERSET;
 ledstate red = NEVERSET;
 
 void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length);
+void send(const char * topic, const char * payload);
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -147,29 +210,35 @@ void Log::begin(const char * prefix, int speed) {
 }
 
 size_t Log::write(uint8_t c) {
+#ifndef GDBSTUB_H
   size_t r = Serial.write(c);
+#endif
 
   if (c >= 32)
     logbuff[ at++ ] = c;
+  logbuff[at] = 0;
 
-  if (c != '\n' && at <= sizeof(logbuff) - 1)
-    return r;
+  if (c == '\n' || at + 2 >= sizeof(logbuff)) {
+    if (client.connected())
+      send(logtopic, logbuff);
+    at = 0;
+  }
 
-  if (client.connected()) {
-    logbuff[at++] = 0;
-#ifdef DEBUG4
-    Serial.print("debug: ");
-    Serial.print(at);
-    Serial.print(" ");
-    Serial.println(logbuff);
-#endif
-    client.publish(logtopic, logbuff);
-  };
-  at = 0;
-
-  return r;
+  return 1;
 }
 Log Log;
+
+#if 0
+#define Log if (0) Log
+#define Debug if (0) Log
+#else
+#ifdef DEBUG
+// #define Debug Serial
+#define Debug Log
+#else
+#define Debug if (0) Log
+#endif
+#endif
 
 
 // #if !digitalPinHasPWM(PIN_LED)
@@ -191,11 +260,103 @@ void setRedLED(int state) {
       analogWrite(PIN_LED, 0);
       digitalWrite(PIN_LED, 1);
       break;
+    case NEVERSET:
+    default:
+      break;
   }
 }
 
+void kickoff_RNG() {
+  // Attempt to get a half decent seed soon after boot. We ought to pospone all operations
+  // to the run loop - well after DHCP has gotten is into business.
+  //
+  // Note that Wifi/BT should be on according to:
+  //    https://github.com/espressif/esp-idf/blob/master/components/esp32/hw_random.c
+  //
+  RNG.begin(RNG_APP_TAG, RNG_EEPROM_ADDRESS);
+
+  Sha256.init();
+  for (int i = 0; i < 25; i++) {
+    uint32_t r = trng(); // RANDOM_REG32 ; // Or esp_random(); for the ESP32 in recent libraries.
+    Sha256.write((char*)&r, sizeof(r));
+    delay(10);
+  };
+  RNG.stir(Sha256.result(), 256, 100);
+
+  RNG.setAutoSaveTime(60);
+}
+
+void maintain_rng() {
+  RNG.loop();
+
+  if (RNG.available(1024 * 4))
+    return;
+
+  uint32_t seed = trng();
+  RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
+}
+
+#define EEPROM_PRIVATE_OFFSET (0x100)
+void load_eeprom() {
+  for (size_t adr = 0; adr < sizeof(eeprom); adr++)
+    ((uint8_t *)&eeprom)[adr] = EEPROM.read(EEPROM_PRIVATE_OFFSET + adr);
+}
+
+void save_eeprom() {
+  for (size_t adr = 0; adr < sizeof(eeprom); adr++)
+    EEPROM.write(EEPROM_PRIVATE_OFFSET + adr,  ((uint8_t *)&eeprom)[adr]);
+  EEPROM.commit();
+}
+
+void wipe_eeprom() {
+    bzero((uint8_t *)&eeprom, sizeof(eeprom));
+    eeprom.version = EEPROM_VERSION;
+    save_eeprom();
+}
+
+// Ideally called from the runloop - i.e. late once we have at least a modicum of
+// entropy from wifi/etc.
+//
+int setup_curve25519() {
+  load_eeprom();
+
+  if (eeprom.version != EEPROM_VERSION) {
+    Log.printf("EEPROM Version %04x not understood -- clearing.",eeprom.version );
+    wipe_eeprom();
+  }
+
+  ESP.wdtFeed();
+  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS)
+    Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
+
+  if (millis() - laststatechange < 1000)
+    return -1;
+
+  Log.println("Generating Curve25519 session keypair");
+
+  ESP.wdtFeed();
+  Curve25519::dh1(node_publicsession, node_privatesession);
+  bzero(sessionkey, sizeof(sessionkey));
+
+  if (eeprom.flags & CRYPTO_HAS_MASTER_TOFU) {
+    Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);
+    return 0;
+  }
+
+  ESP.wdtFeed();
+  Ed25519::generatePrivateKey(eeprom.node_privatesign);
+  ESP.wdtFeed();
+  Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
+
+  eeprom.flags |= CRYPTO_HAS_PRIVATE_KEYS;
+
+  save_eeprom();
+  return 0;
+}
 
 void setup() {
+  Serial.begin(115200);
+
   pinMode(PIN_POWER, OUTPUT);
   digitalWrite(PIN_POWER, 0);
 
@@ -206,6 +367,8 @@ void setup() {
   pinMode(PIN_OPTO_OPERATOR, INPUT);
 
   setRedLED(LED_FAST);
+
+  EEPROM.begin(1024);
 
   Log.begin(mqtt_topic_prefix, 115200);
   Log.println("\n\n\nBuild: " BUILD);
@@ -219,18 +382,19 @@ void setup() {
   };
 
   if (WiFi.status() != WL_CONNECTED) {
-    Log.print("Connection to <"); Log.print(ssid); Log.println("> failed! Rebooting...");
+    Log.printf("Connection to <%s> failed, rebooting\n", ssid);
     ESP.restart();
   }
 
-  Log.print("Wifi connected to <"); Log.print(ssid); Log.println(">.");
+  Log.printf("Wifi connected to <%s> OK.\n", ssid); 
 #ifdef OTA
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname(moi);
   ArduinoOTA.setPassword((const char *)OTA_PASSWD);
 
   ArduinoOTA.onStart([]() {
-    Log.println("OTA process started.");
+    Log.println("OTA process started. Wiping keys.");
+    wipe_eeprom();
   });
   ArduinoOTA.onEnd([]() {
     Log.println("OTA process completed. Resetting.");
@@ -247,8 +411,7 @@ void setup() {
     else if (error == OTA_RECEIVE_ERROR) Log.println("OTA: Receive Failed");
     else if (error == OTA_END_ERROR) Log.println("OTA: End Failed");
     else {
-      Log.print("OTA: Error: ");
-      Log.println(error);
+      Log.printf("OTA: Error: %s\n", error);
     };
   });
 
@@ -264,7 +427,9 @@ void setup() {
   client.setServer(mqtt_server, 1883);
   client.setCallback(mqtt_callback);
 
-  machinestate = WAITINGFORCARD;
+  kickoff_RNG();
+
+  machinestate = BOOTING;
   setRedLED(LED_ON);
 }
 
@@ -329,31 +494,98 @@ const unsigned char * hmacBytes(const char *passwd, const char * beatAsString, c
   return Sha256.resultHmac();
 }
 
+// We're having a bit of an issue with publishing within/near the reconnect and mqtt callback. So we
+// queue the message up - to have them send in the runloop; much later. We also do the signing that
+// late - as this also seeems to occasionally hit some (stackdepth?) limit.
+//
+typedef struct publish_rec {
+  char * topic;
+  char * payload;
+  struct publish_rec * nxt;
+} publish_rec_t;
+publish_rec_t *publish_queue = NULL;
+
+void send(const char * topic, const char * payload) {
+  char _topic[MAX_TOPIC];
+
+  if (topic == NULL) {
+    snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, moi);
+    topic = _topic;
+  }
+
+  publish_rec_t * rec = (publish_rec_t *)malloc(sizeof(publish_rec_t));
+  if (rec) {
+    rec->topic = strdup(topic);
+    rec->payload = strdup(payload);
+    rec->nxt = NULL;
+  }
+  
+  if (!rec || !(rec->topic) || !(rec->payload)) {
+    Serial.println("Out of memory");
+    Serial.flush();
+#ifdef DEBUG
+    *((int*)0) = 0;
+#else
+    ESP.restart();//    ESP.reset();
+#endif
+  };
+  // We append at the very end -- this preserves order -and- allows
+  // us to add things to the queue while in something works on it.
+  //
+  publish_rec_t ** p = &publish_queue;
+  while(*p) p=&(*p)->nxt;
+  *p = rec;
+}
+
+void publish_loop() {
+  if (!publish_queue)
+    return;
+  publish_rec_t * rec = publish_queue;
+  publish(rec->topic, rec->payload);
+
+  publish_queue = rec->nxt;
+  free(rec->topic);
+  free(rec->payload);
+  free(rec);
+}
+
 const char * hmacAsHex(const char *passwd, const char * beatAsString, const char * topic, const char *payload)
 {
   const unsigned char * hmac = hmacBytes(passwd, beatAsString, topic, payload);
   return hmacToHex(hmac);
 }
 
-
-void send(const char *payload) {
+// Note - doing any logging/publish in below is 'risky' - as
+// it may lead to an endless loop.
+//
+void publish(const char *topic, const char *payload) {
   char msg[ MAX_MSG];
-  char beat[MAX_BEAT], topic[MAX_TOPIC];
+  const char *vs = "?.??";
 
+  char beat[MAX_BEAT];
   snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
-  snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, moi);
 
-  msg[0] = 0;
-  snprintf(msg, sizeof(msg), "SIG/1.0 %s %s %s",
-           hmacAsHex(passwd, beat, topic, payload),
-           beat, payload);
+  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+    vs = "2.0";
+    uint8_t signature[ED59919_SIGLEN];
+
+    char tosign[MAX_MSG];
+    size_t len = snprintf(tosign, sizeof(tosign), "%s %s", beat, payload);
+
+    ESP.wdtFeed();
+    Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, len);
+
+    char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
+    encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
+
+    snprintf(msg, sizeof(msg), "SIG/%s %s %s", vs, sigb64, tosign);
+  } else {
+    vs = "1.0";
+    const char * sig  = hmacAsHex(passwd, beat, topic, payload);
+    snprintf(msg, sizeof(msg), "SIG/%s %s %s %s", vs, sig, beat, payload);
+  }
 
   client.publish(topic, msg);
-
-  Debug.print("Sending ");
-  Debug.print(topic);
-  Debug.print(": ");
-  Debug.println(msg);
 }
 
 char * strsepspace(char **p) {
@@ -366,7 +598,33 @@ char * strsepspace(char **p) {
     (*p)++;
     return q;
   }
+  if (*q)
+    return q;
   return NULL;
+}
+
+void send_helo(const char * helo) {
+  char buff[MAX_MSG];
+
+  IPAddress myIp = WiFi.localIP();
+  snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", helo, myIp[0], myIp[1], myIp[2], myIp[3]);
+
+  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+    char b64[128];
+
+    // Add ED25519 signing/non-repudiation key
+    strncat(buff, " ", sizeof(buff));
+    encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
+    strncat(buff, b64, sizeof(buff));
+
+    // Add Curve25519 session/confidentiality key
+    strncat(buff, " ", sizeof(buff));
+    encode_base64((unsigned char *)(node_publicsession), sizeof(node_publicsession), (unsigned char *)b64);
+    strncat(buff, b64, sizeof(buff));
+  }
+
+  Log.println(buff);
+  send(NULL, buff);
 }
 
 void reconnectMQTT() {
@@ -392,22 +650,23 @@ void reconnectMQTT() {
     Debug.print("Subscribed to ");
     Debug.println(topic);
 
-    char buff[MAX_MSG];
-    IPAddress myIp = WiFi.localIP();
-    snprintf(buff, sizeof(buff), "announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
-    send(buff);
+    send_helo((char *)"announce");
   } else {
     Log.print("failed : ");
     Log.println(state2str(client.state()));
   }
 }
 
-void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
+void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   char payload[MAX_MSG];
+
+  if (length >= sizeof(payload))
+    length = sizeof(payload) - 1;
+
   memcpy(payload, payload_theirs, length);
   payload[length] = 0;
 
-  Debug.print("["); Debug.print(topic); Debug.print("] ");
+  Debug.print("["); Debug.print(topic); Debug.print("] <<: ");
   Debug.print((char *)payload);
   Debug.println();
 
@@ -417,24 +676,86 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
   };
   char * p = (char *)payload;
 
-#define SEP(tok, err) char *  tok = strsepspace(&p); if (!tok) { Log.println(err); return; }
-
-  SEP(sig, "No SIG header");
-
-  if (strncmp(sig, "SIG/1", 5)) {
-    Log.print("Unknown signature format <"); Log.print(sig); Log.println("> - ignoring.");
-    return;
+#define SEP(tok, err) char *  tok = strsepspace(&p); if (!tok) { Log.print("Malformed/missing " err ": " ); Log.println(p); return; }
+#define B64D(base64str, bin, what) { \
+    if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
+      Log.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
+      return; \
+    }; \
+    decode_base64((unsigned char *)base64str, bin); \
   }
-  SEP(hmac, "No HMAC");
-  SEP(beat, "No BEAT");
 
+  SEP(version, "SIG header");
+  SEP(sig, "HMAC");
+
+  uint8_t * signkey = eeprom.master_publicsignkey;
+
+  char signed_payload[MAX_MSG];
+  strncpy(signed_payload, p, sizeof(signed_payload));
+  SEP(beat, "BEAT");
   char * rest = p;
 
-  const char * hmac2 = hmacAsHex(passwd, beat, topic, rest);
-  if (strcasecmp(hmac2, hmac)) {
-    Log.println("Invalid signature - ignoring.");
+  bool newtofu = false;
+  bool newsession = false;
+
+  unsigned char pubencr_tmp[CURVE259919_KEYLEN];
+
+  if (!strncmp(version, "SIG/1", 5)) {
+    const char * hmac2 = hmacAsHex(passwd, beat, topic, p);
+    if (strcasecmp(hmac2, sig)) {
+      Log.println("Invalid HMAC signature - ignoring.");
+      return;
+    }
+  } else if (!strncmp(version, "SIG/2", 5)) {
+    unsigned char pubsign_tmp[CURVE259919_KEYLEN];
+    uint8_t signature[ED59919_SIGLEN];
+
+    bool tofu = (eeprom.flags & CRYPTO_HAS_MASTER_TOFU) ? true : false;
+
+    B64D(sig, signature, "Ed25519 signature");
+    SEP(cmd, "command");
+
+    if (strcmp(cmd, "welcome") == 0  || strcmp(cmd, "announce") == 0) {
+      newsession = true;
+
+      SEP(host_ip, "IP address");
+      SEP(master_publicsignkey_b64, "B64 public signing key");
+      SEP(master_publicencryptkey_b64, "B64 public encryption key");
+
+      B64D(master_publicsignkey_b64, pubsign_tmp, "Ed25519 public key");
+      B64D(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key");
+
+      if (tofu) {
+        if (memcmp(eeprom.master_publicsignkey, pubsign_tmp, sizeof(eeprom.master_publicsignkey))) {
+          Log.println("Sender has changed its public signing key(s) - ignoring.");
+          return;
+        }
+        Debug.println("Known Ed25519 signature on message.");
+      } else {
+        Debug.println("Unknown Ed25519 signature on message - giving the benefit of the doubt.");
+        signkey = pubsign_tmp;
+
+        // We are not setting the TOFU flag in the EEPROM yet, as we've not yet checked
+        // for reply by means of the beat.
+        //
+        newtofu = true;
+      }
+
+      if (!tofu && !newtofu) {
+        Log.println("Cannot (yet) validate signature - ignoring while waiting for welcome/announce");
+        return;
+      };
+    };
+    ESP.wdtFeed();
+    if (!Ed25519::verify(signature, signkey, signed_payload, strlen(signed_payload))) {
+      Log.println("Invalid Ed25519 signature on message - ignoring.");
+      return;
+    };
+  } else {
+    Log.print("Unknown signature format <"); Log.print(version); Log.println("> - ignoring.");
     return;
-  }
+  };
+
   unsigned long  b = strtoul(beat, NULL, 10);
   if (!b) {
     Log.print("Unparsable beat - ignoring.");
@@ -443,10 +764,8 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
 
   unsigned long delta = llabs((long long) b - (long long)beatCounter);
 
-  // If we are still in the first hour of 1970 - accept any signed time;
   // otherwise - only accept things in a 4 minute window either side.
   //
-  //  if (((!strcmp("beat", rest) || !strcmp("announce", rest)) &&  beatCounter < 3600) || (delta < 120)) {
   if ((beatCounter < 3600) || (delta < 120)) {
     beatCounter = b;
     if (delta > 10) {
@@ -456,14 +775,65 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
     }
   } else {
     Log.print("Good message -- but beats ignored as they are too far off ("); Log.print(delta); Log.println(" seconds).");
+    return;
   };
 
-  // handle a perfectly good message.
-  if (!strcmp("announce", rest)) {
+  if (newtofu) {
+    Debug.println("TOFU for Ed25519 key of master, stored in persistent store..");
+    memcpy(eeprom.master_publicsignkey, signkey, sizeof(eeprom.master_publicsignkey));
+
+    eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
+    save_eeprom();
+  }
+  if (newsession) {
+    // Allways allow for the updating of session keys. On every welcome/announce. Provided that
+    // the signature matched.
+
+    // We need to copy the key as 'dh2()' will wipe its inputs as a side effect of the calculation.
+    // Which usually makes sense -- but not in our case - as we're async and may react to both
+    // a welcome and an announce -- so regenerating it on both would confuse matters.
+    //
+    // XX to do - consider regenerating it after a welcome; and go through replay attack options.
+    //
+    uint8_t tmp_private[CURVE259919_KEYLEN];
+
+    memcpy(sessionkey, pubencr_tmp, sizeof(sessionkey));
+    memcpy(tmp_private, node_privatesession, sizeof(tmp_private));
+    ESP.wdtFeed();
+    Curve25519::dh2(sessionkey, tmp_private);
+
+    ESP.wdtFeed();
+    Sha256.init();
+    Sha256.write((char*)&sessionkey, sizeof(sessionkey));
+    memcpy(sessionkey, Sha256.result(), sizeof(sessionkey));
+
+#if 0
+    unsigned char key_b64[128];
+    encode_base64(sessionkey, sizeof(sessionkey), key_b64);
+    Serial.print("RAW session key: "); Serial.println((char *)key_b64);
+    encode_base64(sessionkey, sizeof(sessionkey), key_b64);
+    Serial.print("HASHed session key: "); Serial.println((char *)key_b64);
+#endif
+
+    Log.printf("(Re)calculated session key - slaved to %s\n", topic);
+
+    eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
+  };
+
+  if (!strncmp("announce", rest, 8)) {
+    Debug.println("pre welcome in handler");
+    ESP.wdtFeed();
+    send_helo((char *)"welcome");
+    ESP.wdtFeed();
+    Debug.println("post welcome in handler");
     return;
   }
 
-  if (!strcmp("beat", rest)) {
+  if (!strncmp("welcome", rest, 7)) {
+    return;
+  }
+
+  if (!strncmp("beat", rest, 4)) {
     return;
   }
 
@@ -472,25 +842,30 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
     IPAddress myIp = WiFi.localIP();
 
     snprintf(buff, sizeof(buff), "ack %s %s %d.%d.%d.%d", master, moi, myIp[0], myIp[1], myIp[2], myIp[3]);
-    send(buff);
+    send(NULL, buff);
     return;
   }
 
   if (!strncmp("state", rest, 4)) {
     char buff[MAX_MSG];
     snprintf(buff, sizeof(buff), "state %d %s", machinestate, machinestateName[machinestate]);
-    send(buff);
+    send(NULL, buff);
     return;
   }
 
   if (!strncmp("revealtag", rest, 9)) {
+    if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+      Log.println("Ignoring reveal command. Already passed encrypted.");
+      return;
+    };
+
     if (b < lasttagbeat) {
       Log.println("Asked to reveal a tag I no longer have a record off, ignoring.");
       return;
     };
     char buff[MAX_MSG];
     snprintf(buff, sizeof(buff), "lastused %s", lasttag);
-    send(buff);
+    send(NULL, buff);
     return;
   }
 
@@ -509,11 +884,11 @@ void mqtt_callback(char* topic, byte* payload_theirs, unsigned int length) {
 
   if (!strcmp("outoforder", rest)) {
     machinestate = OUTOFORDER;
-    send("event outoforder");
+    send(NULL, "event outoforder");
     return;
   }
 
-  Debug.print("Do not know what to do with <"); Log.print(rest); Log.println("> - ignoring.");
+  Log.printf("Do not know what to do with <%s>, ignoring.\n", rest);
   return;
 }
 
@@ -521,8 +896,13 @@ unsigned int tock;
 void handleMachineState() {
   tock++;
 
+#ifdef FAKEMODE
+  int relayState = 1;
+  int operatorSwitchState = 0;
+#else
   int relayState = digitalRead(PIN_OPTO_ENERGIZED);
   int operatorSwitchState = digitalRead(PIN_OPTO_OPERATOR);
+#endif
 
   int r = 0;
   if (relayState) r |= 1;
@@ -531,44 +911,44 @@ void handleMachineState() {
   switch (r) {
     case 0: // On/off switch 'on' - blocking energizing.
       if (machinestate == RUNNING) {
-        send("event stop-pressed");
+        send(NULL, "event stop-pressed");
       } else if (machinestate >= POWERED) {
-        send("event powerdown");
+        send(NULL, "event powerdown");
         machinestate = WAITINGFORCARD;
       } else if (machinestate != WRONGFRONTSWITCHSETTING && machinestate > NOCONN) {
-        send("event frontswitchfail");
+        send(NULL, "event frontswitchfail");
         machinestate = WRONGFRONTSWITCHSETTING;
       }
       break;
     case 1: // On/off switch in the proper setting, ok to energize.
       if (machinestate > POWERED) {
-        send("event stop-pressed");
+        send(NULL, "event stop-pressed");
         machinestate = WAITINGFORCARD;
       }
       if (machinestate == WRONGFRONTSWITCHSETTING) {
-        send("event frontswitchokagain");
+        send(NULL, "event frontswitchokagain");
         machinestate = WAITINGFORCARD;
       };
       break;
     case 3: // Relay energized, but not running.
       if (machinestate == POWERED) {
-        send("event start-pressed");
+        send(NULL, "event start-pressed");
         machinestate = ENERGIZED;
       };
       if (machinestate == RUNNING) {
-        send("event halted");
+        send(NULL, "event halted");
         machinestate = ENERGIZED;
       } else if (machinestate < ENERGIZED && machinestate > NOCONN) {
         static int last_spur_detect = 0;
         if (millis() - last_spur_detect > 500) {
-          send("event spuriousbuttonpress?");
+          send(NULL, "event spurious buttonpress?");
         };
         last_spur_detect = millis();
       };
       break;
     case 2: // Relay engergized and running.
       if (machinestate != RUNNING && machinestate > WAITINGFORCARD) {
-        send("event running");
+        send(NULL, "event running");
         machinestate = RUNNING;
       }
       break;
@@ -576,6 +956,18 @@ void handleMachineState() {
 
   int relayenergized = 0;
   switch (machinestate) {
+    // XXX we git a slight challenge here - if above hardware state is funny - then
+    // we may get into a situation where we skip BOOTING and NOTOFU.
+    //
+    case BOOTING:
+      if (setup_curve25519() == 0) {
+        machinestate = NOTOFU;
+      }
+      break;
+    case NOTOFU:
+      if (eeprom.flags & CRYPTO_HAS_MASTER_TOFU)
+        machinestate = WAITINGFORCARD;
+      break;
     case OUTOFORDER:
     case SWERROR:
     case NOCONN:
@@ -587,13 +979,18 @@ void handleMachineState() {
       break;
     case WAITINGFORCARD:
       setRedLED(tock & 127 ? LED_OFF : LED_ON);
+#ifdef PIN_AUTOOFF
+      if (millis() - laststatechange > AUTOOFF_TO) {
+        send(NULL, "event autoff");
+        Log.println("Machine not used for too long; auto off.");
+        machinestate = AUTOOFF;
+      }
+#endif
       break;
     case CHECKING:
       setRedLED(LED_FAST);
       if (millis() - laststatechange > CHECK_TO) {
         setRedLED(LED_OFF);
-        Log.print("D=");
-        Log.print(millis() - laststatechange);
         Log.println("Returning to waiting for card - no response.");
         machinestate = WAITINGFORCARD;
       };
@@ -607,11 +1004,11 @@ void handleMachineState() {
     case ENERGIZED:
       setRedLED(LED_ON);
       if (laststatechange < ENERGIZED) {
-        send("event energized");
+        send(NULL, "event energized");
       };
       if (millis() - laststatechange > IDLE_TO) {
-        send("event toolongidle");
-        Log.println("Machine not used for more than 20 minutes; revoking access.");
+        send(NULL, "event toolongidle");
+        Log.println("Machine not used for too long; revoking access.");
         machinestate = WAITINGFORCARD;
       }
       relayenergized = 1;
@@ -620,22 +1017,22 @@ void handleMachineState() {
       setRedLED(LED_ON);
       relayenergized = 1;
       break;
+    case AUTOOFF:
+#ifdef PIN_AUTOOFF
+      if (millis() - laststatechange > 1000) {
+        digitalWrite(PIN_POWER, 0);
+        pinMode(PIN_AUTOOFF, OUTPUT);
+        digitalWrite(PIN_AUTOOFF, 1);
+      }
+#endif
+      break;
   };
 
   digitalWrite(PIN_POWER, relayenergized);
 
   if (laststate != machinestate) {
 #if DEBUG3
-    Serial.print("State: <");
-    Serial.print(machinestateName[laststate]);
-    Serial.print("> to <");
-    Serial.print(machinestateName[machinestate]);
-    Serial.print(">");
-    Serial.print(" 1="); Serial.print(v1);
-    Serial.print(" 2="); Serial.print(v2);
-    Serial.print(" red="); Serial.print(red);
-    Serial.print(" P="); Serial.print(relayenergized);
-    Serial.println();
+    Serial.printf("State: <%s> to <%s> 1=%d 2=%d red=%d P=%d\n", machinestateName[laststate], machinestateName[machinestate], v1, v2 red, relayenergized);
 #endif
     laststate = machinestate;
     laststatechange = millis();
@@ -643,6 +1040,15 @@ void handleMachineState() {
 }
 
 int checkTagReader() {
+#ifdef FAKEMODE
+  static unsigned long last = 0;
+  if (millis() - last < 10 * 1000)
+    return 0;
+
+  last = millis();
+
+  MFRC522::Uid uid = { .size = 8, .uidByte = { 1, 2, 3, 4, 5, 6, 7, 8 } };
+#else
   if ( ! mfrc522.PICC_IsNewCardPresent())
     return 0;
 
@@ -653,6 +1059,7 @@ int checkTagReader() {
   MFRC522::Uid uid = mfrc522.uid;
   if (uid.size == 0)
     return 0;
+#endif
 
   lasttag[0] = 0;
   for (int i = 0; i < uid.size; i++) {
@@ -662,20 +1069,65 @@ int checkTagReader() {
   }
   lasttagbeat = beatCounter;
 
-  char beatAsString[ MAX_BEAT ];
-  snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
-  Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
-  Sha256.print(beatAsString);
-  Sha256.write(uid.uidByte, uid.size);
-  const char * tag_encoded = hmacToHex(Sha256.resultHmac());
+  char tmp[MAX_MSG];
+  const char * tag_encoded;
+  if (!eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+    char beatAsString[ MAX_BEAT ];
+    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
+    Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
+    Sha256.print(beatAsString);
+    Sha256.write(uid.uidByte, uid.size);
+    tag_encoded = hmacToHex(Sha256.resultHmac());
+  } else {
+    CBC<AES256> cipher;
+    uint8_t iv[16];
+    RNG.rand(iv, sizeof(iv));
+
+    if (!cipher.setKey(sessionkey, cipher.keySize())) {
+      Log.println("FAIL setKey");
+      return 0;
+    }
+
+    if (!cipher.setIV(iv, cipher.ivSize())) {
+      Log.println("FAIL setIV");
+      return 0;
+    }
+
+    size_t len = strlen(lasttag) + 16;
+    int paddedlen = len & ~15;
+
+    uint8_t output[ paddedlen ], output_b64[ paddedlen * 2 ], iv_b64[ 32 ];
+
+    snprintf(tmp, sizeof(tmp), "%s                ", lasttag);
+
+    cipher.encrypt(output, (uint8_t *)tmp, paddedlen);
+
+    encode_base64(iv, sizeof(iv), iv_b64);
+    encode_base64(output, paddedlen, output_b64);
+
+#if 0
+    unsigned char key_b64[128];  encode_base64(sessionkey, sizeof(sessionkey), key_b64);
+    Serial.print("Plain len="); Serial.println(strlen(lasttag));
+    Serial.print("Paddd len="); Serial.println(paddedlen);
+    Serial.print("Key Size="); Serial.println(cipher.keySize());
+    Serial.print("IV Size="); Serial.println(cipher.ivSize());
+    Serial.print("IV="); Serial.println((char *)iv_b64);
+    Serial.print("Key="); Serial.println((char *)key_b64);
+    Serial.print("Cypher="); Serial.println((char *)output_b64);
+#endif
+    snprintf(tmp, sizeof(tmp), "%s.%s", iv_b64, output_b64);
+    tag_encoded = tmp;
+  }
 
   static char buff[MAX_MSG];
   snprintf(buff, sizeof(buff), "energize %s %s %s", moi, machine, tag_encoded);
-  send(buff);
+  send(NULL, buff);
 
   return 1;
 }
+
 void loop() {
+  maintain_rng();
 
 #ifdef DEBUG
   static int last_debug = 0, last_debug_state = -1;
@@ -727,6 +1179,7 @@ void loop() {
 #endif
 
   client.loop();
+  publish_loop();
 
   static unsigned long last_mqtt_connect_try = 0;
   if (!client.connected()) {
@@ -743,17 +1196,26 @@ void loop() {
   } else {
     if (machinestate == NOCONN)
       machinestate = WAITINGFORCARD;
+
+    // Rekey if we're connected and more than 30 seconds out of touch - or had a beat skip.
+    static unsigned long lst = 0;
+    if (beatCounter - lst > 100) {
+      Debug.println("(Re)Announce after a long hiatus/beat reset.");
+      send_helo("announce");
+    }
+    lst = beatCounter;
   };
 
 #ifdef DEBUG3
   static unsigned long last_beat = 0;
   if (millis() - last_beat > 3000 && client.connected()) {
-    send("ping");
+    send(NULL, "ping");
     last_beat = millis();
   }
 #endif
 
-  if (machinestate >= WAITINGFORCARD && millis()-laststatechange > 1500) {
+
+  if (machinestate >= WAITINGFORCARD && millis() - laststatechange > 1500) {
     if (checkTagReader()) {
       laststatechange = millis();
       if (machinestate >= ENERGIZED)

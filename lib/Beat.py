@@ -61,6 +61,7 @@ class Beat(ACNodeBase.ACNodeBase):
       super().send(dstnode, data)
  
   def extract_validated_payload(self, msg):
+   try:
     beat = int(self.beat())
     try:
         theirbeat, payload = msg['payload'].split(' ',1)
@@ -80,7 +81,16 @@ class Beat(ACNodeBase.ACNodeBase):
     msg['theirbeat'] = theirbeat
     msg['payload'] = payload
     msg['delta'] = delta
-    return msg
+   except Exception as e:
+         if 1:
+            exc_type, exc_obj, tb = sys.exc_info()
+            f = tb.tb_frame
+            lineno = tb.tb_lineno
+            filename = f.f_code.co_filename
+            linecache.checkcache(filename)
+            line = linecache.getline(filename, lineno, f.f_globals)
+            self.logger.debug('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
+   return msg
 
   def cmd_announce(self,msg):
     if not 'delta' in msg:
