@@ -22,11 +22,7 @@ void Log::begin(const char * prefix, int speed) {
 }
 
 size_t Log::write(uint8_t c) {
-  // Avoid outputting any data when we have the GDB stub included; as GDB gets
-  // confused by base64 strings. 
-#ifndef GDBSTUB_H
   size_t r = Serial.write(c);
-#endif
 
   if (c >= 32)
     logbuff[ at++ ] = c;

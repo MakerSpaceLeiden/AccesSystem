@@ -1,5 +1,4 @@
 #include "MakerspaceMQTT.h"
-#include <PubSubClient.h>
 
 #if MQTT_MAX_PACKET_SIZE < 256
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
@@ -143,9 +142,19 @@ void publish(const char *topic, const char *payload) {
   snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
 
   if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+    vs = "2.0";
+    uint8_t signature[ED59919_SIGLEN];
+
     char tosign[MAX_MSG];
-    snprintf(tosign, sizeof(tosign), "%s %s", beat, payload);    
-    sig2_sign(msg, sizeof(msg, tosign);
+    size_t len = snprintf(tosign, sizeof(tosign), "%s %s", beat, payload);
+
+    ESP.wdtFeed();
+    Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, len);
+
+    char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
+    encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
+
+    snprintf(msg, sizeof(msg), "SIG/%s %s %s", vs, sigb64, tosign);
   } else {
     hmac_sign(msg, sizeof(msg), beat, payload);
   }
@@ -246,10 +255,17 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   SEP(version, "SIG header");
   SEP(sig, "Signature");
 
+  uint8_t * signkey = eeprom.master_publicsignkey;
+
   char signed_payload[MAX_MSG];
   strncpy(signed_payload, p, sizeof(signed_payload));
   SEP(beat, "BEAT");
   char * rest = p;
+
+  bool newtofu = false;
+  bool newsession = false;
+
+  unsigned char pubencr_tmp[CURVE259919_KEYLEN];
 
   if (!strncmp(version, "SIG/1", 5)) {
     if (!hmac_valid(passwd, beat, topic, p)) {
