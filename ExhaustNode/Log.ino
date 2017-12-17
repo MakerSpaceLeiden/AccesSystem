@@ -23,7 +23,7 @@ void Log::begin(const char * prefix, int speed) {
 
 size_t Log::write(uint8_t c) {
   // Avoid outputting any data when we have the GDB stub included; as GDB gets
-  // confused by base64 strings. 
+  // confused by base64 strings.
 #ifndef GDBSTUB_H
   size_t r = Serial.write(c);
 #endif
@@ -37,16 +37,18 @@ size_t Log::write(uint8_t c) {
   logbuff[at++] = 0;
   at = 0;
 
-  if (client.connected()) {
-    client.publish(logtopic, logbuff);
-  };
+  send(logtopic, logbuff);
 
   if (WiFi.status() == WL_CONNECTED) {
     syslog.beginPacket(WiFi.gatewayIP(), syslogPort);
+#ifdef  ESP_PLATFORM
+    syslog.printf("<135>%s %s", moi, logbuff);
+#else
     syslog.write("<135>");
     syslog.write(moi);
     syslog.write(" ");
     syslog.write(logbuff);
+#endif
     syslog.endPacket();
   };
 
@@ -54,6 +56,9 @@ size_t Log::write(uint8_t c) {
 }
 
 void debugFlash() {
+#ifdef  ESP_PLATFORM
+  // not implemented.
+#else
   uint32_t realSize = ESP.getFlashChipRealSize();
   uint32_t ideSize = ESP.getFlashChipSize();
   FlashMode_t ideMode = ESP.getFlashChipMode();
@@ -70,5 +75,6 @@ void debugFlash() {
   } else {
     Debug.println("Flash Chip configuration ok.\n");
   }
+#endif
 }
 

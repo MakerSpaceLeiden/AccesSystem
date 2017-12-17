@@ -1,6 +1,4 @@
-#include <WiFiUdp.h>
-#include <ESP8266mDNS.h>
-#include <ArduinoOTA.h>
+#include "OTA.h"
 
 void configureOTA() {
   ArduinoOTA.setPort(8266);

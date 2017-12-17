@@ -30,6 +30,8 @@ typedef struct publish_rec {
 } publish_rec_t;
 publish_rec_t *publish_queue = NULL;
 
+static void publish(const char *topic, const char *payload);
+
 void send(const char * topic, const char * payload) {
   char _topic[MAX_TOPIC];
 
@@ -106,32 +108,6 @@ const char * state2str(int state) {
   return buff;
 #endif
 }
-
-void send_helo(const char * helo) {
-  char buff[MAX_MSG];
-
-  IPAddress myIp = WiFi.localIP();
-  snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", helo, myIp[0], myIp[1], myIp[2], myIp[3]);
-
-  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
-    char b64[128];
-
-    // Add ED25519 signing/non-repudiation key
-    strncat(buff, " ", sizeof(buff));
-    encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
-    strncat(buff, b64, sizeof(buff));
-
-    // Add Curve25519 session/confidentiality key
-    strncat(buff, " ", sizeof(buff));
-    encode_base64((unsigned char *)(node_publicsession), sizeof(node_publicsession), (unsigned char *)b64);
-    strncat(buff, b64, sizeof(buff));
-  }
-
-  Log.println(buff);
-  send(NULL, buff);
-}
-
-
 // Note - doing any logging/publish in below is 'risky' - as
 // it may lead to an endless loop.
 //
@@ -142,10 +118,10 @@ void publish(const char *topic, const char *payload) {
   char beat[MAX_BEAT];
   snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
 
-  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+  if (sig2_active()) {
     char tosign[MAX_MSG];
-    snprintf(tosign, sizeof(tosign), "%s %s", beat, payload);    
-    sig2_sign(msg, sizeof(msg, tosign);
+    snprintf(tosign, sizeof(tosign), "%s %s", beat, payload);
+    sig2_sign(msg, sizeof(msg), tosign);
   } else {
     hmac_sign(msg, sizeof(msg), beat, payload);
   }
@@ -193,15 +169,16 @@ void reconnectMQTT() {
   char buff[MAX_MSG];
   IPAddress myIp = WiFi.localIP();
   snprintf(buff, sizeof(buff), "announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
-  send(buff);
+  send(topic, buff);
 }
 
-void configureMQTT() {
+
+void configureMQTT()  {
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(mqtt_callback);
 }
 
-
+#ifndef ESP_PLATFORM
 char * strsepspace(char **p) {
   char *q = *p;
   while (**p && **p != ' ') {
@@ -216,6 +193,7 @@ char * strsepspace(char **p) {
     return q;
   return NULL;
 }
+#endif
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   char payload[MAX_MSG];
@@ -234,29 +212,35 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   };
   char * p = (char *)payload;
 
-#define SEP(tok, err) char *  tok = strsepspace(&p); if (!tok) { Log.print("Malformed/missing " err ": " ); Log.println(p); return; }
+#define SEP(tok, err, errorOnReturn) \
+  char *  tok = strsepspace(&p); \
+  if (!tok) { \
+    Log.print("Malformed/missing " err ": " ); \
+    Log.println(p); \
+    return errorOnReturn; \
+  }
 #define B64D(base64str, bin, what) { \
     if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
       Log.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
-      return; \
+      return false; \
     }; \
-    decode_base64((unsigned char *)base64str, bin); \
+    decode_base64((const unsigned char *)base64str, bin); \
   }
 
-  SEP(version, "SIG header");
-  SEP(sig, "Signature");
+  SEP(version, "SIG header",/* void return */);
+  SEP(sig, "Signature",/* void return */);
 
   char signed_payload[MAX_MSG];
   strncpy(signed_payload, p, sizeof(signed_payload));
-  SEP(beat, "BEAT");
+  SEP(beat, "BEAT",/* void return */);
   char * rest = p;
 
   if (!strncmp(version, "SIG/1", 5)) {
-    if (!hmac_valid(passwd, beat, topic, p)) {
+    if (!hmac_valid(sig, passwd, beat, topic, p)) {
       return;
     }
   } else if (!strncmp(version, "SIG/2", 5)) {
-    if (!sig2_verify(sig, signed_payload))
+    if (!sig2_verify(beat, sig, signed_payload))
       return;
   } else {
     Log.print("Unknown signature format <"); Log.print(version); Log.println("> - ignoring.");
@@ -292,21 +276,9 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     return;
   }
 
-  if (!strncmp("revealtag", rest, 9)) {
-    if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
-      Log.println("Ignoring reveal command. Already passed encrypted.");
-      return;
-    };
-
-    if (b < lasttagbeat) {
-      Log.println("Asked to reveal a tag I no longer have a record off, ignoring.");
-      return;
-    };
-    char buff[MAX_MSG];
-    snprintf(buff, sizeof(buff), "lastused %s", lasttag);
-    send(NULL, buff);
+  unsigned long  b = atol(beat);
+  if (handleRFID(b, rest))
     return;
-  }
 
   if (!strncmp("approved", rest, 8) || !strncmp("energize", rest, 8)) {
     machinestate = POWERED;
@@ -316,6 +288,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   if (!strncmp("denied", rest, 6) || !strncmp("unknown", rest, 7)) {
     Log.println("Flash LEDS");
     setRedLED(LED_FAST);
+#warning fi
     delay(1000);
     setRedLED(LED_OFF);
     return;
@@ -332,19 +305,8 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
 }
 
 void mqttLoop() {
-  static unsigned long last_wifi_ok = 0;
-  if (WiFi.status() != WL_CONNECTED) {
-    Debug.println("Lost WiFi connection.");
-    if (machinestate <= WAITINGFORCARD)
-      machinestate = NOCONN;
-    if ( millis() - last_wifi_ok > 10000) {
-      Log.printf("Connection to SSID:%s for 10 seconds now -- Rebooting...\n", WiFi.SSID().c_str());
-      delay(500);
-      ESP.restart();
-    }
-  } else {
-    last_wifi_ok = millis();
-  };
+
+  client.loop();
 
   static unsigned long last_mqtt_connect_try = 0;
   if (!client.connected()) {
@@ -369,5 +331,7 @@ void mqttLoop() {
     // try to ignore short lived wobbles.
     last_mqtt_connect_try = millis();
   };
+
+  publish_loop();
 }
 

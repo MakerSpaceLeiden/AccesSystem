@@ -1,8 +1,8 @@
-boolena verify_beat(const char beat[]) {
+boolean verify_beat(const char beat[]) {
   unsigned long  b = strtoul(beat, NULL, 10);
   if (!b) {
     Log.print("Unparsable beat - ignoring.");
-    return;
+    return false;
   };
 
   unsigned long delta = llabs((long long) b - (long long)beatCounter);
@@ -18,6 +18,8 @@ boolena verify_beat(const char beat[]) {
     }
   } else {
     Log.print("Good message -- but beats ignored as they are too far off ("); Log.print(delta); Log.println(" seconds).");
-    return;
+    return true;
   };
+  return false;
+}
 

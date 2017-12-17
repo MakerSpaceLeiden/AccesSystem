@@ -1,32 +1,15 @@
 // Curve/Ed25519 related (and SIG/2.0 protocol)
+#include "SIG2.h"
 
-#include <Crypto.h>
-#include <Curve25519.h>
-#include <Ed25519.h>
-#include <RNG.h>
-#include <AES.h>
-#include <CTR.h>
-#include <CBC.h>
 
-#include <base64.hpp>
-#include <sha256.h>
+#if HASH_LENGTH != CURVE259919_SESSIONLEN
+#error SHA256 "hash HASH_LENGTH should be the same size as the session key CURVE259919_SESSIONLEN"
+#endif
 
-#include <EEPROM.h>
+#if HASH_LENGTH != 32 // AES256::keySize() 
+#error SHA256 "hash should be the same size as the encryption key"
+#endif
 
-// Data stored persistently (currently in the EEPROM,
-// as it is present on a wider range of systems (or
-// 'faked'.
-typedef struct __attribute__ ((packed)) {
-#define EEPROM_VERSION (0x0103)
-  uint16_t version;
-  uint8_t flags;
-  uint8_t spare;
-
-  // Ed25519 key (Curve25519 key in Edwards y space)
-  uint8_t node_privatesign[CURVE259919_KEYLEN];
-  uint8_t master_publicsignkey[CURVE259919_KEYLEN];
-
-} eeprom_t;
 eeprom_t eeprom;
 
 uint8_t node_publicsign[CURVE259919_KEYLEN];
@@ -39,13 +22,9 @@ uint8_t node_publicsession[CURVE259919_KEYLEN];
 uint8_t node_privatesession[CURVE259919_KEYLEN];
 uint8_t sessionkey[CURVE259919_SESSIONLEN];
 
-#define CRYPTO_HAS_PRIVATE_KEYS (1<<0)
-#define CRYPTO_HAS_MASTER_TOFU (1<<1)
-
-#define RNG_APP_TAG BUILD
-#define RNG_EEPROM_ADDRESS (sizeof(eeprom)+4)
-
-
+bool sig2_active() {
+  return (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS);
+}
 
 void kickoff_RNG() {
   // Attempt to get a half decent seed soon after boot. We ought to pospone all operations
@@ -56,13 +35,17 @@ void kickoff_RNG() {
   //
   RNG.begin(RNG_APP_TAG, RNG_EEPROM_ADDRESS);
 
-  Sha256.init();
+  SHA256 sha256;
+  sha256.reset();
+
   for (int i = 0; i < 25; i++) {
     uint32_t r = trng(); // RANDOM_REG32 ; // Or esp_random(); for the ESP32 in recent libraries.
-    Sha256.write((char*)&r, sizeof(r));
+    sha256.update((unsigned char*)&r, sizeof(r));
     delay(10);
   };
-  RNG.stir(Sha256.result(), 256, 100);
+  uint8_t result[sha256.hashSize()];
+  sha256.finalize(result, sizeof(result));
+  RNG.stir(result, sizeof(result), 100);
 
   RNG.setAutoSaveTime(60);
 }
@@ -72,7 +55,6 @@ void maintain_rng() {
 
   if (RNG.available(1024 * 4))
     return;
-
   uint32_t seed = trng();
   RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
 }
@@ -109,7 +91,7 @@ void init_curve() {
 //
 int setup_curve25519() {
   if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
-    ESP.wdtFeed();
+    resetWatchdog();
     Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
   }
 
@@ -118,7 +100,7 @@ int setup_curve25519() {
 
   Log.println("Generating Curve25519 session keypair");
 
-  ESP.wdtFeed();
+  resetWatchdog();
   Curve25519::dh1(node_publicsession, node_privatesession);
   bzero(sessionkey, sizeof(sessionkey));
 
@@ -127,9 +109,9 @@ int setup_curve25519() {
     return 0;
   }
 
-  ESP.wdtFeed();
+  resetWatchdog();
   Ed25519::generatePrivateKey(eeprom.node_privatesign);
-  ESP.wdtFeed();
+  resetWatchdog();
   Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
 
   eeprom.flags |= CRYPTO_HAS_PRIVATE_KEYS;
@@ -145,32 +127,43 @@ int setup_curve25519() {
 // Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
 // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
 
-bool sig2_verify(const char signature64[], const char signed_payload[]) {
 
-  unsigned char pubsign_tmp[CURVE259919_KEYLEN];
+bool sig2_verify(const char * beat, const char signature64[], const char signed_payload[]) {
+#define B64L(n) ((((4 * n / 3) + 3) & ~3)+1)
+  char master_publicsignkey_b64[B64L(CURVE259919_KEYLEN )];
+  char master_publicencryptkey_b64[B64L(CURVE259919_KEYLEN)];
+
+  uint8_t pubsign_tmp[CURVE259919_KEYLEN];
+  uint8_t pubencr_tmp[CURVE259919_SESSIONLEN];
+
   uint8_t signature[ED59919_SIGLEN];
 
   bool tofu = (eeprom.flags & CRYPTO_HAS_MASTER_TOFU) ? true : false;
+  bool newsession = false;
+  uint8_t * signkey = NULL; // tentative signing key in case of tofu
+  bool newtofu = false;
 
-  B64D(sig, signature64, "Ed25519 signature");
-  char * p = index(signed_payload);
+  B64D(signature64, signature, "Ed25519 signature");
+  char * p = index(signed_payload, ' ');
   while (*p == ' ') p++;
-  char * p = index(p, ' ');
+  p = index(p, ' ');
   if (!p || !*p || *++p) {
     Log.println("Maformed payload; no command");
     return false;
   };
+
   char * q = index(p, ' ');
   size_t cmd_len = (q && *q) ? q - p : strlen(p + 1);
-  const char cmd[l];
-  strncpy(cmd, p, len);
+  char cmd[cmd_len + 1];
+  cmd[cmd_len] = '\0';
+  strncpy(cmd, p, cmd_len);
 
   if (strcmp(cmd, "welcome") == 0  || strcmp(cmd, "announce") == 0) {
     newsession = true;
 
-    SEP(host_ip, "IP address");
-    SEP(master_publicsignkey_b64, "B64 public signing key");
-    SEP(master_publicencryptkey_b64, "B64 public encryption key");
+    SEP(host_ip, "IP address", false);
+    SEP(master_publicsignkey_b64, "B64 public signing key", false);
+    SEP(master_publicencryptkey_b64, "B64 public encryption key", false);
 
     B64D(master_publicsignkey_b64, pubsign_tmp, "Ed25519 public key");
     B64D(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key");
@@ -197,7 +190,7 @@ bool sig2_verify(const char signature64[], const char signed_payload[]) {
     };
   };
 
-  ESP.wdtFeed();
+  resetWatchdog();
   if (!Ed25519::verify(signature, signkey, signed_payload, strlen(signed_payload))) {
     Log.println("Invalid Ed25519 signature on message - ignoring.");
     return false;
@@ -227,13 +220,15 @@ bool sig2_verify(const char signature64[], const char signed_payload[]) {
 
     memcpy(sessionkey, pubencr_tmp, sizeof(sessionkey));
     memcpy(tmp_private, node_privatesession, sizeof(tmp_private));
-    ESP.wdtFeed();
+    resetWatchdog();
     Curve25519::dh2(sessionkey, tmp_private);
 
-    ESP.wdtFeed();
-    Sha256.init();
-    Sha256.write((char*)&sessionkey, sizeof(sessionkey));
-    memcpy(sessionkey, Sha256.result(), sizeof(sessionkey));
+    resetWatchdog();
+
+    SHA256 sha256;
+    sha256.reset();
+    sha256.update((unsigned char*)&sessionkey, sizeof(sessionkey));
+    sha256.finalize(sessionkey, sizeof(sessionkey));
 
 #if 0
     unsigned char key_b64[128];
@@ -243,30 +238,31 @@ bool sig2_verify(const char signature64[], const char signed_payload[]) {
     Serial.print("HASHed session key: "); Serial.println((char *)key_b64);
 #endif
 
-    Log.printf("(Re)calculated session key - slaved to %s\n", topic);
+    Log.printf("(Re)calculated session key - slaved to master public signkey %s and masterpublic encrypt key %s\n", master_publicsignkey_b64, master_publicencryptkey_b64);
 
     eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
   };
   return true;
 }
 
-void sig2_sign(char * msg, size_t maxlen, const char * tosign) {
-
-  vs = "2.0";
+void sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
+  const char * vs = "2.0";
   uint8_t signature[ED59919_SIGLEN];
 
 
-  ESP.wdtFeed();
-  Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, len);
+  resetWatchdog();
+  Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, maxlen);
 
   char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
   encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
 
-  snprintf(msg, sizeof(msg), "SIG/%s %s %s", vs, sigb64, tosign);
+  snprintf(msg, MAX_MSG, "SIG/%s %s %s", vs, sigb64, tosign);
 }
+
 
 const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxlen) {
   CBC<AES256> cipher;
+
   uint8_t iv[16];
   RNG.rand(iv, sizeof(iv));
 
@@ -314,3 +310,27 @@ const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxle
   return tag_encoded;
 }
 
+
+void send_helo(const char * helo) {
+  char buff[MAX_MSG];
+
+  IPAddress myIp = WiFi.localIP();
+  snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", helo, myIp[0], myIp[1], myIp[2], myIp[3]);
+
+  if (sig2_active()) {
+    char b64[128];
+
+    // Add ED25519 signing/non-repudiation key
+    strncat(buff, " ", sizeof(buff));
+    encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
+    strncat(buff, b64, sizeof(buff));
+
+    // Add Curve25519 session/confidentiality key
+    strncat(buff, " ", sizeof(buff));
+    encode_base64((unsigned char *)(node_publicsession), sizeof(node_publicsession), (unsigned char *)b64);
+    strncat(buff, b64, sizeof(buff));
+  }
+
+  Log.println(buff);
+  send(NULL, buff);
+}

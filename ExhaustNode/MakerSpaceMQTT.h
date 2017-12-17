@@ -1,7 +1,49 @@
 #pragma once
-#include <sha256.h>
 
+
+#ifdef  ESP_PLATFORM
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include "FS.h"
+#include "SPIFFS.h"
+
+#define trng() esp_random() /* XXX we ought to check if Wifi/BT is up - as that is required for secure numbers. */
+#define resetWatchdog() { /* not implemented  -- there is a void esp_int_wdt_init() -- but we've not found the reset. */ }
+#include <ESP32Ticker.h>  // https://github.com/bertmelis/Ticker-esp32.git
+#else
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#include <ESP8266mDNS.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <FS.h>
+#define resetWatchdog() { ESP.wdtFeed(); }
+#include <Ticker.h>
+#endif
+
+#include <ArduinoOTA.h>
+#include <WiFiManager.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/
+
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+#include <PubSubClient.h>        // https://github.com/knolleary/
+#include <base64.hpp>
+
+
+// ArduinoJSON library -- from https://github.com/bblanchon/ArduinoJson - installed th
+//
+// Depending on your version - if you get an osbcure error in
+// .../ArduinoJson/Polyfills/isNaN.hpp and isInfinity.hpp - then
+// isnan()/isinf() to __builtin_isnXXX() around line 34-36/
+//
+#include <ArduinoJson.h>
+
+#include <SPI.h>
+#ifndef SHA256_BLOCK_SIZE
+#define SHA256_BLOCK_SIZE (32)
+#endif
 
 #ifndef HASH_LENGTH 
 #define HASH_LENGTH SHA256_BLOCK_SIZE
@@ -31,3 +73,14 @@ extern char machine[MAX_NAME];
 extern char master[MAX_NAME];    // Destination for commands
 extern char logpath[MAX_NAME];       // Destination for human readable text/logging info.
 extern char passwd[MAX_NAME];
+
+#include "SIG1.h"
+#include "SIG2.h"
+
+// Forward declarations..
+//
+extern void configureMQTT();
+extern void send(const char * topic, const char * payload);
+extern void mqttLoop();
+bool sig2_active();
+

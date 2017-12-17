@@ -5,14 +5,19 @@
 #include "MakerSpaceMQTT.h"
 
 
-
+#if 0
 class ConfigPortal : ACNode {
- public:  
-   ConfigPortal(); 
-   void configRun();
-   void configLoad();
+  public:
+    ConfigPortal();
+    void configRun();
+    void configLoad();
 };
+#endif
 
 extern void debugListFS(char * path);
+extern void  configBegin();
+extern int configLoad();
+extern void configPortal();
+extern void configRun();
 #endif
 

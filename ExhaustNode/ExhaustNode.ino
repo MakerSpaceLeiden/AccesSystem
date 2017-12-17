@@ -1,21 +1,19 @@
-
-
 /*
- *    Copyright 2015-2016 Dirk-Willem van Gulik <dirkx@webweaving.org>
- *                        Stichting Makerspace Leiden, the Netherlands.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *     
- *     http://www.apache.org/licenses/LICENSE-2.0
- *     
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+      Copyright 2015-2016 Dirk-Willem van Gulik <dirkx@webweaving.org>
+                          Stichting Makerspace Leiden, the Netherlands.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
 // Node MCU has a weird mapping...
 //
 #define LED_GREEN   16 // D0 -- LED inside the on/off toggle switch
@@ -43,15 +41,23 @@
 // #define DEBUG
 #define DEBUG_ALIVE  // sent an i-am-alive ping every 3 seconds.
 //
+#ifdef  ESP32
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#else
 #include <ESP8266WiFi.h>
+#endif
 #include <PubSubClient.h>        // https://github.com/knolleary/
 
-#include <Ticker.h>
 #include <SPI.h>
 
 #include "MakerspaceMQTT.h"
 #include "Log.h"
 #include "LEDs.h"
+#include "OTA.h"
+#include "ConfigPortal.h"
+#include "RFID.h"
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -154,6 +160,7 @@ void setup() {
   // Only allow OTA post (any) Wifi portal config -- as otherwise the
   // latter can timeout in the middle of an OTA update without ado.
   //
+
   configureOTA();
 #endif
 
@@ -185,13 +192,13 @@ void machineLoop() {
 
     if (machinestate == WAITINGFORCARD) {
       machinestate = POWERED;
-      send("event manual-start");
+      send(NULL, "event manual-start");
     }
     else if (machinestate >= POWERED) {
       machinestate = WAITINGFORCARD;
-      send("event manual-stop");
+      send(NULL, "event manual-stop");
     } else
-      send("event spurious-button-press");
+      send(NULL, "event spurious-button-press");
   }
   if (digitalRead(PUSHBUTTON) == 1 && millis() - last_button_detect > 400) {
     last_button_detect =  0;
@@ -242,18 +249,32 @@ void loop() {
     last_loop = millis();
   }
 
-  machineLoop();
-  client.loop();
-  mqttLoop();
+  static unsigned long last_wifi_ok = 0;
+  if (WiFi.status() != WL_CONNECTED) {
+    Debug.println("Lost WiFi connection.");
+    if (machinestate <= WAITINGFORCARD)
+      machinestate = NOCONN;
+    if ( millis() - last_wifi_ok > 10000) {
+      Log.printf("Connection to SSID:%s for 10 seconds now -- Rebooting...\n", WiFi.SSID().c_str());
+      delay(500);
+      ESP.restart();
+    }
+  } else {
+    last_wifi_ok = millis();
+  };
 
 #ifdef OTA
   otaLoop();
 #endif
 
+
+  machineLoop();
+  mqttLoop();
+
 #ifdef DEBUG_ALIVE
   static unsigned long last_beat = 0;
   if (millis() - last_beat > 3000 && client.connected()) {
-    send("ping");
+    send(NULL, "ping");
     last_beat = millis();
   }
 #endif

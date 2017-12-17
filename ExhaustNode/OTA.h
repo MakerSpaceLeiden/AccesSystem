@@ -2,13 +2,9 @@
 #define _OTA_H
 
 #include "MakerSpaceMQTT.h"
-
-#include <WiFiUdp.h>
-#include <ESP8266mDNS.h>
-#include <ArduinoOTA.h>
-
 #include "Signaling.h"
 
+#if 0
 class OTA : public ACNode {
   public:
     OTA();
@@ -16,5 +12,10 @@ class OTA : public ACNode {
   private:
     const char ota_password[32];
 };
+#endif
+
+extern void configureOTA();
+extern void otaLoop();
+
 
 #endif
