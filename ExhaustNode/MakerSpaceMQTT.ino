@@ -48,8 +48,8 @@ void send(const char * topic, const char * payload) {
   }
 
   if (!rec || !(rec->topic) || !(rec->payload)) {
-    Serial.println("Out of memory");
-    Serial.flush();
+    Debug.println("Out of memory");
+    Debug.flush();
 #ifdef DEBUG
     *((int*)0) = 0;
 #else
@@ -88,7 +88,7 @@ const char * state2str(int state) {
     case  /* -1  */ MQTT_DISCONNECTED :
       return "the client is disconnected (clean)";
     case  /* 0  */ MQTT_CONNECTED :
-      return "the cient is connected";
+      return "the client is connected";
     case  /* 1  */ MQTT_CONNECT_BAD_PROTOCOL :
       return "the server doesn't support the requested version of MQTT";
     case  /* 2  */ MQTT_CONNECT_BAD_CLIENT_ID :
@@ -113,9 +113,8 @@ const char * state2str(int state) {
 //
 void publish(const char *topic, const char *payload) {
   char msg[ MAX_MSG];
-  const char *vs = "?.??";
-
   char beat[MAX_BEAT];
+
   snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
 
   if (sig2_active()) {
@@ -144,7 +143,6 @@ char * strsepspace(char **p) {
 }
 
 void reconnectMQTT() {
-
   Debug.printf("Attempting MQTT connection to %s:%d (MQTT State : %s)\n",
                mqtt_server, mqtt_port, state2str(client.state()));
 
@@ -178,7 +176,7 @@ void configureMQTT()  {
   client.setCallback(mqtt_callback);
 }
 
-#ifndef ESP_PLATFORM
+#ifndef ESP32
 char * strsepspace(char **p) {
   char *q = *p;
   while (**p && **p != ' ') {
@@ -288,9 +286,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   if (!strncmp("denied", rest, 6) || !strncmp("unknown", rest, 7)) {
     Log.println("Flash LEDS");
     setRedLED(LED_FAST);
-#warning fi
-    delay(1000);
-    setRedLED(LED_OFF);
+    machinestate = PAUSED_AFTER_ERROR;
     return;
   };
 
@@ -325,7 +321,7 @@ void mqttLoop() {
     }
   } else {
     if (machinestate == NOCONN) {
-      Debug.println("We're connected - going into WAITING for card\n");
+      Debug.println("We're connected - going into WAITING for card.");
       machinestate = WAITINGFORCARD;
     };
     // try to ignore short lived wobbles.

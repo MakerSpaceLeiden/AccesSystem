@@ -310,7 +310,6 @@ const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxle
   return tag_encoded;
 }
 
-
 void send_helo(const char * helo) {
   char buff[MAX_MSG];
 

@@ -26,21 +26,26 @@
 // Over 328kB free to actually have enough room
 // to be able to flash.
 //
-#define OTA
+#define OTA 
+
+// If it has wired ethernet -- this will disable WiFi.
+// #define WIRED_ETHERNET
 
 // Allow the unit to go into AP mode for reconfiguration
 // if no wifi network is found. Note that this relies
 // on a SPIFFS to store the config; so >= 2Mbyt flash is
 // needed (and realistically 4Mbyte for the OTA).
 //
-#define CONFIGAP
+#define CONFIGAP  
 
 // Comment out to reduce debugging output. Note that most key
 // debugging is only visible on the serial port.
 //
-// #define DEBUG
-#define DEBUG_ALIVE  // sent an i-am-alive ping every 3 seconds.
-//
+#define DEBUG
+
+// sent an i-am-alive ping every 3 seconds.
+#define DEBUG_ALIVE  
+
 #ifdef  ESP32
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -63,12 +68,10 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 Log Log;
 
-#define BUILD  __FILE__ " " __DATE__ " " __TIME__
-
+#define BUILD  __FILE__ " " __DATE__ " " __TIME__ " " ARDUINO_BOARD 
 
 #include "/Users/dirkx/.passwd.h"
 #ifndef CONFIGAP
-
 // Hardcoded, compile time settings.
 const char ssid[34] = WIFI_NETWORK ;
 const char wifi_password[34] = WIFI_PASSWD;
@@ -80,6 +83,7 @@ typedef enum {
   WAITINGFORCARD,             // waiting for card.
   POWERED,                    // Relay powered.
   // DUSTEXTRACT,
+  PAUSED_AFTER_ERROR,
   NOTINUSE,
 } machinestates_t;
 
@@ -109,8 +113,36 @@ void setup() {
   SPI.begin(); // Init SPI bus
 
   Log.begin(mqtt_topic_prefix, 115200);
-  Log.println("\n\n\nBuild: " BUILD);
-
+  Log.println("\n\n\nBuild: " BUILD
+#ifdef OTA
+  " ota"
+#endif
+#ifdef CONFIGAP
+  " configAP"
+#endif
+#ifdef WIFI
+  " wifi"
+#endif
+#ifdef WIRED_ETHERNET
+  " wifi"
+#endif
+#ifdef DEBUG
+  " debug"
+#endif
+#ifdef DEBUG_ALIVE
+  " fast-alive-beat"
+#endif
+#ifdef HASRFID
+  " rfid-reader"
+#endif
+#ifdef SIG1
+  " sig1"
+#endif
+#ifdef SIG2
+  " sig2"
+#endif
+  );
+  
 #ifdef DEBUG
   debugFlash();
 #endif
@@ -132,26 +164,41 @@ void setup() {
   }
 #endif
 
+#ifdef WIRED_ETHERNET
+  eth_setup();
+#endif
+
   WiFi.mode(WIFI_STA);
 #ifdef CONFIGAP
-  WiFi.SSID();
+ //  WiFi.SSID();
+ 
+  WiFiManager wifiManager;
+  wifiManager.autoConnect();
 #else
   WiFi.begin(ssid, wifi_passwd);
 #endif
 
-  // Try up to 5 seconds to get a WiFi connection; and if that fails; reboot
+  const int del = 10; // seconds.
+
+  // Try up to del seconds to get a WiFi connection; and if that fails; reboot
   // with a bit of a delay.
+  //
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - start < 5000)) {
+  while (WiFi.status() != WL_CONNECTED && (millis() - start < del * 1000)) {
     delay(100);
   };
 
   if (WiFi.status() != WL_CONNECTED) {
-    Log.printf("Connection to <%s>\n", WiFi.SSID().c_str());
+#if 1
+    Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
+    configPortal();
+#else
+    Log.printf("No connection after %d seconds (ssid=%s). Rebooting.\n", del, WiFi.SSID().c_str());
     setOrangeLED(LED_FAST);
     Log.println("Rebooting...");
-    delay(5000);
+    delay(1000);
     ESP.restart();
+#endif
   }
 
   Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
@@ -226,6 +273,12 @@ void machineLoop() {
       setOrangeLED(LED_ON);
       relayenergized = 1;
       break;
+    case PAUSED_AFTER_ERROR:
+      if (millis() - laststatechange > 1000) {
+        machinestate = WAITINGFORCARD;
+        setRedLED(LED_OFF);
+      }
+      break;
   };
 
   digitalWrite(RELAY, relayenergized);
@@ -299,13 +352,13 @@ void loop() {
     Log.print(machinestateName[machinestate]);
     Log.print(" Wifi= ");
     Log.print(WiFi.status());
-    Log.print(" MQTT= ");
-    Log.print(client.state());
-
-    Log.print(" Button="); Serial.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
-    Log.print(" Relay="); Serial.print(digitalRead(RELAY)  ? "ON" : "off");
-    Log.print(" GreenLED="); Serial.print(ledstateName[lastgreen]);
-    Log.print(" OrangeLED="); Serial.print(ledstateName[lastorange]);
+    Log.print(WiFi.status() == WL_CONNECTED ? "(connected)" : "");
+    Log.print(" MQTT=<");
+    Log.print(state2str(client.state()));
+    Log.print(">");
+    
+    Log.print(" Button="); Log.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
+    Log.print(" Relay="); Log.print(digitalRead(RELAY)  ? "ON" : "off");
     Log.println(".");
 
     last_debug = millis();

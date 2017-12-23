@@ -1,5 +1,4 @@
-#ifndef _H_SIG2
-#define _H_SIG2
+#pragma once
 
 #include "MakerSpaceMQTT.h" // needed for MAX_MSG
 
@@ -49,6 +48,8 @@ extern uint8_t sessionkey[CURVE259919_SESSIONLEN];
 #define RNG_APP_TAG BUILD
 #define RNG_EEPROM_ADDRESS (sizeof(eeprom)+4)
 
+#define SIG2
+
 extern bool sig2_active();
 extern void kickoff_RNG();
 extern void maintain_rng();
@@ -67,6 +68,5 @@ extern int setup_curve25519();
 extern bool sig2_verify(const char * beat, const char signature64[], const char signed_payload[]);
 extern  void sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign);
 extern const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxlen);
-#endif
 
 

@@ -15,10 +15,10 @@ void  configBegin() {
 
 void debugListFS(const char * path)
 {
-#ifdef  ESP_PLATFORM
+#ifdef  ESP32
   fs::FS fs = SPIFFS;
 
-  Serial.printf("Listing directory: %s\n", path);
+  Debug.printf("Listing directory: %s\n", path);
   File root = fs.open(path);
   if (!root) {
     Debug.println("Failed to open directory");
@@ -52,7 +52,6 @@ void debugListFS(const char * path)
     Debug.printf("FS File: %s, size: %d\n", fileName.c_str(), fileSize);
   }
 #endif
-  Debug.printf("\n");
 }
 
 //callback notifying us of the need to save config
@@ -66,7 +65,7 @@ void configPortal() {
   setOrangeLED(LED_FAST);
 
   WiFiManager wifiManager;
-  wifiManager.setDebugOutput(0); // avoid sensitive stuff to appear needlessly.
+  wifiManager.setDebugOutput(255); // avoid sensitive stuff to appear needlessly.
 
   char mqtt_port_buff[5];
   char passwd_buff[MAX_NAME];
@@ -99,10 +98,10 @@ void configPortal() {
   String ssid = "ACNode CNF " + WiFi.macAddress();
   if (!wifiManager.startConfigPortal(ssid.c_str()))
   {
-    Serial.println("failed to connect and hit timeout - rebooting");
+    Log.println("failed to connect and hit timeout - rebooting");
     delay(1000);
     //reset and try again, or maybe put it to deep sleep
-#ifdef  ESP_PLATFORM
+#ifdef  ESP32
     esp_restart();
 #else
     ESP.reset();
@@ -111,7 +110,7 @@ void configPortal() {
   }
 
   if (shouldSaveConfig) {
-    Serial.println("We got stuff to save!");
+    Log.println("We got stuff to save!");
 
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
@@ -127,7 +126,7 @@ void configPortal() {
 
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
-      Serial.println("failed to open config file for writing");
+      Log.println("failed to open config file for writing");
     }
 
     // This will contain things like passwords in the clear
@@ -144,7 +143,7 @@ int configLoad() {
     Log.println("No JSON config file - odd");
     return 0;
   }
-  Serial.println("opening config file");
+  Debug.println("opening config file");
   size_t size = configFile.size();
   std::unique_ptr<char[]> buf(new char[size]);
 

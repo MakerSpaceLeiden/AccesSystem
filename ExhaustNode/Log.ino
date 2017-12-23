@@ -5,7 +5,6 @@
 
 #include "Log.h"
 
-WiFiUDP syslog;
 const uint16_t syslogPort = 514;
 
 void Log::begin(const char * prefix, int speed) {
@@ -13,11 +12,10 @@ void Log::begin(const char * prefix, int speed) {
   while (!Serial) {
     delay(100);
   }
-  Serial.print("\n\n\n\n\n");
+  Serial.print("\n\n\n\n\nstart\n\n");
   snprintf(logtopic, sizeof(logtopic), "%s/%s/%s", prefix, logpath, moi);
   logbuff[0] = 0; at = 0;
 
-  syslog.begin(syslogPort);
   return;
 }
 
@@ -40,23 +38,27 @@ size_t Log::write(uint8_t c) {
   send(logtopic, logbuff);
 
   if (WiFi.status() == WL_CONNECTED) {
-    syslog.beginPacket(WiFi.gatewayIP(), syslogPort);
-#ifdef  ESP_PLATFORM
-    syslog.printf("<135>%s %s", moi, logbuff);
+
+    WiFiUDP syslog;
+    if (syslog.begin(syslogPort)) {
+      syslog.beginPacket(WiFi.gatewayIP(), syslogPort);
+#ifdef  ESP32
+      syslog.printf("<135>%s %s", moi, logbuff);
 #else
-    syslog.write("<135>");
-    syslog.write(moi);
-    syslog.write(" ");
-    syslog.write(logbuff);
+      syslog.write("<135>");
+      syslog.write(moi);
+      syslog.write(" ");
+      syslog.write(logbuff);
 #endif
-    syslog.endPacket();
+      syslog.endPacket();
+    };
   };
 
   return r;
 }
 
 void debugFlash() {
-#ifdef  ESP_PLATFORM
+#ifdef  ESP32
   // not implemented.
 #else
   uint32_t realSize = ESP.getFlashChipRealSize();

@@ -1,7 +1,6 @@
 #pragma once
 
-
-#ifdef  ESP_PLATFORM
+#ifdef  ESP32
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
