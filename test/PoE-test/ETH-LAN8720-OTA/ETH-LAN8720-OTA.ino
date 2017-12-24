@@ -10,6 +10,7 @@
 #define ETH_PHY_POWER     17
 #define ETH_PHY_TYPE      ETH_PHY_LAN8720
 
+
 #include <ETH.h>
 #include <ArduinoOTA.h>
 
@@ -32,6 +33,7 @@ void enableOTA() {
   // Password can be set with it's md5 value as well
   // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
   // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
 
   ArduinoOTA
   .onStart([]() {
@@ -59,8 +61,14 @@ void enableOTA() {
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
   });
 
-  ArduinoOTA.begin();
+  // Unfortunately - deep in OTA it auto defaults to Wifi. So we
+  // force it to ETH -- requires pull RQ https://github.com/espressif/arduino-esp32/issues/944
+  // and https://github.com/espressif/esp-idf/issues/1431.
+  //
+  ArduinoOTA.begin(TCPIP_ADAPTER_IF_ETH);
   ota = true;
+
+  Serial.println("\nOTA enabled too\n");
 }
 
 void WiFiEvent(WiFiEvent_t event)
@@ -126,8 +134,6 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println("Start");
-
-  delay(5000);
 
   Serial.println("Init");
   WiFi.onEvent(WiFiEvent);
