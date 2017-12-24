@@ -26,17 +26,19 @@
 // Over 328kB free to actually have enough room
 // to be able to flash.
 //
-#define OTA 
+#define OTA
 
 // If it has wired ethernet -- this will disable WiFi.
-// #define WIRED_ETHERNET
+// Actual pinning defined in WiredEthernet.ino.
+//
+#define WIRED_ETHERNET
 
 // Allow the unit to go into AP mode for reconfiguration
 // if no wifi network is found. Note that this relies
 // on a SPIFFS to store the config; so >= 2Mbyt flash is
 // needed (and realistically 4Mbyte for the OTA).
 //
-#define CONFIGAP  
+#define CONFIGAP
 
 // Comment out to reduce debugging output. Note that most key
 // debugging is only visible on the serial port.
@@ -44,7 +46,7 @@
 #define DEBUG
 
 // sent an i-am-alive ping every 3 seconds.
-#define DEBUG_ALIVE  
+#define DEBUG_ALIVE
 
 #ifdef  ESP32
 #include <WiFi.h>
@@ -68,7 +70,7 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 Log Log;
 
-#define BUILD  __FILE__ " " __DATE__ " " __TIME__ " " ARDUINO_BOARD 
+#define BUILD  __FILE__ " " __DATE__ " " __TIME__ " " ARDUINO_BOARD
 
 #include "/Users/dirkx/.passwd.h"
 #ifndef CONFIGAP
@@ -115,36 +117,40 @@ void setup() {
   Log.begin(mqtt_topic_prefix, 115200);
   Log.println("\n\n\nBuild: " BUILD
 #ifdef OTA
-  " ota"
+              " ota"
 #endif
 #ifdef CONFIGAP
-  " configAP"
-#endif
-#ifdef WIFI
-  " wifi"
+              " configAP"
 #endif
 #ifdef WIRED_ETHERNET
-  " wifi"
+              " ethernet"
+#else
+              " wifi"
 #endif
 #ifdef DEBUG
-  " debug"
+              " debug"
 #endif
 #ifdef DEBUG_ALIVE
-  " fast-alive-beat"
+              " fast-alive-beat"
 #endif
 #ifdef HASRFID
-  " rfid-reader"
+              " rfid-reader"
 #endif
 #ifdef SIG1
-  " sig1"
+              " sig1"
 #endif
 #ifdef SIG2
-  " sig2"
+              " sig2"
 #endif
-  );
-  
+             );
+
 #ifdef DEBUG
   debugFlash();
+#endif
+
+#ifdef WIRED_ETHERNET
+  Debug.println("starting up ethernet");
+  eth_setup();
 #endif
 
 #ifdef CONFIGAP
@@ -164,14 +170,12 @@ void setup() {
   }
 #endif
 
-#ifdef WIRED_ETHERNET
-  eth_setup();
+#ifndef WIRED_ETHERNET
+  Debug.println("starting up wifi");
+  WiFi.mode(WIFI_STA);
 #endif
 
-  WiFi.mode(WIFI_STA);
 #ifdef CONFIGAP
- //  WiFi.SSID();
- 
   WiFiManager wifiManager;
   wifiManager.autoConnect();
 #else
@@ -188,11 +192,11 @@ void setup() {
     delay(100);
   };
 
+#ifndef WIRED_ETHERNET
   if (WiFi.status() != WL_CONNECTED) {
-#if 1
     Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
     configPortal();
-#else
+#if 0
     Log.printf("No connection after %d seconds (ssid=%s). Rebooting.\n", del, WiFi.SSID().c_str());
     setOrangeLED(LED_FAST);
     Log.println("Rebooting...");
@@ -200,8 +204,8 @@ void setup() {
     ESP.restart();
 #endif
   }
-
   Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
+#endif
 
 #ifdef OTA
   // Only allow OTA post (any) Wifi portal config -- as otherwise the
@@ -356,7 +360,7 @@ void loop() {
     Log.print(" MQTT=<");
     Log.print(state2str(client.state()));
     Log.print(">");
-    
+
     Log.print(" Button="); Log.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
     Log.print(" Relay="); Log.print(digitalRead(RELAY)  ? "ON" : "off");
     Log.println(".");

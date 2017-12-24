@@ -1,24 +1,29 @@
 #pragma once
 
 #ifdef  ESP32
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#include "FS.h"
-#include "SPIFFS.h"
+#   include <WiFi.h>
+#   include <ESPmDNS.h>
+#   include <WiFiUdp.h>
+#   include "FS.h"
+#   include "SPIFFS.h"
 
-#define trng() esp_random() /* XXX we ought to check if Wifi/BT is up - as that is required for secure numbers. */
-#define resetWatchdog() { /* not implemented  -- there is a void esp_int_wdt_init() -- but we've not found the reset. */ }
-#include <ESP32Ticker.h>  // https://github.com/bertmelis/Ticker-esp32.git
+#   define trng() esp_random() /* XXX we ought to check if Wifi/BT is up - as that is required for secure numbers. */
+#   define resetWatchdog() { /* not implemented  -- there is a void esp_int_wdt_init() -- but we've not found the reset. */ }
+
+#   include <ESP32Ticker.h>  // https://github.com/bertmelis/Ticker-esp32.git
+
+#   ifdef WIRED_ETHERNET
+      extern void eth_setup();
+#   endif
 #else
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <ESP8266mDNS.h>
-#include <DNSServer.h>
-#include <ESP8266WebServer.h>
-#include <FS.h>
-#define resetWatchdog() { ESP.wdtFeed(); }
-#include <Ticker.h>
+#   include <ESP8266WiFi.h>
+#   include <ESP8266mDNS.h>
+#   include <ESP8266mDNS.h>
+#   include <DNSServer.h>
+#   include <ESP8266WebServer.h>
+#   include <FS.h>
+#   define resetWatchdog() { ESP.wdtFeed(); }
+#   include <Ticker.h>
 #endif
 
 #include <ArduinoOTA.h>

@@ -4,11 +4,11 @@
 // Upon which below is ignored and will give you an odd 
 // silent hang.
 
-#define ETH_ADDR        (1)
-#define ETH_MDC_PIN     (23)
-#define ETH_MDIO_PIN    (18)
-#define ETH_PHY_POWER   (17)
-#define ETH_TYPE        ETH_PHY_LAN8720
+#define ETH_PHY_ADDR      (1)
+#define ETH_PHY_MDC       (23)
+#define ETH_PHY_MDIO      (18)
+#define ETH_PHY_POWER     (17)
+#define ETH_PHY_TYPE      (ETH_PHY_LAN8720)
 
 #include <ETH.h>
 
@@ -55,12 +55,10 @@ void WiFiEvent(WiFiEvent_t event)
 
 void eth_setup()
 {
-  Log.println("Hooking in events.");
   WiFi.onEvent(WiFiEvent);
 
-  Log.println("Starting wired ethernet.");
+  Debug.println("Starting wired ethernet.");
   ETH.begin();
-
-  Log.println("Wired ethernet started.");
+  Debug.println("Wired ethernet started.");
 }
 
