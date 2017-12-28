@@ -46,9 +46,9 @@ unsigned long laststatechange = 0;
 static machinestates_t laststate = OUTOFORDER;
 machinestates_t machinestate = BOOTING;
 
-OTA ota = OTA("FooBar");
+OTA ota = OTA("FooBar");		// Over the air config, passowrd.
 RFID reader(RFID_SELECT_PIN, RFID_RESET_PIN);
-MSL msl = MSL();
+MSL msl = MSL();			// MSL `no security' handler as currently used for the doors.
 
 void setup() {
 
