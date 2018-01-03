@@ -10,6 +10,7 @@
 #define ETH_PHY_POWER     17
 #define ETH_PHY_TYPE      ETH_PHY_LAN8720
 
+#if 0
 // Labeling as on the 'red' RFID MFRC522 boards and numbers
 // as per labels on the back of PoE board v1.00.
 //
@@ -23,6 +24,20 @@
 #define MFRC522_GND     /* gnd pin */
 #define MFRC522_IRQ     (33)
 #define MFRC522_RSTO    (32)
+#endif
+
+// Labeleing as per `blue' RFID MFRC522 - MSL 1471 'fixed'
+//
+#define MFRC522_SDA      (15)
+#define MFRC522_SCK     (14)
+#define MFRC522_MOSI    (13)
+#define MFRC522_MISO    (12)
+#define MFRC522_IRQ     (33)
+#define MFRC522_GND     /* gnd pin */
+#define MFRC522_RSTO    (32)
+#define MFRC522_3V3     /* 3v3 */
+
+#define MFRC522_SS MFRC522_SDA
 
 #include <ETH.h>
 #include <ArduinoOTA.h>
@@ -214,15 +229,22 @@ void loop()
   return;
 #endif
 
-  if ( ! mfrc522.PICC_IsNewCardPresent()) {
-    return;
-  }
+  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+    MFRC522::Uid uid = mfrc522.uid;
 
-  // Select one of the cards
-  if ( ! mfrc522.PICC_ReadCardSerial()) {
-    return;
-  }
+
+    Serial.print("Card detected: len=(");
+    Serial.print(uid.size);
+    Serial.print(") ");
+    
+    for (int i = 0; i < uid.size; i++) {
+      if (i) Serial.print("-");
+      Serial.print(uid.uidByte[i]);
+    };
+    Serial.println(".");
+  };
+    mfrc522.PICC_HaltA(); // Stop reading
 
   // Dump debug info about the card; PICC_HaltA() is automatically called
-  mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
+  // mfrc522.PICC_DumpToSerial(&(mfrc522.uid));
 }
