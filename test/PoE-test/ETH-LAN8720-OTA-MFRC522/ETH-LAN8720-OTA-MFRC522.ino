@@ -80,7 +80,10 @@ void enableOTA() {
   });
 
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\n", (progress / (total / 100)));
+    static int lp = -1 ;
+    int p = progress / (total / 10);
+    if (p != lp) Serial.printf("Progress: %u%%\n", p * 10);
+    lp = p;
   });
 
   // Unfortunately - deep in OTA it auto defaults to Wifi. So we
@@ -88,9 +91,9 @@ void enableOTA() {
   // and https://github.com/espressif/esp-idf/issues/1431.
   //
   ArduinoOTA.begin(TCPIP_ADAPTER_IF_ETH);
-  ota = true;
 
-  Serial.println("\nOTA enabled too\n");
+  Serial.println("\nOTA enabled.\n");
+  ota = true;
 }
 
 void WiFiEvent(WiFiEvent_t event)
@@ -181,10 +184,10 @@ void setup()
 void loop()
 {
   if (eth_connected) {
-    ArduinoOTA.handle();
-    if (!ota)
+    if (ota)
+      ArduinoOTA.handle();
+    else
       enableOTA();
-
   }
   static unsigned long tock = 0;
   if (millis() - tock  > 30 * 1000) {
@@ -207,7 +210,7 @@ void loop()
   digitalWrite(MFRC522_SS, LOW);
   spirfid.transfer(i++);
   digitalWrite(MFRC522_SS, HIGH);
-  spirfid.endTransaction(); // Stop using the SPI bus
+  spirfid.endTransaction();
   return;
 #endif
 
