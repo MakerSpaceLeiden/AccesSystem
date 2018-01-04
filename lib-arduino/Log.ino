@@ -5,6 +5,7 @@
 
 #include "Log.h"
 
+WiFiUDP syslog;
 const uint16_t syslogPort = 514;
 
 void Log::begin(const char * prefix, int speed) {
@@ -12,19 +13,16 @@ void Log::begin(const char * prefix, int speed) {
   while (!Serial) {
     delay(100);
   }
-  Serial.print("\n\n\n\n\nstart\n\n");
+  Serial.print("\n\n\n\n\n");
   snprintf(logtopic, sizeof(logtopic), "%s/%s/%s", prefix, logpath, moi);
   logbuff[0] = 0; at = 0;
 
+  syslog.begin(syslogPort);
   return;
 }
 
 size_t Log::write(uint8_t c) {
-  // Avoid outputting any data when we have the GDB stub included; as GDB gets
-  // confused by base64 strings.
-#ifndef GDBSTUB_H
   size_t r = Serial.write(c);
-#endif
 
   if (c >= 32)
     logbuff[ at++ ] = c;
@@ -35,32 +33,23 @@ size_t Log::write(uint8_t c) {
   logbuff[at++] = 0;
   at = 0;
 
-  send(logtopic, logbuff);
+  if (client.connected()) {
+    client.publish(logtopic, logbuff);
+  };
 
   if (WiFi.status() == WL_CONNECTED) {
-
-    WiFiUDP syslog;
-    if (syslog.begin(syslogPort)) {
-      syslog.beginPacket(WiFi.gatewayIP(), syslogPort);
-#ifdef  ESP32
-      syslog.printf("<135>%s %s", moi, logbuff);
-#else
-      syslog.write("<135>");
-      syslog.write(moi);
-      syslog.write(" ");
-      syslog.write(logbuff);
-#endif
-      syslog.endPacket();
-    };
+    syslog.beginPacket(WiFi.gatewayIP(), syslogPort);
+    syslog.write("<135>");
+    syslog.write(moi);
+    syslog.write(" ");
+    syslog.write(logbuff);
+    syslog.endPacket();
   };
 
   return r;
 }
 
 void debugFlash() {
-#ifdef  ESP32
-  // not implemented.
-#else
   uint32_t realSize = ESP.getFlashChipRealSize();
   uint32_t ideSize = ESP.getFlashChipSize();
   FlashMode_t ideMode = ESP.getFlashChipMode();
@@ -77,6 +66,5 @@ void debugFlash() {
   } else {
     Debug.println("Flash Chip configuration ok.\n");
   }
-#endif
 }
 

@@ -1,19 +1,21 @@
+
+
 /*
-      Copyright 2015-2016 Dirk-Willem van Gulik <dirkx@webweaving.org>
-                          Stichting Makerspace Leiden, the Netherlands.
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-*/
+ *    Copyright 2015-2016 Dirk-Willem van Gulik <dirkx@webweaving.org>
+ *                        Stichting Makerspace Leiden, the Netherlands.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *     
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 // Node MCU has a weird mapping...
 //
 #define LED_GREEN   16 // D0 -- LED inside the on/off toggle switch
@@ -28,11 +30,6 @@
 //
 #define OTA
 
-// If it has wired ethernet -- this will disable WiFi.
-// Actual pinning defined in WiredEthernet.ino.
-//
-#define WIRED_ETHERNET
-
 // Allow the unit to go into AP mode for reconfiguration
 // if no wifi network is found. Note that this relies
 // on a SPIFFS to store the config; so >= 2Mbyt flash is
@@ -43,37 +40,29 @@
 // Comment out to reduce debugging output. Note that most key
 // debugging is only visible on the serial port.
 //
-#define DEBUG
-
-// sent an i-am-alive ping every 3 seconds.
-#define DEBUG_ALIVE
-
-#ifdef  ESP32
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#else
+// #define DEBUG
+#define DEBUG_ALIVE  // sent an i-am-alive ping every 3 seconds.
+//
 #include <ESP8266WiFi.h>
-#endif
 #include <PubSubClient.h>        // https://github.com/knolleary/
 
+#include <Ticker.h>
 #include <SPI.h>
 
 #include "MakerspaceMQTT.h"
 #include "Log.h"
 #include "LEDs.h"
-#include "OTA.h"
-#include "ConfigPortal.h"
-#include "RFID.h"
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 Log Log;
 
-#define BUILD  __FILE__ " " __DATE__ " " __TIME__ " " ARDUINO_BOARD
+#define BUILD  __FILE__ " " __DATE__ " " __TIME__
+
 
 #include "/Users/dirkx/.passwd.h"
 #ifndef CONFIGAP
+
 // Hardcoded, compile time settings.
 const char ssid[34] = WIFI_NETWORK ;
 const char wifi_password[34] = WIFI_PASSWD;
@@ -85,7 +74,6 @@ typedef enum {
   WAITINGFORCARD,             // waiting for card.
   POWERED,                    // Relay powered.
   // DUSTEXTRACT,
-  PAUSED_AFTER_ERROR,
   NOTINUSE,
 } machinestates_t;
 
@@ -115,42 +103,10 @@ void setup() {
   SPI.begin(); // Init SPI bus
 
   Log.begin(mqtt_topic_prefix, 115200);
-  Log.println("\n\n\nBuild: " BUILD
-#ifdef OTA
-              " ota"
-#endif
-#ifdef CONFIGAP
-              " configAP"
-#endif
-#ifdef WIRED_ETHERNET
-              " ethernet"
-#else
-              " wifi"
-#endif
-#ifdef DEBUG
-              " debug"
-#endif
-#ifdef DEBUG_ALIVE
-              " fast-alive-beat"
-#endif
-#ifdef HASRFID
-              " rfid-reader"
-#endif
-#ifdef SIG1
-              " sig1"
-#endif
-#ifdef SIG2
-              " sig2"
-#endif
-             );
+  Log.println("\n\n\nBuild: " BUILD);
 
 #ifdef DEBUG
   debugFlash();
-#endif
-
-#ifdef WIRED_ETHERNET
-  Debug.println("starting up ethernet");
-  eth_setup();
 #endif
 
 #ifdef CONFIGAP
@@ -170,48 +126,34 @@ void setup() {
   }
 #endif
 
-#ifndef WIRED_ETHERNET
-  Debug.println("starting up wifi");
   WiFi.mode(WIFI_STA);
-#endif
-
 #ifdef CONFIGAP
-  WiFiManager wifiManager;
-  wifiManager.autoConnect();
+  WiFi.SSID();
 #else
   WiFi.begin(ssid, wifi_passwd);
 #endif
 
-  const int del = 10; // seconds.
-
-  // Try up to del seconds to get a WiFi connection; and if that fails; reboot
+  // Try up to 5 seconds to get a WiFi connection; and if that fails; reboot
   // with a bit of a delay.
-  //
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - start < del * 1000)) {
+  while (WiFi.status() != WL_CONNECTED && (millis() - start < 5000)) {
     delay(100);
   };
 
-#ifndef WIRED_ETHERNET
   if (WiFi.status() != WL_CONNECTED) {
-    Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
-    configPortal();
-#if 0
-    Log.printf("No connection after %d seconds (ssid=%s). Rebooting.\n", del, WiFi.SSID().c_str());
+    Log.printf("Connection to <%s>\n", WiFi.SSID().c_str());
     setOrangeLED(LED_FAST);
     Log.println("Rebooting...");
-    delay(1000);
+    delay(5000);
     ESP.restart();
-#endif
   }
+
   Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
-#endif
 
 #ifdef OTA
   // Only allow OTA post (any) Wifi portal config -- as otherwise the
   // latter can timeout in the middle of an OTA update without ado.
   //
-
   configureOTA();
 #endif
 
@@ -243,13 +185,13 @@ void machineLoop() {
 
     if (machinestate == WAITINGFORCARD) {
       machinestate = POWERED;
-      send(NULL, "event manual-start");
+      send("event manual-start");
     }
     else if (machinestate >= POWERED) {
       machinestate = WAITINGFORCARD;
-      send(NULL, "event manual-stop");
+      send("event manual-stop");
     } else
-      send(NULL, "event spurious-button-press");
+      send("event spurious-button-press");
   }
   if (digitalRead(PUSHBUTTON) == 1 && millis() - last_button_detect > 400) {
     last_button_detect =  0;
@@ -277,12 +219,6 @@ void machineLoop() {
       setOrangeLED(LED_ON);
       relayenergized = 1;
       break;
-    case PAUSED_AFTER_ERROR:
-      if (millis() - laststatechange > 1000) {
-        machinestate = WAITINGFORCARD;
-        setRedLED(LED_OFF);
-      }
-      break;
   };
 
   digitalWrite(RELAY, relayenergized);
@@ -306,32 +242,18 @@ void loop() {
     last_loop = millis();
   }
 
-  static unsigned long last_wifi_ok = 0;
-  if (WiFi.status() != WL_CONNECTED) {
-    Debug.println("Lost WiFi connection.");
-    if (machinestate <= WAITINGFORCARD)
-      machinestate = NOCONN;
-    if ( millis() - last_wifi_ok > 10000) {
-      Log.printf("Connection to SSID:%s for 10 seconds now -- Rebooting...\n", WiFi.SSID().c_str());
-      delay(500);
-      ESP.restart();
-    }
-  } else {
-    last_wifi_ok = millis();
-  };
+  machineLoop();
+  client.loop();
+  mqttLoop();
 
 #ifdef OTA
   otaLoop();
 #endif
 
-
-  machineLoop();
-  mqttLoop();
-
 #ifdef DEBUG_ALIVE
   static unsigned long last_beat = 0;
   if (millis() - last_beat > 3000 && client.connected()) {
-    send(NULL, "ping");
+    send("ping");
     last_beat = millis();
   }
 #endif
@@ -356,13 +278,13 @@ void loop() {
     Log.print(machinestateName[machinestate]);
     Log.print(" Wifi= ");
     Log.print(WiFi.status());
-    Log.print(WiFi.status() == WL_CONNECTED ? "(connected)" : "");
-    Log.print(" MQTT=<");
-    Log.print(state2str(client.state()));
-    Log.print(">");
+    Log.print(" MQTT= ");
+    Log.print(client.state());
 
-    Log.print(" Button="); Log.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
-    Log.print(" Relay="); Log.print(digitalRead(RELAY)  ? "ON" : "off");
+    Log.print(" Button="); Serial.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
+    Log.print(" Relay="); Serial.print(digitalRead(RELAY)  ? "ON" : "off");
+    Log.print(" GreenLED="); Serial.print(ledstateName[lastgreen]);
+    Log.print(" OrangeLED="); Serial.print(ledstateName[lastorange]);
     Log.println(".");
 
     last_debug = millis();

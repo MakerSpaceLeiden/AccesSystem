@@ -1,6 +1,5 @@
-#pragma once
-
 #include "MakerspaceMQTT.h"
+#pragma once
 
 // 'tee' class - which will log both to serial and to
 // MQTT if the latter is alive.

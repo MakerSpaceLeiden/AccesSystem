@@ -33,8 +33,6 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/
-#include <base64.hpp>
-
 
 // ArduinoJSON library -- from https://github.com/bblanchon/ArduinoJson - installed th
 //
@@ -83,8 +81,6 @@ extern char passwd[MAX_NAME];
 
 // Forward declarations..
 //
-extern void configureMQTT();
-extern void send(const char * topic, const char * payload);
-extern void mqttLoop();
+extern const char * state2str(int state);
 bool sig2_active();
 

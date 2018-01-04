@@ -1,5 +1,4 @@
-#include "MakerspaceMQTT.h"
-#include <PubSubClient.h>
+#include <ACNode.h>
 
 #if MQTT_MAX_PACKET_SIZE < 256
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
@@ -30,9 +29,11 @@ typedef struct publish_rec {
 } publish_rec_t;
 publish_rec_t *publish_queue = NULL;
 
-static void publish(const char *topic, const char *payload);
-
 void send(const char * topic, const char * payload) {
+	_acnode.send(topic,payload);
+}
+
+void ACNode::send(const char * topic, const char * payload) {
   char _topic[MAX_TOPIC];
 
   if (topic == NULL) {
@@ -49,12 +50,11 @@ void send(const char * topic, const char * payload) {
 
   if (!rec || !(rec->topic) || !(rec->payload)) {
     Debug.println("Out of memory");
-    Debug.flush();
 #ifdef DEBUG
+    // Throw a core dump for debugging/GDBSTUB_H purposes.
     *((int*)0) = 0;
-#else
-    ESP.restart();//    ESP.reset();
 #endif
+    ESP.restart();
   };
   // We append at the very end -- this preserves order -and- allows
   // us to add things to the queue while in something works on it.
@@ -64,20 +64,13 @@ void send(const char * topic, const char * payload) {
   *p = rec;
 }
 
-void publish_loop() {
-  if (!publish_queue)
-    return;
-  publish_rec_t * rec = publish_queue;
-  publish(rec->topic, rec->payload);
-
-  publish_queue = rec->nxt;
-  free(rec->topic);
-  free(rec->payload);
-  free(rec);
-}
 
 const char * state2str(int state) {
-#ifdef DEBUG
+#if 0
+  static char buff[10]; snprintf(buff, sizeof(buff), "Error: %d", state);
+  return buff;
+#endif
+
   switch (state) {
     case  /* -4 */ MQTT_CONNECTION_TIMEOUT:
       return "the server didn't respond within the keepalive time";
@@ -103,31 +96,7 @@ const char * state2str(int state) {
       break;
   }
   return "Unknown MQTT error";
-#else
-  static char buff[10]; snprintf(buff, sizeof(buff), "Error: %d", state);
-  return buff;
-#endif
 }
-// Note - doing any logging/publish in below is 'risky' - as
-// it may lead to an endless loop.
-//
-void publish(const char *topic, const char *payload) {
-  char msg[ MAX_MSG];
-  char beat[MAX_BEAT];
-
-  snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
-
-  if (sig2_active()) {
-    char tosign[MAX_MSG];
-    snprintf(tosign, sizeof(tosign), "%s %s", beat, payload);
-    sig2_sign(msg, sizeof(msg), tosign);
-  } else {
-    hmac_sign(msg, sizeof(msg), beat, payload);
-  }
-
-  client.publish(topic, msg);
-}
-
 
 char * strsepspace(char **p) {
   char *q = *p;
@@ -142,25 +111,25 @@ char * strsepspace(char **p) {
   return NULL;
 }
 
-void reconnectMQTT() {
+void ACNode::reconnectMQTT() {
   Debug.printf("Attempting MQTT connection to %s:%d (MQTT State : %s)\n",
-               mqtt_server, mqtt_port, state2str(client.state()));
+               mqtt_server, mqtt_port, state2str(_client.state()));
 
-  if (!client.connect(moi)) {
+  if (!_client.connect(moi)) {
     Log.print("failed : ");
-    Log.println(state2str(client.state()));
+    Log.println(state2str(_client.state()));
   }
 
-  Debug.println("(re)connected " BUILD);
+  Debug.println("(re)connected ");
 
   char topic[MAX_TOPIC];
   snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
-  client.subscribe(topic);
+  _client.subscribe(topic);
   Debug.print("Subscribed to ");
   Debug.println(topic);
 
   snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, master);
-  client.subscribe(topic);
+  _client.subscribe(topic);
   Debug.print("Subscribed to ");
   Debug.println(topic);
 
@@ -170,10 +139,11 @@ void reconnectMQTT() {
   send(topic, buff);
 }
 
+void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
 
-void configureMQTT()  {
-  client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(mqtt_callback);
+void ACNode::configureMQTT()  {
+  _client.setServer(mqtt_server, mqtt_port);
+  _client.setCallback(mqtt_callback);
 }
 
 #ifndef ESP32
@@ -209,21 +179,6 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     return;
   };
   char * p = (char *)payload;
-
-#define SEP(tok, err, errorOnReturn) \
-  char *  tok = strsepspace(&p); \
-  if (!tok) { \
-    Log.print("Malformed/missing " err ": " ); \
-    Log.println(p); \
-    return errorOnReturn; \
-  }
-#define B64D(base64str, bin, what) { \
-    if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
-      Log.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
-      return false; \
-    }; \
-    decode_base64((const unsigned char *)base64str, bin); \
-  }
 
   SEP(version, "SIG header",/* void return */);
   SEP(sig, "Signature",/* void return */);
@@ -267,6 +222,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     return;
   }
 
+#if 0
   if (!strncmp("state", rest, 4)) {
     char buff[MAX_MSG];
     snprintf(buff, sizeof(buff), "state %d %s", machinestate, machinestateName[machinestate]);
@@ -274,9 +230,13 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     return;
   }
 
+#ifdef RFID
   unsigned long  b = atol(beat);
-  if (handleRFID(b, rest))
+  if (handleRFID(b, rest)) {
+    machinestate = POWERED;
     return;
+  };
+#endif
 
   if (!strncmp("approved", rest, 8) || !strncmp("energize", rest, 8)) {
     machinestate = POWERED;
@@ -295,39 +255,51 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     send(NULL, "event outoforder");
     return;
   }
+#endif
 
   Log.printf("Do not know what to do with <%s>, ignoring.\n", rest);
   return;
 }
 
-void mqttLoop() {
-
-  client.loop();
-
+void ACNode::mqttLoop() {
   static unsigned long last_mqtt_connect_try = 0;
-  if (!client.connected()) {
-    if (machinestate != NOCONN) {
-      Debug.print("No MQTT connection (currently in ");
-      Debug.print(machinestateName[machinestate]);
-      Debug.print("): ");
-      Debug.println(state2str(client.state()));
-    };
-    if (machinestate <= WAITINGFORCARD)
-      machinestate = NOCONN;
 
+  _client.loop();
+
+  if (!_client.connected()) {
+    // report transient error ? Which ? And how often ?
     if (millis() - last_mqtt_connect_try > 10000 || last_mqtt_connect_try == 0) {
       reconnectMQTT();
       last_mqtt_connect_try = millis();
     }
-  } else {
-    if (machinestate == NOCONN) {
-      Debug.println("We're connected - going into WAITING for card.");
-      machinestate = WAITINGFORCARD;
-    };
-    // try to ignore short lived wobbles.
-    last_mqtt_connect_try = millis();
+    return;
   };
 
-  publish_loop();
+  if (!publish_queue)
+    return;
+
+  // Publish just once. Rely on the loop to return
+  // here quickly.
+  //
+  publish_rec_t * rec = publish_queue;
+  char msg[ MAX_MSG];
+  char beat[MAX_BEAT];
+
+  snprintf(beat, sizeof(beat), BEATFORMAT, beatCounter);
+
+  if (sig2_active()) {
+    char tosign[MAX_MSG];
+    snprintf(tosign, sizeof(tosign), "%s %s", beat, rec->payload);
+    sig2_sign(msg, sizeof(msg), tosign);
+  } else {
+    hmac_sign(msg, sizeof(msg), beat, rec->payload);
+  }
+
+  _client.publish(rec->topic, msg);
+
+  publish_queue = rec->nxt;
+  free(rec->topic);
+  free(rec->payload);
+  free(rec);
 }
 

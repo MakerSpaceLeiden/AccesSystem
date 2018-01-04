@@ -1,13 +1,16 @@
-#include "OTA.h"
+#include <ACNode.h>
+#include <OTA.h>
 
-void configureOTA() {
+OTA::OTA(const char * password) : _ota_password(password) {};
+
+void OTA::begin() {
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname(moi);
 
-  // We currenly hardcode this - as to not allow an 'easy' bypass by
-  // means of the captive portal activation & subsequent change.
-  //
-  ArduinoOTA.setPassword((const char *)OTA_PASSWD);
+  if (_ota_password) 
+	  ArduinoOTA.setPassword(_ota_password);
+  else 
+  	Log.println("**** WARNING -- NO OTA PASSWORD SET *****");
 
   ArduinoOTA.onStart([]() {
     Log.println("OTA process started.");
@@ -46,7 +49,6 @@ void configureOTA() {
 #endif
 }
 
-void otaLoop() {
+void OTA::loop() {
   ArduinoOTA.handle();
 }
-

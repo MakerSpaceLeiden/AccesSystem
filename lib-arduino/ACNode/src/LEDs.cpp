@@ -1,8 +1,8 @@
-#include "LEDs.h"
+#include <ACNode.h>
 
 const char *ledstateName[ NEVERSET ] = { "off", "flash", "slow", "fast", "on" };
 
-void flipPin(uint8_t pin) {
+void flipPin(unsigned char pin) {
   static unsigned int tock = 0;
   if (pin & 128) {
     digitalWrite(pin & 127, !(tock & 31));
@@ -20,14 +20,14 @@ void setLED(Ticker & t, unsigned char pin, int state) {
       break;
     case LED_FLASH:
       pin |= 128;
-      t.attach_ms(100, flipPin,  pin); // no need to detach - code will disarm and re-use existing timer.
+      t.attach_ms(100, &flipPin,  pin); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_SLOW:
       digitalWrite(pin, 1);
-      t.attach_ms(500, flipPin, pin); // no need to detach - code will disarm and re-use existing timer.
+      t.attach_ms(500, &flipPin, pin); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_FAST:
-      t.attach_ms(100, flipPin, pin); // no need to detach - code will disarm and re-use existing timer.
+      t.attach_ms(100, &flipPin, pin); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_ON:
       t.detach();

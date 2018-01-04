@@ -1,0 +1,13 @@
+{
+  "name": "ACNode",
+  "keywords": "rfid, hackspace, msl, makerspace",
+  "description": "Access Control node for the Makerspace in Leiden, NL"
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/dirkx/XXX.git"
+  },
+  "frameworks": "arduino",
+  "platforms": ["espressif", "espressif32"],
+  "version": "1.0",
+}

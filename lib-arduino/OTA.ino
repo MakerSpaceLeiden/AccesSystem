@@ -1,4 +1,6 @@
-#include "OTA.h"
+#include <WiFiUdp.h>
+#include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>
 
 void configureOTA() {
   ArduinoOTA.setPort(8266);
@@ -20,7 +22,7 @@ void configureOTA() {
     setOrangeLED(LED_ON);
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u\n", (progress / (total / 100)));
+    Log.printf("%c%c%c%cProgress: %u%% ", 27, '[', '1', 'G', (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
     setGreenLED(LED_FAST);
@@ -36,14 +38,8 @@ void configureOTA() {
       Log.println(error);
     };
   });
-  
-#ifdef  ESP32
-  ArduinoOTA.begin(TCPIP_ADAPTER_IF_ETH);
-  Log.println("OTA Enabled on the wired Ethernet interface");
-#else
   ArduinoOTA.begin();
   Log.println("OTA Enabled");
-#endif
 }
 
 void otaLoop() {

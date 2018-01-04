@@ -1,5 +1,4 @@
 #include <MFRC522.h>
-#include "RFID.h"
 
 // Last tag swiped; as a string.
 //
@@ -7,7 +6,7 @@ char lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or termin
 unsigned long lasttagbeat;          // Timestamp of last swipe.
 MFRC522 mfrc522;
 
-void configureRFID(unsigned sspin, unsigned rstpin) {
+void configureRFID(uint8 sspin, uint8 rstpin) {
   mfrc522 = MFRC522(sspin, rstpin);
 
   mfrc522.PCD_Init();   // Init MFRC522
@@ -22,7 +21,7 @@ int handleRFID(unsigned long b, const char * rest) {
     };
     char buff[MAX_MSG];
     snprintf(buff, sizeof(buff), "lastused %s", lasttag);
-    send(NULL, buff);
+    send(buff);
     return 1;
   }
   if (!strncmp("denied", rest, 6) || !strncmp("unknown", rest, 7)) {
@@ -62,20 +61,14 @@ int checkTagReader() {
 
   char beatAsString[ MAX_BEAT ];
   snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
-
-  SHA256 sha256;
-  sha256.reset();
-  sha256.update((unsigned char*)&beatAsString, strlen(beatAsString));
-  sha256.update(uid.uidByte, uid.size);
-
-  unsigned char binresult[sha256.hashSize()];
-  sha256.finalizeHMAC(sessionkey, sizeof(sessionkey), binresult, sizeof(binresult));
-
-  const char * tag_encoded = hmacToHex(binresult);
+  Sha256.initHmac((const uint8_t*)passwd, strlen(passwd));
+  Sha256.print(beatAsString);
+  Sha256.write(uid.uidByte, uid.size);
+  const char * tag_encoded = hmacToHex(Sha256.resultHmac());
 
   static char buff[MAX_MSG];
   snprintf(buff, sizeof(buff), "energize %s %s %s", moi, machine, tag_encoded);
-  send(NULL, buff);
+  send(buff);
 
   return 1;
 }

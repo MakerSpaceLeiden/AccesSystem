@@ -1,5 +1,31 @@
-#include "MakerspaceMQTT.h"
-#include "ConfigPortal.h"
+
+#include <ESP8266WiFi.h>
+#include <Ticker.h>
+#include <WiFiUdp.h>
+#include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h>
+#include <PubSubClient.h>        // https://github.com/knolleary/
+
+// ArduinoJSON library -- from https://github.com/bblanchon/ArduinoJson - installed th
+//
+// Depending on your version - if you get an osbcure error in
+// .../ArduinoJson/Polyfills/isNaN.hpp and isInfinity.hpp - then
+// isnan()/isinf() to __builtin_isnXXX() around line 34-36/
+//
+#include <ArduinoJson.h>
+
+#include <SPI.h>
+#include <FS.h>
+
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h>
+
+#include <SPI.h>
+#include <FS.h>
 
 //flag for saving data
 bool shouldSaveConfig = false;
@@ -13,37 +39,9 @@ void  configBegin() {
   }
 }
 
-void debugListFS(const char * path)
+
+void debugListFS(char * path)
 {
-#ifdef  ESP32
-  fs::FS fs = SPIFFS;
-
-  Debug.printf("Listing directory: %s\n", path);
-  File root = fs.open(path);
-  if (!root) {
-    Debug.println("Failed to open directory");
-    return;
-  }
-  if (!root.isDirectory()) {
-    Debug.println("Not a directory");
-    return;
-  }
-
-  File file = root.openNextFile();
-  while (file) {
-    if (file.isDirectory()) {
-      Debug.print("  DIR : ");
-      Debug.println(file.name());
-      debugListFS(file.name()); // WARNING -- recursive
-    } else {
-      Debug.print("  FILE: ");
-      Debug.print(file.name());
-      Debug.print("  SIZE: ");
-      Debug.println(file.size());
-    }
-    file = root.openNextFile();
-  }
-#else
   Dir dir = SPIFFS.openDir(path);
   Debug.println("SPI File System:");
   while (dir.next()) {
@@ -51,7 +49,7 @@ void debugListFS(const char * path)
     size_t fileSize = dir.fileSize();
     Debug.printf("FS File: %s, size: %d\n", fileName.c_str(), fileSize);
   }
-#endif
+  Debug.printf("\n");
 }
 
 //callback notifying us of the need to save config
@@ -65,7 +63,7 @@ void configPortal() {
   setOrangeLED(LED_FAST);
 
   WiFiManager wifiManager;
-  wifiManager.setDebugOutput(255); // avoid sensitive stuff to appear needlessly.
+  wifiManager.setDebugOutput(0); // avoid sensitive stuff to appear needlessly.
 
   char mqtt_port_buff[5];
   char passwd_buff[MAX_NAME];
@@ -98,19 +96,15 @@ void configPortal() {
   String ssid = "ACNode CNF " + WiFi.macAddress();
   if (!wifiManager.startConfigPortal(ssid.c_str()))
   {
-    Log.println("failed to connect and hit timeout - rebooting");
+    Serial.println("failed to connect and hit timeout - rebooting");
     delay(1000);
     //reset and try again, or maybe put it to deep sleep
-#ifdef  ESP32
-    esp_restart();
-#else
     ESP.reset();
-#endif
     delay(5000);
   }
 
   if (shouldSaveConfig) {
-    Log.println("We got stuff to save!");
+    Serial.println("We got stuff to save!");
 
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
@@ -126,7 +120,7 @@ void configPortal() {
 
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
-      Log.println("failed to open config file for writing");
+      Serial.println("failed to open config file for writing");
     }
 
     // This will contain things like passwords in the clear
@@ -143,7 +137,7 @@ int configLoad() {
     Log.println("No JSON config file - odd");
     return 0;
   }
-  Debug.println("opening config file");
+  Serial.println("opening config file");
   size_t size = configFile.size();
   std::unique_ptr<char[]> buf(new char[size]);
 

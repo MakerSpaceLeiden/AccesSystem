@@ -48,23 +48,7 @@
 // sent an i-am-alive ping every 3 seconds.
 #define DEBUG_ALIVE
 
-#ifdef  ESP32
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#else
-#include <ESP8266WiFi.h>
-#endif
-#include <PubSubClient.h>        // https://github.com/knolleary/
-
-#include <SPI.h>
-
-#include "MakerspaceMQTT.h"
-#include "Log.h"
-#include "LEDs.h"
-#include "OTA.h"
-#include "ConfigPortal.h"
-#include "RFID.h"
+#import <ACNode.h>
 
 WiFiClient espClient;
 PubSubClient client(espClient);
