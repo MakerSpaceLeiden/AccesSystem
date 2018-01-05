@@ -299,6 +299,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
   if (strcmp(topic, door_topic)) {
     Serial.printf("Received an unexepcted %d byte message on topic <%s>, ignoring.", length, topic);
+    // We intentinally do not log this message to a MQTT channel - as to reduce the
+    // risk of (amplification) loops due to a misconfiguration. We do increase the counter
+    // so indirectly this does show up in the MQTT log.
+    //
     cnt_fails ++;
     return;
   };
