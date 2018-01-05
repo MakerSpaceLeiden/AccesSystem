@@ -12,7 +12,7 @@
 
 // Labeleing as per `blue' RFID MFRC522 - MSL 1471 'fixed'
 //
-#define MFRC522_SDA      (15)
+#define MFRC522_SDA     (15)
 #define MFRC522_SCK     (14)
 #define MFRC522_MOSI    (13)
 #define MFRC522_MISO    (12)
@@ -24,13 +24,15 @@
 #define MFRC522_SS MFRC522_SDA
 
 // Stepper motor
-#define STEPPER_DIR       (0xFf)
-#define STEPPER_ENABLE    (0xFf)
-#define STEPPER_STEP      (0xFf)
+#define STEPPER_DIR       (2)
+#define STEPPER_ENABLE    (4)
+#define STEPPER_STEP      (5)
 
 #define DOOR_CLOSED       (0)
-#define DOOR_OPEN        (1100)
+#define DOOR_OPEN         (1100)
 #define DOOR_OPEN_DELAY   (10*1000)
+
+#define REPORTING_PERIOD  (300*1000)
 
 typedef enum doorstates { CLOSED, OPENING, OPEN, CLOSING } doorstate_t;
 doorstate_t doorstate;
@@ -69,7 +71,6 @@ PololuStepper::PololuStepper(uint8_t step_pin, uint8_t dir_pin, uint8_t enable_p
 
 PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_ENABLE);
 
-
 const char mqtt_host[] = "space.vijn.org";
 const unsigned short mqtt_port = 1883;
 
@@ -78,9 +79,12 @@ const char rfid_topic[] = PREFIX "deur/space2/rfid";
 const char door_topic[] = PREFIX "deur/space2/open";
 const char log_topic[] = PREFIX "log";
 
+WiFiClient wifiClient;
+PubSubClient client(wifiClient);
+
 static bool eth_connected = false;
 
-const char * pname = __FILE__;
+char pname[128] = "some-unconfigured-door";
 
 static bool ota = false;
 void enableOTA() {
@@ -108,12 +112,25 @@ void enableOTA() {
     else // U_SPIFFS
       type = "filesystem";
 
+    char buff[256];
+    snprintf(buff, sizeof(buff), "[%s] %s OTA re-programming started.", pname, type.c_str());
+
+    Serial.println(buff);
+    client.publish(log_topic, buff);
+    client.loop();
+
     // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    Serial.println("Start updating " + type);
   });
 
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
+    char buff[256];
+    snprintf(buff, sizeof(buff), "[%s] OTA re-programming completed. Rebooting.", pname);
+
+    Serial.println(buff);
+    client.publish(log_topic, buff);
+    client.loop();
+
+    client.disconnect();
   });
 
   ArduinoOTA.onError([](ota_error_t error) {
@@ -142,6 +159,20 @@ void enableOTA() {
   ota = true;
 }
 
+String DisplayIP4Address(IPAddress address)
+{
+  return String(address[0]) + "." +
+         String(address[1]) + "." +
+         String(address[2]) + "." +
+         String(address[3]);
+}
+String connectionDetailsString() {
+  return "Wired Ethernet: " + ETH.macAddress() +
+         ", IPv4: " + DisplayIP4Address(ETH.localIP()) + ", " +
+         ((ETH.fullDuplex()) ? "full" : "half") + "-duplex, " +
+         String(ETH.linkSpeed()) + " Mbps.";
+}
+
 void WiFiEvent(WiFiEvent_t event)
 {
   switch (event) {
@@ -155,16 +186,7 @@ void WiFiEvent(WiFiEvent_t event)
       break;
     case SYSTEM_EVENT_ETH_GOT_IP:
     case SYSTEM_EVENT_STA_GOT_IP:
-      Serial.print("ETH MAC: ");
-      Serial.print(ETH.macAddress());
-      Serial.print(", IPv4: ");
-      Serial.print(ETH.localIP());
-      if (ETH.fullDuplex()) {
-        Serial.print(", FULL_DUPLEX");
-      }
-      Serial.print(", ");
-      Serial.print(ETH.linkSpeed());
-      Serial.printf("Mbps (event %d)\n", event);
+      Serial.println(connectionDetailsString());
       eth_connected = true;
       break;
     case SYSTEM_EVENT_ETH_DISCONNECTED:
@@ -179,26 +201,6 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.printf("Unknown event %d\n", event);
       break;
   }
-}
-
-void testClient(const char * host, uint16_t port)
-{
-  Serial.print("\nconnecting to ");
-  Serial.println(host);
-
-  WiFiClient client;
-  if (!client.connect(host, port)) {
-    Serial.println("connection failed");
-    return;
-  }
-  client.printf("GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host);
-  while (client.connected() && !client.available());
-  while (client.available()) {
-    Serial.write(client.read());
-  }
-
-  Serial.println("closing connection\n");
-  client.stop();
 }
 
 volatile boolean irqCardSeen = false;
@@ -222,21 +224,23 @@ void clearInt(MFRC522 mfrc522) {
 }
 
 
-WiFiClient wifiClient;
-PubSubClient client(wifiClient);
 
 static long lastReconnectAttempt = 0;
 
 boolean reconnect() {
   if (!client.connect(pname)) {
+    // Do not log this to the MQTT bus - as it may have been us posting too much
+    // or some other loop-ish thing that triggered our disconnect.
+    //
     Serial.println("Failed to reconnect to MQTT bus.");
     return false;
   }
 
   char buff[256];
-  snprintf(buff, sizeof(buff), "[%s] %sconnected.", pname, cnt_reconnects ? "re" : "");
+  snprintf(buff, sizeof(buff), "[%s] %sconnected, %s", pname, cnt_reconnects ? "re" : "", connectionDetailsString().c_str());
   client.publish(log_topic, buff);
   client.subscribe(door_topic);
+  Serial.println(buff);
 
   cnt_reconnects++;
 
@@ -245,16 +249,19 @@ boolean reconnect() {
 
 void setup()
 {
-  char * p = rindex(pname, '/');
-  if (p) pname = p;
+  const char * f = __FILE__;
+  char * p = rindex(f, '/');
+  if (p)
+    strncpy(pname, p + 1, sizeof(pname));
 
   p = index(pname, '.');
-  if (p) *p = 0;
+  if (p)
+    *p = 0;
 
   Serial.begin(115200);
-  Serial.print("\n\n\nStart ");
+  Serial.print("\n\n\n\nStart ");
   Serial.print(pname);
-  Serial.println(" " __DATE__ " " __TIME__);
+  Serial.println(" " __DATE__ " " __TIME__ );
 
   WiFi.onEvent(WiFiEvent);
 
@@ -263,13 +270,9 @@ void setup()
   Serial.println("SPI init");
   spirfid.begin(MFRC522_SCK, MFRC522_MISO, MFRC522_MOSI, MFRC522_SS);
 
-  Serial.printf("MFRC522 init SPI = %p spi = %p setting = %d / %d / %d\n", &SPI, &spirfid, spiSettings._clock, spiSettings._bitOrder, spiSettings._dataMode);
-  mfrc522.PCD_Init();   // Init MFRC522
-
-  Serial.println("MFRC522 dump version");
-  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
-
   Serial.println("MFRC522 IRQ and callback setup.");
+  mfrc522.PCD_Init();   // Init MFRC522
+  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
 
   pinMode(MFRC522_IRQ, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(MFRC522_IRQ), readCard, FALLING);
@@ -290,11 +293,11 @@ void setup()
   doorstate = CLOSED;
   last_doorstatechange = millis();
 
-  Serial.println("setup() done");
+  Serial.println("setup() done.\n\n");
 }
 
 
-void callback(char* topic, byte* payload, unsigned int length) {
+void callback(char* topic, byte * payload, unsigned int length) {
   char buff[256];
 
   if (strcmp(topic, door_topic)) {
@@ -353,6 +356,9 @@ void loop()
     } else {
       client.loop();
     }
+  } else {
+    if (client.connected())
+      client.disconnect();
   }
   static unsigned long tock = 0;
 
@@ -394,13 +400,13 @@ void loop()
     last_doorstatechange = millis();
   }
 
-  if (millis() - tock  > 300 * 1000) {
+  if (millis() - tock  > REPORTING_PERIOD) {
     char buff[1024];
     cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
 
     snprintf(buff, sizeof(buff),
              "[%s] alive - uptime %02ld:%02ld: "
-             "swipes %6ld, opens %6ld, closes %6ld, fails %6ld, mis-swipes %6ld, mqtt reconnects %6ld",
+             "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld",
              pname, cnt_minutes / 12, (cnt_minutes % 12) * 5,
              cnt_cards,
              cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects);
