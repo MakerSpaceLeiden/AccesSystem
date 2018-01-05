@@ -36,6 +36,8 @@ typedef enum doorstates { CLOSED, OPENING, OPEN, CLOSING } doorstate_t;
 doorstate_t doorstate;
 unsigned long long last_doorstatechange = 0;
 
+long cnt_cards = 0, cnt_opens = 0, cnt_closes  = 0, cnt_fails = 0, cnt_misreads = 0, cnt_minutes = 0, cnt_reconnects = 0;
+
 #include <ETH.h>
 #include <SPI.h>
 
@@ -74,9 +76,11 @@ const unsigned short mqtt_port = 1883;
 #define PREFIX "test/"
 const char rfid_topic[] = PREFIX "deur/space2/rfid";
 const char door_topic[] = PREFIX "deur/space2/open";
-const char log_topic[] = PREFIX "deur/space2/log";
+const char log_topic[] = PREFIX "log";
 
 static bool eth_connected = false;
+
+const char * pname = __FILE__;
 
 static bool ota = false;
 void enableOTA() {
@@ -87,7 +91,7 @@ void enableOTA() {
   // ArduinoOTA.setPort(3232);
 
   // Hostname defaults to esp3232-[MAC]
-  // ArduinoOTA.setHostname("myesp32");
+  ArduinoOTA.setHostname(pname);
 
   // No authentication by default
   // ArduinoOTA.setPassword("admin");
@@ -222,19 +226,30 @@ WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
 static long lastReconnectAttempt = 0;
-const char * pname;
 
 boolean reconnect() {
-  if (client.connect(pname ? pname : "test-unit")) {
-    client.publish(log_topic, "reconnected");
-    client.subscribe(door_topic);
+  if (!client.connect(pname)) {
+    Serial.println("Failed to reconnect to MQTT bus.");
+    return false;
   }
+
+  char buff[256];
+  snprintf(buff, sizeof(buff), "[%s] %sconnected.", pname, cnt_reconnects ? "re" : "");
+  client.publish(log_topic, buff);
+  client.subscribe(door_topic);
+
+  cnt_reconnects++;
+
   return client.connected();
 }
 
 void setup()
 {
-  pname = rindex(__FILE__, '/');
+  char * p = rindex(pname, '/');
+  if (p) pname = p;
+
+  p = index(pname, '.');
+  if (p) *p = 0;
 
   Serial.begin(115200);
   Serial.print("\n\n\nStart ");
@@ -248,7 +263,7 @@ void setup()
   Serial.println("SPI init");
   spirfid.begin(MFRC522_SCK, MFRC522_MISO, MFRC522_MOSI, MFRC522_SS);
 
-  Serial.printf("MFRC522 init SPI=%p spi=%p setting=%d/%d/%d\n", &SPI, &spirfid, spiSettings._clock, spiSettings._bitOrder, spiSettings._dataMode);
+  Serial.printf("MFRC522 init SPI = %p spi = %p setting = %d / %d / %d\n", &SPI, &spirfid, spiSettings._clock, spiSettings._bitOrder, spiSettings._dataMode);
   mfrc522.PCD_Init();   // Init MFRC522
 
   Serial.println("MFRC522 dump version");
@@ -278,7 +293,6 @@ void setup()
   Serial.println("setup() done");
 }
 
-long cnt_cards = 0, cnt_opens = 0, cnt_closes  = 0, cnt_fails = 0, cnt_misreads = 0, cnt_minutes = 0;
 
 void callback(char* topic, byte* payload, unsigned int length) {
   char buff[256];
@@ -288,7 +302,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     cnt_fails ++;
     return;
   };
-  
+
   int l = 0;
   for (int i = 0; l < sizeof(buff) - 1 && i < length; i++) {
     char c = payload[i];
@@ -305,8 +319,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
     return;
   };
 
-  snprintf(buff, sizeof(buff), "Cannot parse reply <%s>[len=%d, payload len=%d] or denied access.",
-           buff, l, length);
+  snprintf(buff, sizeof(buff), "[%s] Cannot parse reply <%s> [len = %d, payload len = %d] or denied access.",
+           pname, buff, l, length);
 
   client.publish(log_topic, buff);
   Serial.println(buff);
@@ -342,7 +356,8 @@ void loop()
   switch (doorstate) {
     case OPENING:
       if (!is_moving) {
-        const char msg[] = "Door is open.";
+        char msg[256];
+        snprintf(msg, sizeof(msg), "[%s] Door is open.", pname);
         Serial.println(msg);
         client.publish(log_topic, msg);
         doorstate = OPEN;
@@ -357,7 +372,8 @@ void loop()
       };
     case CLOSING:
       if (!is_moving) {
-        const char msg[] = "Door is closed.";
+        char msg[256];
+        snprintf(msg, sizeof(msg), "[%s] Door is closed.", pname);
         Serial.println(msg);
         client.publish(log_topic, msg);
         doorstate = CLOSED;
@@ -379,10 +395,11 @@ void loop()
     cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
 
     snprintf(buff, sizeof(buff),
-             "alive - uptime %02ld:%02ld swipes %6ld, opens %6ld, closes %6ld, fails %6ld, misreads %6ld",
-             cnt_minutes / 12, (cnt_minutes % 12) * 5,
+             "[%s] alive - uptime %02ld: "
+             "%02ld swipes %6ld, opens %6ld, closes %6ld, fails %6ld, mis-swipes %6ld, mqtt reconnects %6ld",
+             pname, cnt_minutes / 12, (cnt_minutes % 12) * 5,
              cnt_cards,
-             cnt_opens, cnt_closes, cnt_fails, cnt_misreads);
+             cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects);
     client.publish(log_topic, buff);
     Serial.println(buff);
     tock = millis();
@@ -395,11 +412,14 @@ void loop()
 
       String uidStr = "";
       for (int i = 0; i < uid.size; i++) {
-        if (i) uidStr += "-";
+        if (i) uidStr += " - ";
         uidStr += String(uid.uidByte[i], DEC);
       };
       client.publish(rfid_topic, uidStr.c_str());
-      client.publish(log_topic, uidStr.c_str());
+
+      char msg[256];
+      snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
+      client.publish(log_topic, msg);
     } else {
       Serial.println("Misread.");
       cnt_misreads++;
