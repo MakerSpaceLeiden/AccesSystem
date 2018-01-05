@@ -1,16 +1,16 @@
-/*
-    This sketch shows the Ethernet event usage
-    First light Aart 10-12-2017
-
+/* Spacedeur 2 - 'as is' configuration which should be near identical
+    to the existing setup late 2017.
 */
 
+// Wired ethernet.
+//
 #define ETH_PHY_ADDR      1
 #define ETH_PHY_MDC       23
 #define ETH_PHY_MDIO      18
 #define ETH_PHY_POWER     17
 #define ETH_PHY_TYPE      ETH_PHY_LAN8720
 
-// Labeleing as per `blue' RFID MFRC522 - MSL 1471 'fixed'
+// Labelling as per `blue' RFID MFRC522 - MSL 1471 'fixed'
 //
 #define MFRC522_SDA     (15)
 #define MFRC522_SCK     (14)
@@ -21,9 +21,8 @@
 #define MFRC522_RSTO    (32)
 #define MFRC522_3V3     /* 3v3 */
 
-#define MFRC522_SS MFRC522_SDA
-
-// Stepper motor
+// Stepper motor - Pololu / A4988
+//
 #define STEPPER_DIR       (2)
 #define STEPPER_ENABLE    (4)
 #define STEPPER_STEP      (5)
@@ -51,9 +50,10 @@ long cnt_cards = 0, cnt_opens = 0, cnt_closes  = 0, cnt_fails = 0, cnt_misreads 
 
 SPIClass spirfid = SPIClass(VSPI);
 const SPISettings spiSettings = SPISettings(SPI_CLOCK_DIV4, MSBFIRST, SPI_MODE0);
-MFRC522 mfrc522(MFRC522_SS, MFRC522_RSTO, &spirfid, spiSettings);
+MFRC522 mfrc522(MFRC522_SDA, MFRC522_RSTO, &spirfid, spiSettings);
 
-// Marten denkt dat er een a4988 Pololu stepper inzit.
+// Simple overlay of the AccelStepper that configures for the A4988
+// driver of a 4 wire stepper - including the additional enable wire.
 //
 class PololuStepper : public AccelStepper
 {
@@ -75,6 +75,7 @@ const char mqtt_host[] = "space.vijn.org";
 const unsigned short mqtt_port = 1883;
 
 #define PREFIX "test/"
+
 const char rfid_topic[] = PREFIX "deur/space2/rfid";
 const char door_topic[] = PREFIX "deur/space2/open";
 const char log_topic[] = PREFIX "log";
@@ -155,7 +156,7 @@ void enableOTA() {
   //
   ArduinoOTA.begin(TCPIP_ADAPTER_IF_ETH);
 
-  Serial.println("\nOTA enabled.\n");
+  Serial.println("OTA enabled.");
   ota = true;
 }
 
@@ -166,6 +167,7 @@ String DisplayIP4Address(IPAddress address)
          String(address[2]) + "." +
          String(address[3]);
 }
+
 String connectionDetailsString() {
   return "Wired Ethernet: " + ETH.macAddress() +
          ", IPv4: " + DisplayIP4Address(ETH.localIP()) + ", " +
@@ -178,8 +180,7 @@ void WiFiEvent(WiFiEvent_t event)
   switch (event) {
     case SYSTEM_EVENT_ETH_START:
       Serial.println("ETH Started");
-      //set eth hostname here
-      ETH.setHostname("esp32-ethernet");
+      ETH.setHostname(pname);
       break;
     case SYSTEM_EVENT_ETH_CONNECTED:
       Serial.println("ETH Connected");
@@ -268,7 +269,7 @@ void setup()
   ETH.begin();
 
   Serial.println("SPI init");
-  spirfid.begin(MFRC522_SCK, MFRC522_MISO, MFRC522_MOSI, MFRC522_SS);
+  spirfid.begin(MFRC522_SCK, MFRC522_MISO, MFRC522_MOSI, MFRC522_SDA);
 
   Serial.println("MFRC522 IRQ and callback setup.");
   mfrc522.PCD_Init();   // Init MFRC522
@@ -280,7 +281,7 @@ void setup()
   byte regVal = 0xA0; //rx irq
   mfrc522.PCD_WriteRegister(mfrc522.ComIEnReg, regVal);
 
-  Serial.println("Setting up MQTT\n");
+  Serial.println("Setting up MQTT");
   client.setServer(mqtt_host, mqtt_port);
   client.setCallback(callback);
 
@@ -407,7 +408,7 @@ void loop()
     snprintf(buff, sizeof(buff),
              "[%s] alive - uptime %02ld:%02ld: "
              "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld",
-             pname, cnt_minutes / 12, (cnt_minutes % 12) * 5,
+             pname, cnt_minutes / 60, (cnt_minutes % 60),
              cnt_cards,
              cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects);
     client.publish(log_topic, buff);
