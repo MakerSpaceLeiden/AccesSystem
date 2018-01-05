@@ -399,8 +399,8 @@ void loop()
     cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
 
     snprintf(buff, sizeof(buff),
-             "[%s] alive - uptime %02ld: "
-             "%02ld swipes %6ld, opens %6ld, closes %6ld, fails %6ld, mis-swipes %6ld, mqtt reconnects %6ld",
+             "[%s] alive - uptime %02ld:%02ld: "
+             "swipes %6ld, opens %6ld, closes %6ld, fails %6ld, mis-swipes %6ld, mqtt reconnects %6ld",
              pname, cnt_minutes / 12, (cnt_minutes % 12) * 5,
              cnt_cards,
              cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects);
