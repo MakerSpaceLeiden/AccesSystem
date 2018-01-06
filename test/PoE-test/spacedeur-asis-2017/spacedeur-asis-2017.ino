@@ -602,7 +602,8 @@ void loop()
       char msg[256];
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
       client.publish(log_topic, msg);
-
+      Serial.println(msg);
+      
       doorstate = CHECKINGCARD;
     } else {
       Serial.println("Misread.");
