@@ -29,18 +29,21 @@
 
 #define DOOR_CLOSED       (0)
 #define DOOR_OPEN         (1100)
+
 #define DOOR_OPEN_DELAY   (10*1000)
 
 #define REPORTING_PERIOD  (300*1000)
 
-typedef enum doorstates { CLOSED, OPENING, OPEN, CLOSING } doorstate_t;
+typedef enum doorstates { CLOSED, CHECKINGCARD, OPENING, OPEN, CLOSING } doorstate_t;
 doorstate_t doorstate;
 unsigned long long last_doorstatechange = 0;
 
-long cnt_cards = 0, cnt_opens = 0, cnt_closes  = 0, cnt_fails = 0, cnt_misreads = 0, cnt_minutes = 0, cnt_reconnects = 0;
+long cnt_cards = 0, cnt_opens = 0, cnt_closes  = 0, cnt_fails = 0, cnt_misreads = 0, cnt_minutes = 0, cnt_reconnects = 0, cnt_mqttfails = 0;
 
 #include <ETH.h>
 #include <SPI.h>
+#include <SPIFFS.h>
+#include <FS.h>
 
 #include <ArduinoOTA.h>
 #include <AccelStepper.h>
@@ -74,11 +77,15 @@ PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_ENABLE)
 const char mqtt_host[] = "space.vijn.org";
 const unsigned short mqtt_port = 1883;
 
+extern void callback(char* topic, byte * payload, unsigned int length);
+
+bool caching = false;
+
 #define PREFIX "test/"
 
 const char rfid_topic[] = PREFIX "deur/space2/rfid";
 const char door_topic[] = PREFIX "deur/space2/open";
-const char log_topic[] = PREFIX "log";
+const char log_topic[] =  PREFIX "log";
 
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
@@ -120,7 +127,7 @@ void enableOTA() {
     client.publish(log_topic, buff);
     client.loop();
 
-    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+    SPIFFS.end();
   });
 
   ArduinoOTA.onEnd([]() {
@@ -294,9 +301,116 @@ void setup()
   doorstate = CLOSED;
   last_doorstatechange = millis();
 
+  Serial.println("SPIFF setup");
+  if (!SPIFFS.begin()) {
+    Serial.println("SPIFFS Mount Failed - reformatting");
+    wipeCache();
+  } else {
+    caching = true;
+    listDir(SPIFFS, "/", "");
+  };
+
   Serial.println("setup() done.\n\n");
 }
 
+// This function is taken from the SPIFFS_Test example. Under the expressif ESP32 license.
+//
+void listDir(fs::FS &fs, const char * dirname, String prefix) {
+  Serial.print(prefix);
+  Serial.println(dirname);
+
+  File root = fs.open(dirname);
+  if (!root) {
+    Serial.println("Failed to open directory");
+    return;
+  }
+  if (!root.isDirectory()) {
+    Serial.println("Not a directory");
+    return;
+  }
+
+  File file = root.openNextFile();
+  while (file) {
+    if (file.isDirectory()) {
+      listDir(fs, file.name(), prefix + " ");
+    } else {
+      Serial.print(prefix + " ");
+      Serial.println(file.name());
+    }
+    file = root.openNextFile();
+  }
+  root.close();
+}
+
+void wipeCache() {
+  caching = false;
+
+  if (!SPIFFS.format()) {
+    Serial.println("SPIFFS formatting failed.");
+    return;
+  }
+
+  Serial.println("Formatted.");
+  if (!SPIFFS.begin()) {
+    Serial.println("SPIFFS mount after formatting failed.");
+    return;
+  };
+
+  for (int i = 0; i < 255; i++)
+    SPIFFS.mkdir(String(i));
+
+  Serial.println("Directory structure created.");
+  listDir(SPIFFS, "/", "");
+  caching = true;
+};
+
+String uid2path(MFRC522::Uid uid) {
+  String path = "/uid-";
+  for (int i = 0; i < uid.size; i++) {
+    path += String(uid.uidByte[i], DEC);
+    if (i == 0)
+      path += "/";
+    else
+      path += ".";
+  };
+  return path;
+}
+
+bool checkCache(MFRC522::Uid uid) {
+  String path = uid2path(uid) + ".lastOK";
+  return SPIFFS.exists(path);
+}
+
+void setCache(MFRC522::Uid uid, bool ok) {
+  String path = uid2path(uid) + ".lastOK";
+  if (ok) {
+    File f = SPIFFS.open(path, "w");
+    f.println(cnt_minutes);
+    f.close();
+  } else {
+    SPIFFS.remove(path);
+  }
+}
+
+void openDoor() {
+  doorstate = OPENING;
+  stepper.moveTo(DOOR_OPEN);
+};
+
+bool isOpen() {
+  return stepper.currentPosition() == DOOR_OPEN; // no sensors.
+}
+
+void closeDoor() {
+  stepper.moveTo(DOOR_CLOSED);
+  doorstate = CLOSING;
+}
+
+bool isClosed() {
+  return stepper.currentPosition() == DOOR_CLOSED; // no sensors.
+}
+
+MFRC522::Uid uid;
 
 void callback(char* topic, byte * payload, unsigned int length) {
   char buff[256];
@@ -307,7 +421,7 @@ void callback(char* topic, byte * payload, unsigned int length) {
     // risk of (amplification) loops due to a misconfiguration. We do increase the counter
     // so indirectly this does show up in the MQTT log.
     //
-    cnt_fails ++;
+    cnt_mqttfails ++;
     return;
   };
 
@@ -319,26 +433,68 @@ void callback(char* topic, byte * payload, unsigned int length) {
   };
   buff[l] = 0;
 
-  if (!strcmp(buff, "open")) {
-    doorstate = OPENING;
-    Serial.println("Opening door.");
+  if (!strcmp(buff, "reboot")) {
+    ESP.restart();
+    return;
+  }
 
-    stepper.moveTo(DOOR_OPEN);
+  if (!strcmp(buff, "report")) {
+    reportStats();
+    return;
+  }
+
+  if (!strcmp(buff, "purge")) {
+    char msg[255];
+    wipeCache();
+
+    snprintf(msg, sizeof(msg), "[%s] Purged cache.", pname);
+    client.publish(log_topic, msg);
+    Serial.println(msg);
+
+    return;
+  }
+
+  if (!strcmp(buff, "open")) {
+    Serial.println("Opening door.");
+    openDoor();
+    if (caching && uid.size)
+      setCache(uid, true);
+    uid.size = 0;
     return;
   };
 
-  snprintf(buff, sizeof(buff), "[%s] Cannot parse reply <%s> [len = %d, payload len = %d] or denied access.",
+  if (caching)
+    setCache(uid, false);
+  uid.size = 0;
+
+  char msg[256];
+  snprintf(msg, sizeof(msg), "[%s] Cannot parse reply <%s> [len = %d, payload len = %d] or denied access.",
            pname, buff, l, length);
 
+  client.publish(log_topic, msg);
+  Serial.println(msg);
+
+  cnt_mqttfails ++;
+}
+
+void reportStats() {
+  char buff[255];
+  snprintf(buff, sizeof(buff),
+           "[%s] alive - uptime %02ld:%02ld: "
+           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, stepper %s at %ld (target %ld)",
+           pname, cnt_minutes / 60, (cnt_minutes % 60),
+           cnt_cards,
+           cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
+           stepper.run() ? "running" : "halted", stepper.currentPosition(), stepper.targetPosition()
+          );
   client.publish(log_topic, buff);
   Serial.println(buff);
-
-  cnt_fails ++;
 }
+
 
 void loop()
 {
-  bool is_moving = stepper.run();
+  stepper.run();
 
   if (eth_connected) {
     if (ota)
@@ -365,8 +521,17 @@ void loop()
 
   static doorstate_t lastdoorstate = CLOSED;
   switch (doorstate) {
+    case CHECKINGCARD:
+      if (millis() - last_doorstatechange > 1500 && caching && checkCache(uid)) {
+        char msg[255];
+        snprintf(msg, sizeof(msg), "[%s] Allowing door to open based on cached information.", pname);
+        Serial.println(msg);
+        client.publish(log_topic, msg);
+        openDoor();
+      }
+      break;
     case OPENING:
-      if (!is_moving) {
+      if (isOpen()) {
         char msg[256];
         snprintf(msg, sizeof(msg), "[%s] Door is open.", pname);
         Serial.println(msg);
@@ -378,11 +543,10 @@ void loop()
     case OPEN:
       if (millis() - last_doorstatechange > DOOR_OPEN_DELAY) {
         Serial.println("Closing door.");
-        stepper.moveTo(DOOR_CLOSED);
-        doorstate = CLOSING;
+        closeDoor();
       };
     case CLOSING:
-      if (!is_moving) {
+      if (isClosed()) {
         char msg[256];
         snprintf(msg, sizeof(msg), "[%s] Door is closed.", pname);
         Serial.println(msg);
@@ -392,6 +556,9 @@ void loop()
       };
       break;
     case CLOSED:
+      if (!isClosed()) {
+        /// some alerting ? clearly a bug ?
+      }
     default:
       break;
   };
@@ -401,24 +568,28 @@ void loop()
     last_doorstatechange = millis();
   }
 
+  // catch any logic errors or strange cases where the door is open while we think
+  // we are not doing anything.
+  //
+  if ((millis() - last_doorstatechange > 10 * DOOR_OPEN_DELAY) && ((doorstate != CLOSED) || (!isClosed()))) {
+    closeDoor();
+    char msg[256];
+    snprintf(msg, sizeof(msg), "[%s] Door in an odd state - forcing close.", pname);
+    Serial.println(msg);
+    client.publish(log_topic, msg);
+    cnt_fails ++;
+  }
+
   if (millis() - tock  > REPORTING_PERIOD) {
     char buff[1024];
     cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
-
-    snprintf(buff, sizeof(buff),
-             "[%s] alive - uptime %02ld:%02ld: "
-             "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld",
-             pname, cnt_minutes / 60, (cnt_minutes % 60),
-             cnt_cards,
-             cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects);
-    client.publish(log_topic, buff);
-    Serial.println(buff);
+    reportStats();
     tock = millis();
   }
 
   if (irqCardSeen) {
     if (mfrc522.PICC_ReadCardSerial()) {
-      MFRC522::Uid uid = mfrc522.uid;
+      uid = mfrc522.uid;
       cnt_cards++;
 
       String uidStr = "";
@@ -431,6 +602,8 @@ void loop()
       char msg[256];
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
       client.publish(log_topic, msg);
+
+      doorstate = CHECKINGCARD;
     } else {
       Serial.println("Misread.");
       cnt_misreads++;
