@@ -1,4 +1,4 @@
-/* Spacedeur 2 - 'as is' configuration which should be near identical
+/* Spacedeur 2-'as is' configuration which should be near identical
     to the existing setup late 2017.
 */
 
@@ -10,7 +10,7 @@
 #define ETH_PHY_POWER     17
 #define ETH_PHY_TYPE      ETH_PHY_LAN8720
 
-// Labelling as per `blue' RFID MFRC522 - MSL 1471 'fixed'
+// Labelling as per `blue' RFID MFRC522-MSL 1471 'fixed'
 //
 #define MFRC522_SDA     (15)
 #define MFRC522_SCK     (14)
@@ -21,11 +21,14 @@
 #define MFRC522_RSTO    (32)
 #define MFRC522_3V3     /* 3v3 */
 
-// Stepper motor - Pololu / A4988
+// Stepper motor-Pololu / A4988
 //
 #define STEPPER_DIR       (2)
 #define STEPPER_ENABLE    (4)
 #define STEPPER_STEP      (5)
+
+#define STEPPER_MAXSPEED 750
+#define STEPPER_ACCESS 300
 
 #define LED_AART          (16)
 
@@ -58,7 +61,7 @@ const SPISettings spiSettings = SPISettings(SPI_CLOCK_DIV4, MSBFIRST, SPI_MODE0)
 MFRC522 mfrc522(MFRC522_SDA, MFRC522_RSTO, &spirfid, spiSettings);
 
 // Simple overlay of the AccelStepper that configures for the A4988
-// driver of a 4 wire stepper - including the additional enable wire.
+// driver of a 4 wire stepper-including the additional enable wire.
 //
 class PololuStepper : public AccelStepper
 {
@@ -70,21 +73,26 @@ PololuStepper::PololuStepper(uint8_t step_pin, uint8_t dir_pin, uint8_t enable_p
   : AccelStepper(AccelStepper::DRIVER, step_pin, dir_pin)
 {
   pinMode(STEPPER_ENABLE, OUTPUT);
-  digitalWrite(STEPPER_ENABLE, HIGH); // dis-able stepper first.
+  digitalWrite(STEPPER_ENABLE, LOW); // dis-able stepper first.
+  setPinsInverted(false, false, true);
   setEnablePin(enable_pin);
 }
 
 
 PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_ENABLE);
 
+#ifdef LOCALMQTT
+const IPAddress mqtt_host = LOCALMQTT;
+#else
 const char mqtt_host[] = "space.vijn.org";
+#endif
 const unsigned short mqtt_port = 1883;
 
 extern void callback(char* topic, byte * payload, unsigned int length);
 
 bool caching = false;
 
-#define PREFIX "test/"
+#define PREFIX ""
 
 const char rfid_topic[] = PREFIX "deur/space2/rfid";
 const char door_topic[] = PREFIX "deur/space2/open";
@@ -102,19 +110,11 @@ void enableOTA() {
   if (ota)
     return;
 
-  // Port defaults to 3232
-  // ArduinoOTA.setPort(3232);
-
-  // Hostname defaults to esp3232-[MAC]
+  ArduinoOTA.setPort(3232);
   ArduinoOTA.setHostname(pname);
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin)=21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-
+#ifdef LOCALOTA
+  ArduinoOTA.setPasswordHash(LOCALOTA);
+#endif
 
   ArduinoOTA.onStart([]() {
     String type;
@@ -123,7 +123,7 @@ void enableOTA() {
         type = "Firmware";
         break;
       case U_SPIFFS:
-          type = "SPIFFS";
+        type = "SPIFFS";
         break;
       default: {
           const char buff[] = "Unknown type of reprogramming attempt. Rejecting.";
@@ -152,7 +152,7 @@ void enableOTA() {
 
   ArduinoOTA.onEnd([]() {
     char buff[256];
-    snprintf(buff, sizeof(buff), "[%s] OTA re - programming completed. Rebooting.", pname);
+    snprintf(buff, sizeof(buff), "[%s] OTA re-programming completed. Rebooting.", pname);
 
     Serial.println(buff);
     client.publish(log_topic, buff);
@@ -175,10 +175,10 @@ void enableOTA() {
     int p = progress / (total / 10);
     if (p != lp) Serial.printf("Progress: %u %%\n", p * 10);
     lp = p;
-    digitalWrite(LED_AART, (millis() >> 7) & 3 == 0);
+    digitalWrite(LED_AART, ((millis() >> 7) & 3) == 0);
   });
 
-  // Unfortunately - deep in OTA it auto defaults to Wifi. So we
+  // Unfortunately-deep in OTA it auto defaults to Wifi. So we
   // force it to ETH -- requires pull RQ https://github.com/espressif/arduino-esp32/issues/944
   // and https://github.com/espressif/esp-idf/issues/1431.
   //
@@ -199,7 +199,7 @@ String DisplayIP4Address(IPAddress address)
 String connectionDetailsString() {
   return "Wired Ethernet: " + ETH.macAddress() +
          ", IPv4: " + DisplayIP4Address(ETH.localIP()) + ", " +
-         ((ETH.fullDuplex()) ? "full" : "half") + " - duplex, " +
+         ((ETH.fullDuplex()) ? "full" : "half") + "-duplex, " +
          String(ETH.linkSpeed()) + " Mbps.";
 }
 
@@ -258,7 +258,7 @@ static long lastReconnectAttempt = 0;
 
 boolean reconnect() {
   if (!client.connect(pname)) {
-    // Do not log this to the MQTT bus - as it may have been us posting too much
+    // Do not log this to the MQTT bus-as it may have been us posting too much
     // or some other loop-ish thing that triggered our disconnect.
     //
     Serial.println("Failed to reconnect to MQTT bus.");
@@ -304,7 +304,7 @@ void setup()
 
   Serial.println("MFRC522 IRQ and callback setup.");
   mfrc522.PCD_Init();   // Init MFRC522
-  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
+  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD-MFRC522 Card Reader details
 
   pinMode(MFRC522_IRQ, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(MFRC522_IRQ), readCard, FALLING);
@@ -317,8 +317,8 @@ void setup()
   client.setCallback(callback);
 
   Serial.println("Setup of Stepper motor");
-  stepper.setMaxSpeed(300);  // divide by 3 to get rpm
-  stepper.setAcceleration(100);
+  stepper.setMaxSpeed(STEPPER_MAXSPEED);  // divide by 3 to get rpm
+  stepper.setAcceleration(STEPPER_ACCESS);
   stepper.moveTo(DOOR_CLOSED);
 
   stepper.run();
@@ -327,7 +327,7 @@ void setup()
 
   Serial.println("SPIFF setup");
   if (!SPIFFS.begin()) {
-    Serial.println("SPIFFS Mount Failed - reformatting");
+    Serial.println("SPIFFS Mount Failed-reformatting");
     wipeCache();
   } else {
     caching = true;
@@ -389,7 +389,7 @@ void wipeCache() {
 };
 
 String uid2path(MFRC522::Uid uid) {
-  String path = " / uid - ";
+  String path = " / uid-";
   for (int i = 0; i < uid.size; i++) {
     path += String(uid.uidByte[i], DEC);
     if (i == 0)
@@ -440,7 +440,7 @@ MFRC522::Uid uid;
 String uidToString(MFRC522::Uid uid) {
   String uidStr = "";
   for (int i = 0; i < uid.size; i++) {
-    if (i) uidStr += " - ";
+    if (i) uidStr += "-";
     uidStr += String(uid.uidByte[i], DEC);
   };
   return uidStr;
@@ -451,7 +451,7 @@ void callback(char* topic, byte * payload, unsigned int length) {
 
   if (strcmp(topic, door_topic)) {
     Serial.printf("Received an unexepcted %d byte message on topic <%s>, ignoring.", length, topic);
-    // We intentinally do not log this message to a MQTT channel - as to reduce the
+    // We intentinally do not log this message to a MQTT channel-as to reduce the
     // risk of (amplification) loops due to a misconfiguration. We do increase the counter
     // so indirectly this does show up in the MQTT log.
     //
@@ -510,7 +510,7 @@ void callback(char* topic, byte * payload, unsigned int length) {
       snprintf(msg, sizeof(msg), "[%s] Purged cache of UID <%s> (payload %s)", pname, uidToString(uid).c_str(), ptag);
       setCache(uid, false);
     } else {
-      snprintf(msg, sizeof(msg), "[%s] Ignored purge request for uid - payload <%s> ", pname, ptag);
+      snprintf(msg, sizeof(msg), "[%s] Ignored purge request for uid-payload <%s> ", pname, ptag);
       cnt_mqttfails ++;
     }
     client.publish(log_topic, msg);
@@ -546,8 +546,8 @@ void callback(char* topic, byte * payload, unsigned int length) {
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
-           "[%s] alive - uptime %02ld : %02ld : "
-           "swipes %ld, opens %ld, closes %ld, fails %ld, mis - swipes %ld, mqtt reconnects %ld, mqtt fails %ld, stepper %s at %ld (target %ld)",
+           "[%s] alive-uptime %02ld : %02ld : "
+           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, stepper %s at %ld (target %ld)",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
@@ -654,7 +654,7 @@ void loop()
   if ((millis() - last_doorstatechange > 10 * DOOR_OPEN_DELAY) && ((doorstate != CLOSED) || (!isClosed()))) {
     closeDoor();
     char msg[256];
-    snprintf(msg, sizeof(msg), "[%s] Door in an odd state - forcing close.", pname);
+    snprintf(msg, sizeof(msg), "[%s] Door in an odd state-forcing close.", pname);
     Serial.println(msg);
     client.publish(log_topic, msg);
     cnt_fails ++;
@@ -674,8 +674,15 @@ void loop()
       uid = mfrc522.uid;
       String uidStr = uidToString(uid);
 
+      String pyStr = "[";
+      for (int i = 0; i < uid.size; i++) {
+        if (i) pyStr += ", ";
+        pyStr += String(uid.uidByte[i], DEC);
+      };
+      pyStr += "]";
+
       cnt_cards++;
-      client.publish(rfid_topic, uidStr.c_str());
+      client.publish(rfid_topic, pyStr.c_str());
 
       char msg[256];
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
