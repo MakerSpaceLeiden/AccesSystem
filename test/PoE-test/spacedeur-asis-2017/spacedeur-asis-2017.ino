@@ -27,6 +27,8 @@
 #define STEPPER_ENABLE    (4)
 #define STEPPER_STEP      (5)
 
+#define LED_AART          (16)
+
 #define DOOR_CLOSED       (0)
 #define DOOR_OPEN         (1100)
 
@@ -38,7 +40,7 @@ typedef enum doorstates { CLOSED, CHECKINGCARD, OPENING, OPEN, CLOSING } doorsta
 doorstate_t doorstate;
 unsigned long long last_doorstatechange = 0;
 
-long cnt_cards = 0, cnt_opens = 0, cnt_closes  = 0, cnt_fails = 0, cnt_misreads = 0, cnt_minutes = 0, cnt_reconnects = 0, cnt_mqttfails = 0;
+long cnt_cards = 0, cnt_opens = 0, cnt_closes = 0, cnt_fails = 0, cnt_misreads = 0, cnt_minutes = 0, cnt_reconnects = 0, cnt_mqttfails = 0;
 
 #include <ETH.h>
 #include <SPI.h>
@@ -72,6 +74,7 @@ PololuStepper::PololuStepper(uint8_t step_pin, uint8_t dir_pin, uint8_t enable_p
   setEnablePin(enable_pin);
 }
 
+
 PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_ENABLE);
 
 const char mqtt_host[] = "space.vijn.org";
@@ -85,7 +88,7 @@ bool caching = false;
 
 const char rfid_topic[] = PREFIX "deur/space2/rfid";
 const char door_topic[] = PREFIX "deur/space2/open";
-const char log_topic[] =  PREFIX "log";
+const char log_topic[] = PREFIX "log";
 
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
@@ -109,30 +112,47 @@ void enableOTA() {
   // ArduinoOTA.setPassword("admin");
 
   // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // MD5(admin)=21232f297a57a5a743894a0e4a801fc3
   // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
 
 
   ArduinoOTA.onStart([]() {
     String type;
-    if (ArduinoOTA.getCommand() == U_FLASH)
-      type = "sketch";
-    else // U_SPIFFS
-      type = "filesystem";
-
+    switch (ArduinoOTA.getCommand()) {
+      case U_FLASH:
+        type = "Firmware";
+        break;
+      case U_SPIFFS:
+          type = "SPIFFS";
+        break;
+      default: {
+          const char buff[] = "Unknown type of reprogramming attempt. Rejecting.";
+          Serial.println(buff);
+          client.publish(log_topic, buff);
+          client.loop();
+          ESP.restart();
+        }
+        break;
+    };
     char buff[256];
-    snprintf(buff, sizeof(buff), "[%s] %s OTA re-programming started.", pname, type.c_str());
+    snprintf(buff, sizeof(buff), "[%s] %s OTA reprogramming started.", pname, type.c_str());
 
     Serial.println(buff);
     client.publish(log_topic, buff);
     client.loop();
 
+    closeDoor();
+    while (stepper.isRunning()) {
+      stepper.run();
+    };
+
+    stepper.disableOutputs();
     SPIFFS.end();
   });
 
   ArduinoOTA.onEnd([]() {
     char buff[256];
-    snprintf(buff, sizeof(buff), "[%s] OTA re-programming completed. Rebooting.", pname);
+    snprintf(buff, sizeof(buff), "[%s] OTA re - programming completed. Rebooting.", pname);
 
     Serial.println(buff);
     client.publish(log_topic, buff);
@@ -153,8 +173,9 @@ void enableOTA() {
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     static int lp = -1 ;
     int p = progress / (total / 10);
-    if (p != lp) Serial.printf("Progress: %u%%\n", p * 10);
+    if (p != lp) Serial.printf("Progress: %u %%\n", p * 10);
     lp = p;
+    digitalWrite(LED_AART, (millis() >> 7) & 3 == 0);
   });
 
   // Unfortunately - deep in OTA it auto defaults to Wifi. So we
@@ -178,7 +199,7 @@ String DisplayIP4Address(IPAddress address)
 String connectionDetailsString() {
   return "Wired Ethernet: " + ETH.macAddress() +
          ", IPv4: " + DisplayIP4Address(ETH.localIP()) + ", " +
-         ((ETH.fullDuplex()) ? "full" : "half") + "-duplex, " +
+         ((ETH.fullDuplex()) ? "full" : "half") + " - duplex, " +
          String(ETH.linkSpeed()) + " Mbps.";
 }
 
@@ -271,6 +292,9 @@ void setup()
   Serial.print(pname);
   Serial.println(" " __DATE__ " " __TIME__ );
 
+  pinMode(LED_AART, OUTPUT);
+  digitalWrite(LED_AART, 1);
+
   WiFi.onEvent(WiFiEvent);
 
   ETH.begin();
@@ -293,8 +317,8 @@ void setup()
   client.setCallback(callback);
 
   Serial.println("Setup of Stepper motor");
-  stepper.setMaxSpeed(100);  // divide by 3 to get rpm
-  stepper.setAcceleration(80);
+  stepper.setMaxSpeed(300);  // divide by 3 to get rpm
+  stepper.setAcceleration(100);
   stepper.moveTo(DOOR_CLOSED);
 
   stepper.run();
@@ -307,7 +331,7 @@ void setup()
     wipeCache();
   } else {
     caching = true;
-    listDir(SPIFFS, "/", "");
+    listDir(SPIFFS, " / ", "");
   };
 
   Serial.println("setup() done.\n\n");
@@ -360,16 +384,16 @@ void wipeCache() {
     SPIFFS.mkdir(String(i));
 
   Serial.println("Directory structure created.");
-  listDir(SPIFFS, "/", "");
+  listDir(SPIFFS, " / ", "");
   caching = true;
 };
 
 String uid2path(MFRC522::Uid uid) {
-  String path = "/uid-";
+  String path = " / uid - ";
   for (int i = 0; i < uid.size; i++) {
     path += String(uid.uidByte[i], DEC);
     if (i == 0)
-      path += "/";
+      path += " / ";
     else
       path += ".";
   };
@@ -394,6 +418,7 @@ void setCache(MFRC522::Uid uid, bool ok) {
 
 void openDoor() {
   doorstate = OPENING;
+  stepper.enableOutputs();
   stepper.moveTo(DOOR_OPEN);
 };
 
@@ -415,7 +440,7 @@ MFRC522::Uid uid;
 String uidToString(MFRC522::Uid uid) {
   String uidStr = "";
   for (int i = 0; i < uid.size; i++) {
-    if (i) uidStr += "-";
+    if (i) uidStr += " - ";
     uidStr += String(uid.uidByte[i], DEC);
   };
   return uidStr;
@@ -471,13 +496,13 @@ void callback(char* topic, byte * payload, unsigned int length) {
     for (uid.size = 0; uid.size < sizeof(uid.uidByte) && *p;) {
       while (*p && !isdigit(*p))
         p++;
-        
+
       errno = 0;
       byte b = (byte) strtol(p, NULL, 10);
       if (b == 0 && (errno || *p != '0')) // it seems ESP32 does not set errno ?!
         break;
       uid.uidByte[uid.size++] = b;
-      
+
       while (*p && isdigit(*p))
         p++;
     }
@@ -485,7 +510,7 @@ void callback(char* topic, byte * payload, unsigned int length) {
       snprintf(msg, sizeof(msg), "[%s] Purged cache of UID <%s> (payload %s)", pname, uidToString(uid).c_str(), ptag);
       setCache(uid, false);
     } else {
-      snprintf(msg, sizeof(msg), "[%s] Ignored purge request for uid-payload <%s>", pname, ptag);
+      snprintf(msg, sizeof(msg), "[%s] Ignored purge request for uid - payload <%s> ", pname, ptag);
       cnt_mqttfails ++;
     }
     client.publish(log_topic, msg);
@@ -509,7 +534,7 @@ void callback(char* topic, byte * payload, unsigned int length) {
   uid.size = 0;
 
   char msg[256];
-  snprintf(msg, sizeof(msg), "[%s] Cannot parse reply <%s> [len = %d, payload len = %d] or denied access.",
+  snprintf(msg, sizeof(msg), "[%s] Cannot parse reply <%s> [len=%d, payload len=%d] or denied access.",
            pname, buff, l, length);
 
   client.publish(log_topic, msg);
@@ -521,8 +546,8 @@ void callback(char* topic, byte * payload, unsigned int length) {
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
-           "[%s] alive - uptime %02ld:%02ld: "
-           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, stepper %s at %ld (target %ld)",
+           "[%s] alive - uptime %02ld : %02ld : "
+           "swipes %ld, opens %ld, closes %ld, fails %ld, mis - swipes %ld, mqtt reconnects %ld, mqtt fails %ld, stepper %s at %ld (target %ld)",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
@@ -536,6 +561,19 @@ void reportStats() {
 void loop()
 {
   stepper.run();
+
+  {
+    static unsigned long aart = 0;
+    unsigned long del = 1000;
+    if (!eth_connected or !client.connected())
+      del = 100;
+    else if (doorstate != CLOSED)
+      del = 300;
+    if (millis() - aart > del) {
+      digitalWrite(LED_AART, !digitalRead(LED_AART));
+      aart = millis();
+    }
+  }
 
   if (eth_connected) {
     if (ota)
@@ -597,6 +635,7 @@ void loop()
         };
         break;
       case CLOSED:
+        stepper.disableOutputs();
         if (!isClosed()) {
           /// some alerting ? clearly a bug ?
         }
@@ -623,7 +662,7 @@ void loop()
 
   {
     static unsigned long tock = 0;
-    if (millis() - tock  > REPORTING_PERIOD) {
+    if (millis() - tock > REPORTING_PERIOD) {
       cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
       reportStats();
       tock = millis();
