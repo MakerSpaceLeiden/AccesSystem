@@ -412,6 +412,15 @@ bool isClosed() {
 
 MFRC522::Uid uid;
 
+String uidToString(MFRC522::Uid uid) {
+  String uidStr = "";
+  for (int i = 0; i < uid.size; i++) {
+    if (i) uidStr += "-";
+    uidStr += String(uid.uidByte[i], DEC);
+  };
+  return uidStr;
+}
+
 void callback(char* topic, byte * payload, unsigned int length) {
   char buff[256];
 
@@ -432,6 +441,7 @@ void callback(char* topic, byte * payload, unsigned int length) {
       buff[l++] = c;
   };
   buff[l] = 0;
+  Serial.println(buff);
 
   if (!strcmp(buff, "reboot")) {
     ESP.restart();
@@ -454,6 +464,36 @@ void callback(char* topic, byte * payload, unsigned int length) {
     return;
   }
 
+  if (!strncmp(buff, "purge ", 6)) {
+    char msg[255];
+    char * ptag = buff + 6;
+    char * p = ptag;
+    for (uid.size = 0; uid.size < sizeof(uid.uidByte) && *p;) {
+      while (*p && !isdigit(*p))
+        p++;
+        
+      errno = 0;
+      byte b = (byte) strtol(p, NULL, 10);
+      if (b == 0 && (errno || *p != '0')) // it seems ESP32 does not set errno ?!
+        break;
+      uid.uidByte[uid.size++] = b;
+      
+      while (*p && isdigit(*p))
+        p++;
+    }
+    if (uid.size) {
+      snprintf(msg, sizeof(msg), "[%s] Purged cache of UID <%s> (payload %s)", pname, uidToString(uid).c_str(), ptag);
+      setCache(uid, false);
+    } else {
+      snprintf(msg, sizeof(msg), "[%s] Ignored purge request for uid-payload <%s>", pname, ptag);
+      cnt_mqttfails ++;
+    }
+    client.publish(log_topic, msg);
+    Serial.println(msg);
+
+    return;
+  }
+
   if (!strcmp(buff, "open")) {
     Serial.println("Opening door.");
     openDoor();
@@ -465,6 +505,7 @@ void callback(char* topic, byte * payload, unsigned int length) {
 
   if (caching)
     setCache(uid, false);
+
   uid.size = 0;
 
   char msg[256];
@@ -517,57 +558,57 @@ void loop()
     if (client.connected())
       client.disconnect();
   }
-  static unsigned long tock = 0;
 
-  static doorstate_t lastdoorstate = CLOSED;
-  switch (doorstate) {
-    case CHECKINGCARD:
-      if (millis() - last_doorstatechange > 1500 && caching && checkCache(uid)) {
-        char msg[255];
-        snprintf(msg, sizeof(msg), "[%s] Allowing door to open based on cached information.", pname);
-        Serial.println(msg);
-        client.publish(log_topic, msg);
-        openDoor();
-      }
-      break;
-    case OPENING:
-      if (isOpen()) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "[%s] Door is open.", pname);
-        Serial.println(msg);
-        client.publish(log_topic, msg);
-        doorstate = OPEN;
-        cnt_opens++;
-      };
-      break;
-    case OPEN:
-      if (millis() - last_doorstatechange > DOOR_OPEN_DELAY) {
-        Serial.println("Closing door.");
-        closeDoor();
-      };
-    case CLOSING:
-      if (isClosed()) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "[%s] Door is closed.", pname);
-        Serial.println(msg);
-        client.publish(log_topic, msg);
-        doorstate = CLOSED;
-        cnt_closes++;
-      };
-      break;
-    case CLOSED:
-      if (!isClosed()) {
-        /// some alerting ? clearly a bug ?
-      }
-    default:
-      break;
-  };
+  {
+    static doorstate_t lastdoorstate = CLOSED;
+    switch (doorstate) {
+      case CHECKINGCARD:
+        if (millis() - last_doorstatechange > 1500 && caching && checkCache(uid)) {
+          char msg[255];
+          snprintf(msg, sizeof(msg), "[%s] Allowing door to open based on cached information.", pname);
+          Serial.println(msg);
+          client.publish(log_topic, msg);
+          openDoor();
+        }
+        break;
+      case OPENING:
+        if (isOpen()) {
+          char msg[256];
+          snprintf(msg, sizeof(msg), "[%s] Door is open.", pname);
+          Serial.println(msg);
+          client.publish(log_topic, msg);
+          doorstate = OPEN;
+          cnt_opens++;
+        };
+        break;
+      case OPEN:
+        if (millis() - last_doorstatechange > DOOR_OPEN_DELAY) {
+          Serial.println("Closing door.");
+          closeDoor();
+        };
+      case CLOSING:
+        if (isClosed()) {
+          char msg[256];
+          snprintf(msg, sizeof(msg), "[%s] Door is closed.", pname);
+          Serial.println(msg);
+          client.publish(log_topic, msg);
+          doorstate = CLOSED;
+          cnt_closes++;
+        };
+        break;
+      case CLOSED:
+        if (!isClosed()) {
+          /// some alerting ? clearly a bug ?
+        }
+      default:
+        break;
+    };
 
-  if (lastdoorstate != doorstate) {
-    lastdoorstate = doorstate;
-    last_doorstatechange = millis();
+    if (lastdoorstate != doorstate) {
+      lastdoorstate = doorstate;
+      last_doorstatechange = millis();
+    }
   }
-
   // catch any logic errors or strange cases where the door is open while we think
   // we are not doing anything.
   //
@@ -580,30 +621,28 @@ void loop()
     cnt_fails ++;
   }
 
-  if (millis() - tock  > REPORTING_PERIOD) {
-    char buff[1024];
-    cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
-    reportStats();
-    tock = millis();
+  {
+    static unsigned long tock = 0;
+    if (millis() - tock  > REPORTING_PERIOD) {
+      cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
+      reportStats();
+      tock = millis();
+    }
   }
 
   if (irqCardSeen) {
     if (mfrc522.PICC_ReadCardSerial()) {
       uid = mfrc522.uid;
-      cnt_cards++;
+      String uidStr = uidToString(uid);
 
-      String uidStr = "";
-      for (int i = 0; i < uid.size; i++) {
-        if (i) uidStr += " - ";
-        uidStr += String(uid.uidByte[i], DEC);
-      };
+      cnt_cards++;
       client.publish(rfid_topic, uidStr.c_str());
 
       char msg[256];
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
       client.publish(log_topic, msg);
       Serial.println(msg);
-      
+
       doorstate = CHECKINGCARD;
     } else {
       Serial.println("Misread.");
