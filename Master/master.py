@@ -54,12 +54,21 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
   # node -- generally in response to a reveal-tag command
   # from us.
   #
+  lastReport = {}
+
   def cmd_lastused(self,path,node,theirbeat,payload):
     try:
       cmd, tag = payload.split()
     except:
       self.logger.error("Could not parse lastused payload '{}' -- ignored.".format(payload))
       return
+
+    if tag in self.lastReport and self.lastReport[ tag ] + 6 * 3600 > time.time():
+       self.logger.warning("Not reporting tag {} - seen in the last hour".format(tag))
+       self.lastReport[ tag ] = time.time()
+       return
+
+    self.lastReport[ tag ] = time.time()
 
     self.logger.info("Unknown tag {} reportedly used at {}".format(tag,node))
 
@@ -81,7 +90,6 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
     # we know about after salting that key. 
     #
     for uid in self.userdb.keys():
-      tag_hmac = hmac.new(secret.encode('ASCII'),theirbeat.encode('ASCII'),hashlib.sha256)
       try:
         if sys.version_info[0] < 3:
            tag_asbytes= ''.join(chr(int(x)) for x in uid.split("-"))
@@ -91,12 +99,20 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail):
         self.logger.error("Could not parse tag '{0}' in config file-- skipped".format(uid))
         continue
 
+      tag_hmac = hmac.new(secret.encode('ASCII'), theirbeat.encode('ASCII'), hashlib.sha256)
       tag_hmac.update(bytearray(tag_asbytes))
       tag_db = tag_hmac.hexdigest()
 
       if tag_encoded == tag_db:
          tag = uid
          break
+      # s = list(theirbeat.encode('ASCII'))
+      # p = list(bytearray(tag_asbytes))
+      # self.logger.info("Pass <{}>{}".format(secret,tag_asbytes))
+      # self.logger.info("  {} != {}".format(tag_encoded, tag_db))
+      # self.logger.info("HMAC {} on {}".format(list(bytearray(secret.encode('ASCII'))), list(bytearray(theirbeat.encode('ASCII'))) + list(bytearray(tag_asbytes))))
+      # self.logger.info("  ==> {}".format(tag_db))
+
 
     if not tag in self.userdb:
       self.logger.info("Tag not in DB; asking node to reveal it")

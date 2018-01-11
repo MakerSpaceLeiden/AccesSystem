@@ -290,7 +290,7 @@ class ACNode:
        self.logger.error("No secret defined for '{}' - ignored".format(node))
        return None
 
-    if delta > self.cnf.leeway:
+    if delta > self.cnf.leeway and ( node != 'master' or payload != 'announce' ):
         self.logger.critical("Beats are {} seconds off (max leeway is {} seconds). ignoring.".format(delta,self.cnf.leeway))
         return None
        
@@ -369,6 +369,13 @@ class ACNode:
         raise
 
       sys.exit(1)
+
+  def reconnect(self):
+   try:
+      self.client.disconnect()
+      self.connect()
+   except:
+      self.logger.critical("MQTT recoonect attempt to '"+self.cnf.mqtthost+"' failed.")
 
    self.logger.debug("Setting up the connection to '"+self.cnf.mqtthost+"'")
 
