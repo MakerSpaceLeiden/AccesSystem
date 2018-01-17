@@ -24,8 +24,6 @@
 
 #define BUZZER_GPIO       (2)
 #define SOLENOID_GPIO     (4)
-#define REDLED_GPIO       (5)
-
 #define LED_AART          (16)
 
 #define DOOR_OPEN_DELAY   (10*1000)
@@ -47,6 +45,8 @@ long cnt_cards = 0, cnt_opens = 0, cnt_closes = 0, cnt_fails = 0, cnt_misreads =
 #include <PubSubClient.h>
 #include <MFRC522.h>    // Requires modifed MFRC522 (see pull rq) or the -master branch as of late DEC 2017.
 // https://github.com/miguelbalboa/rfid.git
+
+
 
 SPIClass spirfid = SPIClass(VSPI);
 const SPISettings spiSettings = SPISettings(SPI_CLOCK_DIV4, MSBFIRST, SPI_MODE0);
@@ -71,8 +71,8 @@ bool caching = false;
 #define PREFIX "test"
 #endif
 
-const char rfid_topic[] = PREFIX "deur/space2/rfid";
-const char door_topic[] = PREFIX "deur/space2/open";
+const char rfid_topic[] = PREFIX "deur/voordeur/rfid";
+const char door_topic[] = PREFIX "deur/voordeur/open";
 const char log_topic[] = PREFIX "log";
 
 WiFiClient wifiClient;
@@ -119,7 +119,7 @@ void enableOTA() {
     client.loop();
 
     closeDoor();
- 
+
     SPIFFS.end();
   });
 
@@ -421,7 +421,7 @@ void openDoor() {
   solenoid.once_ms(DOOR_OPEN_DELAY, &closeDoor);
 
   // Sound buzzer 5 times / second. Use analog PWM if we need faster than 1kHz.
-  buzzer.attach_ms(200, &buzz); 
+  buzzer.attach_ms(200, &buzz);
 
 };
 
@@ -578,16 +578,13 @@ void loop()
     else
       enableOTA();
 
+    client.loop();
     if (!client.connected()) {
       long now = millis();
-      if (now - lastReconnectAttempt > 5000) {
+      if (now - lastReconnectAttempt > 10*1000) {
         lastReconnectAttempt = now;
-        if (reconnect()) {
-          lastReconnectAttempt = 0;
-        }
+        reconnect();
       }
-    } else {
-      client.loop();
     }
   } else {
     if (client.connected())
