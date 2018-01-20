@@ -27,8 +27,8 @@
 #define STEPPER_ENABLE    (4)
 #define STEPPER_STEP      (5)
 
-#define STEPPER_MAXSPEED 750
-#define STEPPER_ACCESS 300
+#define STEPPER_MAXSPEED  (1250)
+#define STEPPER_ACCELL    (750)
 
 #define LED_AART          (16)
 
@@ -74,7 +74,7 @@ PololuStepper::PololuStepper(uint8_t step_pin, uint8_t dir_pin, uint8_t enable_p
 {
   pinMode(STEPPER_ENABLE, OUTPUT);
   digitalWrite(STEPPER_ENABLE, LOW); // dis-able stepper first.
-  setPinsInverted(false, false, true);
+  setPinsInverted(false, false, true); // The enable pin is NOT inverted. Kind of unusual.
   setEnablePin(enable_pin);
 }
 
@@ -92,7 +92,11 @@ extern void callback(char* topic, byte * payload, unsigned int length);
 
 bool caching = false;
 
+#ifdef LOCALMQTT
 #define PREFIX ""
+#else
+#define PREFIX "test"
+#endif
 
 const char rfid_topic[] = PREFIX "deur/space2/rfid";
 const char door_topic[] = PREFIX "deur/space2/open";
@@ -200,7 +204,8 @@ String connectionDetailsString() {
   return "Wired Ethernet: " + ETH.macAddress() +
          ", IPv4: " + DisplayIP4Address(ETH.localIP()) + ", " +
          ((ETH.fullDuplex()) ? "full" : "half") + "-duplex, " +
-         String(ETH.linkSpeed()) + " Mbps.";
+         String(ETH.linkSpeed()) + " Mbps, Build: " +
+         String(__DATE__) + " " + String(__TIME__);
 }
 
 void WiFiEvent(WiFiEvent_t event)
@@ -287,10 +292,15 @@ void setup()
   if (p)
     *p = 0;
 
+#ifndef LOCALMQTT
+  // Alert us to safe, non production versions.
+  strncat(pname, "-test", sizeof(pname));
+#endif
+
   Serial.begin(115200);
   Serial.print("\n\n\n\nStart ");
   Serial.print(pname);
-  Serial.println(" " __DATE__ " " __TIME__ );
+  Serial.println(" -- buuld: " __DATE__ " " __TIME__ );
 
   pinMode(LED_AART, OUTPUT);
   digitalWrite(LED_AART, 1);
@@ -318,7 +328,7 @@ void setup()
 
   Serial.println("Setup of Stepper motor");
   stepper.setMaxSpeed(STEPPER_MAXSPEED);  // divide by 3 to get rpm
-  stepper.setAcceleration(STEPPER_ACCESS);
+  stepper.setAcceleration(STEPPER_ACCELL);
   stepper.moveTo(DOOR_CLOSED);
 
   stepper.run();
@@ -389,7 +399,7 @@ void wipeCache() {
 };
 
 String uid2path(MFRC522::Uid uid) {
-  String path = " / uid-";
+  String path = "/uid-";
   for (int i = 0; i < uid.size; i++) {
     path += String(uid.uidByte[i], DEC);
     if (i == 0)
@@ -546,7 +556,7 @@ void callback(char* topic, byte * payload, unsigned int length) {
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
-           "[%s] alive-uptime %02ld : %02ld : "
+           "[%s] alive-uptime %02ld:%02ld :"
            "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, stepper %s at %ld (target %ld)",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            cnt_cards,
