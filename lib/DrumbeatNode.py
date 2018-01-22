@@ -7,9 +7,10 @@ import hmac
 import hashlib
 
 sys.path.append('../lib')
-import ACNode as ACNode
-
+import ACNode
 class DrumbeatNode(ACNode.ACNode):
+# import SharedSecret
+# class DrumbeatNode(SharedSecret.SharedSecret):
   default_interval = 60
   default_node = "drumbeat"
 
@@ -19,24 +20,14 @@ class DrumbeatNode(ACNode.ACNode):
 
     super().parseArguments()
 
-  def cmd_beat(self,path,node,theirbeat,payload):
-    if node != self.cnf.node:
-       self.logger.critical("Node {} sends a beat - yet this node {} is the beatmaster".format(node,self.cnf.node))
-    return
-
-  def cmd_announce(self,path,node,theirbeat,payload):
-    if node != self.cnf.node:
-       self.logger.info("Node '{}' (re)subscribed; sending beat.".format(node))
-       self.send(node,"beat")
-    else:
-       self.logger.info("Ignoring my own announce message.")
-    return None
-
   last_time = 0
   def loop(self):
     if time.time() - self.last_time > self.cnf.interval:
       self.last_time = time.time()
       self.send(self.cnf.node, "beat")
+
+      for node in self.cnf.secrets.keys():
+         self.send(node, "beat")
 
     super().loop()
 

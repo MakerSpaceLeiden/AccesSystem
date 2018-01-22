@@ -1,0 +1,38 @@
+{
+	"_": "This minimal set is normally used to learn all",
+	"_": "other config data from the master node.",
+	
+	"node" : "krachtstroom",
+	"mqtt" : {
+		"host":	"space.makerspaceleiden.nl",
+		"sub": "/makerspace/acnode/test"
+	},
+	"secret" : "NoLooseThemVingers",
+	"alive" : 30,
+
+	"_": "Everything below this line is a backup in case fetching",
+	"_": "the config of the day is not working (or when you are",
+	"_": "testing something",
+
+	"machines" : {
+		"circelzaag": {
+			"name" : "Circelzaag",
+			"tag" : [ 136,4,108,104,136 ],
+        		"users" : [ "offlinefred" ]
+		}
+	},
+        "users" : {
+            "fflinefred" : [ 1,2,3,4 ]
+        },
+	"name":	"Krachstroom AC Node",
+
+	"alert_email_from" : "krachtstroomnode@makerspaceleiden.nl",
+	"alert_email_to" : "dirkx@webweaving.org",
+	
+	"smtp": {
+		"host" : "10.11.0.2",
+		"port" : 25,
+		"_": "Additionally 'username' and 'password' can be set."
+	}
+}
+	

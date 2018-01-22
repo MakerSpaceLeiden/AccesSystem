@@ -1,0 +1,4 @@
+Startup and die announce
+
+Check logs for general info / send on non verbose
+

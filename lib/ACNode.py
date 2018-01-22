@@ -1,22 +1,21 @@
 #!/usr/bin/env python
 #
-import time 
-import hashlib
-import json
-import sys
-import signal
-import logging
-import logging.handlers
-import os
-import hmac
-import daemon
+import SharedSecret as SharedSecret
+import TrustOnFirstContact as TrustOnFirstContact
+import Beat as Beat
+import ACNodeBase as ACNodeBase
 
-import configargparse
+# Protocol 0.0
+#class ACNode(ACNodeBase.ACNodeBase):
+#    pass
 
-import paho.mqtt.client as mqtt
-import paho.mqtt.publish as publish
+# Protocol SIG/1
+# class ACNode(SharedSecret.SharedSecret):
+#    pass
 
-import MqttHandler
+# Protocol SIG/1 and /2
+class ACNode(TrustOnFirstContact.TrustOnFirstContact, SharedSecret.SharedSecret):
+   pass
 
 default_cnf_files = ["/usrlocal/etc/acnode.ini","/etc/acnode.ini","~/.acnode.ini", "acnode.ini"]
 default_master = 'master'

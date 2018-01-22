@@ -47,7 +47,7 @@ class KrachtstroomNode(RfidReaderNode,KrachtstroomHW):
          n[ tag ] = machine
        self.cnf.machines = n
 
-  def cmd_approved(self,path,node,theirbeat,payload):
+  def cmd_approved(self,msg):
     self.logger.info("Got the OK - Powering up the " + self.machine)
 
     self.setBottomLED(1)

@@ -73,7 +73,16 @@ Version 2 -- mid 2016
 
 	'revealtag'	Reveal the last tag swiped in the clear.
 
-	'announce'	Sent when a node joins the network
+	'announce'	Sent when a node joins the network; optionally followed by
+	                the IP addres of the node.
+
+        'ping'		Alive check.
+        'ack'		Alive response; optionalliy followed master node and local IP address.
+
+        'state'         Request state
+        'report'        Response ith machine state (integer) and human readable verson.
+
+        'event' <what> <string>
 
 -	MQTT reply from master to (relevant) Target ACNode(s)
 

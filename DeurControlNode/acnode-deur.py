@@ -23,13 +23,13 @@ class DeurControllerNode(Driver,ActuatorACNode, OfflineModeACNode):
     self.loggin.info("Opening door")
     open_door()
 
-  def cmd_approved(self,path,node,theirbeat,payload):
+  def cmd_approved(self,msg):
    # Permit an 'alien' beat to open the door - i.e. one
    # originating from anohter unit.
    #
    self.last_tag_beat = theirbeat
    self.last_tag_shown = None
-   super().cmd_approved(path,node,theirbeat,payload)
+   super().cmd_approved(path,msg)
 
 # Spin up a node; and run it forever; or until aborted; and
 # provide a non-zero exit code as/if needed.
