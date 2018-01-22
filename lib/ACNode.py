@@ -355,6 +355,11 @@ class ACNode:
       self.logger.info("Closed down.")
       return(e)
 
+  def on_disconnect(client, userdata, rc):
+    if rc != 0:
+       self.logger.critical("Unexpected disconnection.")
+    self.client.reconnect()
+
   def connect(self):
 
    try:
@@ -363,6 +368,8 @@ class ACNode:
       self.client.on_message = self.on_message
       self.client.on_connect = self.on_connect
       self.client.on_subscribe= self.on_subscribe
+      self.client.on_disconnect = self.on_disconnect
+   
    except:
       self.logger.critical("MQTT connection setup to '"+self.cnf.mqtthost+"' failed:")
       if self.cnf.verbose> 1 :

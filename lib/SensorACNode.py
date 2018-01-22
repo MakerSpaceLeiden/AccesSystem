@@ -31,8 +31,7 @@ class SensorACNode(ACNode):
     super().setup()
 
     if not self.command:
-       print("FATAL: command is not defined in class {0}. Terminating. ".format(self.__class__.__name__),
-                file=sys.stderr)
+       print("FATAL: command is not defined in class {0}. Terminating. ".format(self.__class__.__name__), file=sys.stderr)
        sys.exit(1)
 
     # Go very verbose if we are in fake est-tag mode.
