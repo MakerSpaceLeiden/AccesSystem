@@ -16,6 +16,8 @@ class KrachtstroomNode(RfidReaderNode,KrachtstroomHW):
   machine_tag = None
   last_ok = 0
   user_tag = None
+  ignore_time = 0
+  ignore_timeout = 300
 
   default_grace = 6 	# seconds - timeout between card offer & cable offer.
   default_graceOff = 2 	# seconds -- timeout between removal of card and powerdown.
@@ -37,16 +39,6 @@ class KrachtstroomNode(RfidReaderNode,KrachtstroomHW):
 
     super().parseArguments()
 
-    # Parse the machine/tag pairs into a more convenient
-    # dictionary.
-    #
-    if self.cnf.machines:
-       n = {}
-       for e in self.cnf.machines:
-         machine, tag= e.split('=',1)
-         n[ tag ] = machine
-       self.cnf.machines = n
-
   def cmd_approved(self,msg):
     self.logger.info("Got the OK - Powering up the " + self.machine)
 
@@ -62,7 +54,27 @@ class KrachtstroomNode(RfidReaderNode,KrachtstroomHW):
   def setup(self):
     super().setup()
 
+    # Parse the machine/tag pairs into a more convenient
+    # dictionary.
+    #
+    if self.cnf.machines:
+       n = {}
+       for e in self.cnf.machines:
+         machine, tag= e.split('=',1)
+         if machine == None or tag == None:
+            self.logger.debug("Malformed machine definition: {}. Aborting.".format(e));
+            sys.exit(1)
+
+         n[ tag ] = machine
+         self.logger.info("Machine {} - {}".format(machine,tag))
+
+       self.cnf.machines = n
+    else:
+       self.logger.critical("No machine tags known. Cannot operate. Aborting.");
+       sys.exit(1)
+
     # Ready to start - turn top LED full on.
+    self.logger.info("Ready to service (Top LED on)")
     self.setTopLED(1)
 
   def loop(self):
@@ -94,12 +106,21 @@ class KrachtstroomNode(RfidReaderNode,KrachtstroomHW):
              self.machine = m
              self.machine_tag = uid
 
-             self.logger.info("Machine " + self.machine + " now wired up - requesting permission")
+             self.logger.info("Machine " + self.machine + " now wired up, seen user tag - requesting permission")
 
              super().send_request(self.command, self.cnf.node, self.machine, self.user_tag)
              self.setBottomLED(50)
+             self.ignore_time = 0
            else:
-              self.logger.info("Ignoring machine tag without user tag.")
+              if self.ignore_time == 0:
+                 self.logger.info("Ignoring machine tag without user tag.")
+                 self.ignore_time = time.time()
+              else:
+                 if time.time() - self.ignore_time > self.ignore_timeout:
+                    self.logger.info("Still ignoring machine tag without user tag.")
+                    self.ignore_time = time.time()
+                 else:
+                    self.logger.debug("Ignoring machine tag without user tag.")
 
               # flash the led for about a third of the grace time.
               #
@@ -108,15 +129,22 @@ class KrachtstroomNode(RfidReaderNode,KrachtstroomHW):
               self.machine = None
          
          else:
-           self.logger.debug("Assuming {} to be a user tag.".format(tag))
+           self.logger.debug("Assuming {} to be a user tag. Now waiting for machine tag.".format(tag))
            self.user_tag = uid
            self.setBottomLED(4)
+           self.ignore_time = 0
 
            # Allow the time to move along if the user holds the
            # card long against the reader. So in effect the grace
            # period becomes the time between cards.
            #
            self.last_ok = time.time()
+       else:
+          if time.time() - self.last_ok > 20:
+              self.logger.debug("No machine tag presented, going back to waiting for user tag.");
+              self.user_tag = None
+              self.machine = None
+              self.last_ok = time.time()
 
        if time.time() - self.last_ok > self.cnf.grace:
           self.setBottomLED(0)
