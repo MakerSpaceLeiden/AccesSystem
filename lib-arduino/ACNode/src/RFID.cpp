@@ -1,11 +1,8 @@
 #include <RFID.h>
 
-RFID::RFID(const byte  sspin, const byte  rstpin) :
-	_sspin(sspin), _rstpin(rstpin) 
+RFID::RFID(const byte  sspin = 255, const byte  rstpin = 255)  : _mfrc522(sspin, rstpin)
 {
   SPI.begin(); // Init SPI bus
-
-  _mfrc522 = MFRC522(sspin, rstpin);
   _mfrc522.PCD_Init();   // Init MFRC522
 }
 

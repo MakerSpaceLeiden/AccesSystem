@@ -16,13 +16,11 @@ class RFID : public ACBase {
     void loop();
 
     typedef std::function<void(const char *)> THandlerFunction_SwipeCB;
+
     RFID& onSwipe(THandlerFunction_SwipeCB fn) 
 	{ _swipe_cb = fn; return *this; };
-
   
   private:
-    const byte _sspin, _rstpin;
-
     MFRC522 _mfrc522;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
 

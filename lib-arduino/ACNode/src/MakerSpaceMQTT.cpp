@@ -5,7 +5,7 @@
 #endif
 
 
-char mqtt_server[34] = "not-yet-cnf-mqtt";
+char mqtt_server[34] = "space.vijn.org";
 uint16_t mqtt_port = MQTT_DEFAULT_PORT;
 
 // MQTT topics are constructed from <prefix> / <dest> / <sender>
@@ -28,10 +28,6 @@ typedef struct publish_rec {
   struct publish_rec * nxt;
 } publish_rec_t;
 publish_rec_t *publish_queue = NULL;
-
-void send(const char * topic, const char * payload) {
-	_acnode.send(topic,payload);
-}
 
 void ACNode::send(const char * topic, const char * payload) {
   char _topic[MAX_TOPIC];
@@ -261,12 +257,14 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   return;
 }
 
+bool ACNode::isUp() {
+  return _client.connected();
+}
+
 void ACNode::mqttLoop() {
   static unsigned long last_mqtt_connect_try = 0;
 
-  _client.loop();
-
-  if (!_client.connected()) {
+  if (last_mqtt_connect_try == 0 || !isUp()) {
     // report transient error ? Which ? And how often ?
     if (millis() - last_mqtt_connect_try > 10000 || last_mqtt_connect_try == 0) {
       reconnectMQTT();
@@ -274,6 +272,8 @@ void ACNode::mqttLoop() {
     }
     return;
   };
+
+  _client.loop();
 
   if (!publish_queue)
     return;

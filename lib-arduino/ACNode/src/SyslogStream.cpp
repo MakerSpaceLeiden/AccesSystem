@@ -18,14 +18,15 @@ size_t SyslogStream::write(uint8_t c) {
   logbuff[at++] = 0;
   at = 0;
 
+   if (node.isConnected()) {
     WiFiUDP syslog;
     if (syslog.begin(_syslogPort)) {
       syslog.beginPacket(WiFi.gatewayIP(), _syslogPort);
       syslog.printf("<135> NoTimeStamp %s %s", moi, logbuff);
       syslog.endPacket();
     };
-  };
+};
 
-  return r;
+  return 1;
 }
 

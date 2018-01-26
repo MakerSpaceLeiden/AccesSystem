@@ -11,13 +11,12 @@
 #include <ESP8266WiFi.h>
 
 #ifdef OTA
-#include "/Users/dirkx/Personal/random-open-source/AccesSystem/lib-arduino/OTA.ino"
+#include "OTA.ino"
 #endif
-#include "/Users/dirkx/Personal/random-open-source/AccesSystem/lib-arduino/SIG1.ino"
-#include "/Users/dirkx/Personal/random-open-source/AccesSystem/lib-arduino/SIG2.ino"
-#include "/Users/dirkx/Personal/random-open-source/AccesSystem/lib-arduino/Log.ino"
-#include "/Users/dirkx/Personal/random-open-source/AccesSystem/lib-arduino/MakerspaceMQTT.ino"
-
+#include "SIG1.ino"
+#include "SIG2.ino"
+#include "Log.ino"
+#include "MakerspaceMQTT.ino"
 
 #include <SPI.h>
 #include <MFRC522.h>

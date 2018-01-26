@@ -8,8 +8,10 @@
 #include <ACNode.h>
 #include <MqttLogStream.h>
 
-MqttLogStream::MqttLogStream(const char prefix) {
-  snprintf(_logtopic, sizeof(logtopic), "%s/%s/%s", prefix, logpath, moi);
+MqttLogStream::MqttLogStream(const char *prefix, const char * maoi) {
+  const char * logpath = "log";
+
+  snprintf(_logtopic, sizeof(_logtopic), "%s/%s/%s", prefix, logpath, moi);
   _logbuff[0] = 0; _at = 0;
   return;
 }
@@ -18,13 +20,11 @@ size_t MqttLogStream::write(uint8_t c) {
   if (c  >= 32) 
     _logbuff[ _at++ ] = c;
 
-  if (c != '\n' && _at <= sizeof(_logbuff) - 1)
-    return 1
+  if (c == '\n' || _at >= sizeof(_logbuff) - 1) {
+    _logbuff[_at] = 0;
+    _at = 0;
 
-  logbuff[_at++] = 0;
-  _at = 0;
-
-  send(_logtopic, _logbuff);
+     send(_logtopic, _logbuff);
+  }
   return 1;
 }
-

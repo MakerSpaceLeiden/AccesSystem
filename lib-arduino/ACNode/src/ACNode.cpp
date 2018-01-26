@@ -41,18 +41,24 @@ const char ACNODE_CAPS[] =
 // Sort of a fake singleton to overcome callback
 // limits in MQTT callback and elsewhere.
 //
-ACNode &_acnode;
+ACNode * _acnode;
+ACLog Log;
+ACLog Debug;
 
 ACNode::ACNode(bool wired) : 
 	_ssid(NULL), _ssid_passwd(NULL), _wired(wired) 
 {
-	_acnode = *this;
+	_acnode = this;
 }
 
 ACNode::ACNode(const char * ssid , const char * ssid_passwd ) :
 	_ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false) 
 {
-	_acnode = *this;
+	_acnode = this;
+}
+
+void send(const char * topic, const char * payload) {
+        _acnode->send(topic,payload);
 }
 
 void ACNode::set_debugAlive(bool debug) { _debug_alive = debug; }
@@ -64,9 +70,10 @@ bool ACNode::isConnected() {
 };
 
 void ACNode::begin() {
-
+#if 0
   if (_debug)
   	debugFlash();
+#endif
 
   if (_wired) {
     Debug.println("starting up ethernet");
@@ -126,11 +133,14 @@ void ACNode::begin() {
   Log.print("IP address: ");
   Log.println(WiFi.localIP());
 
-  WiFiClient _espClient = WiFiClient();
-  _client = PubSubClient(_espClient);
+  	_espClient = WiFiClient();
+  	_client = PubSubClient(_espClient);
+#if 0
+	_ethClient = EthernetClient();
+  	_client = PubSubClient(ethClient);
+#endif
 
   configureMQTT();
-
 
   if (_debug)
   	debugListFS("/");
@@ -175,7 +185,8 @@ void ACNode::loop() {
     last_loop = millis();
   }
 
-  mqttLoop();
+  if(isConnected()) 
+  	mqttLoop();
 
   if (_debug_alive) {
     static unsigned long last_beat = 0;

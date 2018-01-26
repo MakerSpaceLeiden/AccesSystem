@@ -15,32 +15,28 @@
    limitations under the License.
 */
 
-#define BUZZER    (4)   // GPIO pin count.
-#define SOLENOID  (5)
-
-#define RFID_SELECT_PIN (6)
-#define RFID_RESET_PIN (7)
-
 #include <ACNode.h>
 #include <SyslogStream.h>
 #include <MqttLogStream.h>
 
 ACNode node = ACNode(true); // Force wired PoE ethernet.
 
+SyslogStream syslogStream = SyslogStream();
+MqttLogStream mqttlogStream = MqttLogStream("test", "moi");
+
+OTA ota = OTA("FooBar");
+
+MSL trivialSecurityHandler = MSL();
+
 typedef enum {
   BOOTING, SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
-  WAITINGFORCARD,             // waiting for card.
-  CHECKINGCARD,
-  BUZZING,
-  REJECTED,
+  RUNNING,
   NOTINUSE
 } machinestates_t;
 
 const char *machinestateName[NOTINUSE] = {
   "Software Error", "Out of order", "No network",
-  "Waiting for card",
-  "Buzzing door",
-  "Rejecting noise",
+  "running",
   "== not in use == "
 };
 
@@ -48,25 +44,14 @@ unsigned long laststatechange = 0;
 static machinestates_t laststate = OUTOFORDER;
 machinestates_t machinestate = BOOTING;
 
-OTA ota = OTA("FooBar");
-RFID reader(RFID_SELECT_PIN, RFID_RESET_PIN);
-MSL msl = MSL();
-
-
+unsigned long whatsups = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n" __FILE__ " " __DATE__ " " __TIME__);
 
-  // Init the hardware and get it into a safe state.
-  //
-  pinMode(BUZZER, OUTPUT);
-  digitalWrite(BUZZER, 0);
-  pinMode(SOLENOID, OUTPUT);
-  digitalWrite(SOLENOID, 0);
-
   node.onConnect([]() {
     Log.println("Connected");
-    machinestate = WAITINGFORCARD;
+    machinestate = RUNNING;
   });
   node.onDisconnect([]() {
     Log.println("Disconnected");
@@ -74,38 +59,27 @@ void setup() {
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
-    machinestate = WAITINGFORCARD;
+    machinestate = OUTOFORDER;
   });
   node.onValidatedCmd([](const char *cmd, const char *restl) {
-    if (!strcasecmp("open", cmd)) {
-      machinestate = BUZZING;
-    }
-    else if (!strcasecmp("denied", cmd)) {
-      machinestate = REJECTED;
+    if (!strcasecmp("whatsup", cmd)) {
+      send(NULL, "nuffing");
+      whatsups++;
     } else {
       Log.printf("Unhandled command <%s> -- ignored.", cmd);
     }
   });
 
-  reader.onSwipe([](const char * tag) {
-    Log.printf("Card <%s> wiped - being checked.\n", tag);
-    machinestate = CHECKINGCARD;
-  });
-
-
   node.addHandler(ota);
-  node.addHandler(reader);
-  node.addSecurityHandler(msl);
+  node.addSecurityHandler(trivialSecurityHandler);
 
   // default syslog port and destination (gateway address or broadcast address).
   //
-  SyslogStream syslogStream = SyslogStream();
   Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
   Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
   // assumes the client connection for MQTT (and network, etc) is up - otherwise silenty fails/buffers.
   //
-  MqttLogStream mqttlogStream = MqttLogStream("test", "moi");
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
   machinestate = BOOTING;
@@ -125,45 +99,38 @@ void loop() {
   }
 
   switch (machinestate) {
-    case WAITINGFORCARD:
-      digitalWrite(SOLENOID, 0);
-      digitalWrite(BUZZER, 0);
-      break;
-
-    case CHECKINGCARD:
-      digitalWrite(BUZZER, ((millis() % 500) < 100) ? 1 : 0);
-      if ((millis() - laststatechange) > 5000)
-        machinestate = REJECTED;
-      break;
-
-    case BUZZING:
-      digitalWrite(SOLENOID, 1);
-      digitalWrite(BUZZER, 1);
-      if ((millis() - laststatechange) > 5000)
-        machinestate = WAITINGFORCARD;
-      break;
-
-    case REJECTED:
-      digitalWrite(BUZZER, ((millis() % 200) < 100) ? 1 : 0);
-      if ((millis() - laststatechange) > 5000)
-        machinestate = WAITINGFORCARD;
-      break;
-
     case NOCONN:
-      digitalWrite(BUZZER, ((millis() % 3000) < 10) ? 1 : 0);
       if ((millis() - laststatechange) > 120 * 1000) {
         Log.printf("Connection to SSID:%s lost for 120 seconds now -- Rebooting...\n", WiFi.SSID().c_str());
         delay(500);
         ESP.restart();
       }
       break;
-
     case BOOTING:
+      if (node.isUp())
+        machinestate = RUNNING;
+      break;
     case OUTOFORDER:
     case SWERROR:
+      if (millis() - laststatechange > 10000) {
+        Log.printf("In %s state for longer than 10 seconds, rebooting.\n",
+                   machinestateName[machinestate]);
+        delay(500);
+        ESP.restart();
+      };
+      break;
+    case RUNNING:
+      break;
     case NOTINUSE:
-      digitalWrite(BUZZER, ((millis() % 1000) < 10) ? 1 : 0);
       break;
   };
+
+  {
+    static unsigned long lastreport = 0;
+    if (millis() - lastreport > 5000) {
+      Debug.printf("Report (every 5 seconds) -- state: %d:%s, whatsups: %lu\n",
+                   machinestate, machinestateName[machinestate], whatsups);
+    }
+  }
 }
 
