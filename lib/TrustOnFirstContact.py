@@ -69,7 +69,10 @@ class TrustOnFirstContact(Beat.Beat):
              if len(seed) != 32:
                  self.logger.critical("Private key in file is not exactly 32 bytes. aborting.");
                  sys.exit(1);
-
+        else:
+            self.logger.critical("No seed.");
+            sys.exit(1);
+        
     self.cnf.privatekey = ed25519.SigningKey(seed)
 
     if self.cnf.tofconly and not self.cnf.privatekey:

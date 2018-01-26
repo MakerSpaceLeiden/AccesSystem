@@ -48,7 +48,7 @@ class SharedSecret(Beat.Beat):
 
     return None
 
-  def protect_uid(self,target_node, uid):
+  def protect_uid(self,target_node, tag_uid):
       beat = self.beat()
       tag_hmac = hmac.new( self.secret(target_node).encode('ASCII'), beat.encode('ASCII'), hashlib.sha256)
       tag_hmac.update(bytearray(tag_uid)) # note - in its original binary glory and order.

@@ -19,8 +19,7 @@ class ActuatorACNode(ACNode):
     super().setup()
 
     if not "execute" in dir(self):
-       print("FATAL: method execute() is not defined in class {0}. Terminating. ".format(self.__class__.__name__),
-                file=sys.stderr)
+       print("FATAL: method execute() is not defined in class {0}. Terminating. ".format(self.__class__.__name__))
        sys.exit(1)
 
   last_tag_shown = None
@@ -34,7 +33,7 @@ class ActuatorACNode(ACNode):
 
       return super().send_request(command, target_node, target_machine, tag_uid)
 
-  def cmd_approved(self,msg):
+  def cmd_approved(self,path, node,theirbeat, msg):
     acl, cmd, machine, beat = self.split_payload(msg) or (None, None, None, None)
     if not acl:
        return

@@ -5,6 +5,7 @@ import sys
 import os
 
 from ACNode import ACNode
+from ACNodeBase import ACNodeBase
 
 class SensorACNode(ACNode):
   subscribed = None
@@ -31,8 +32,7 @@ class SensorACNode(ACNode):
     super().setup()
 
     if not self.command:
-       print("FATAL: command is not defined in class {0}. Terminating. ".format(self.__class__.__name__),
-                file=sys.stderr)
+       print("FATAL: command is not defined in class {0}. Terminating. ".format(self.__class__.__name__))
        sys.exit(1)
 
     # Go very verbose if we are in fake est-tag mode.

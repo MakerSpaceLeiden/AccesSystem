@@ -1,4 +1,4 @@
-/* Schuif/voordeur 2-'as is' configuration which should be near identical
+/* Tussendeur hal 'as is' configuration which should be near identical
     to the existing setup late 2017.
 
 */
@@ -23,9 +23,7 @@
 #define MFRC522_RSTO    (32)
 #define MFRC522_3V3     /* 3v3 */
 
-#define BUZZER_GPIO       (2)
-#define SOLENOID_GPIO     (4)
-#define LED_AART          (16)
+#define SOLENOID_GPIO     (14)
 
 #define DOOR_OPEN_DELAY   (10*1000)
 #define REPORTING_PERIOD  (300*1000)
@@ -53,7 +51,7 @@ SPIClass spirfid = SPIClass(VSPI);
 const SPISettings spiSettings = SPISettings(SPI_CLOCK_DIV4, MSBFIRST, SPI_MODE0);
 MFRC522 mfrc522(MFRC522_SDA, MFRC522_RSTO, &spirfid, spiSettings);
 
-Ticker buzzer, solenoid;
+Ticker  solenoid;
 
 #ifdef LOCALMQTT
 #warning "Production build"
@@ -73,8 +71,8 @@ bool caching = false;
 #define PREFIX "test"
 #endif
 
-const char rfid_topic[] = PREFIX "deur/voordeur/rfid";
-const char door_topic[] = PREFIX "deur/voordeur/open";
+const char rfid_topic[] = PREFIX "deur/tussendeur/rfid";
+const char door_topic[] = PREFIX "deur/tussendeur/open";
 const char log_topic[] = PREFIX "log";
 
 WiFiClient wifiClient;
@@ -150,7 +148,6 @@ void enableOTA() {
     int p = progress / (total / 10);
     if (p != lp) Serial.printf("Progress: %u %%\n", p * 10);
     lp = p;
-    digitalWrite(LED_AART, ((millis() >> 7) & 3) == 0);
   });
 
   // Unfortunately-deep in OTA it auto defaults to Wifi. So we
@@ -273,12 +270,6 @@ void setup()
   Serial.print(pname);
   Serial.println(" -- buuld: " __DATE__ " " __TIME__ );
 
-  pinMode(LED_AART, OUTPUT);
-  digitalWrite(LED_AART, 1);
-
-  pinMode(BUZZER_GPIO, OUTPUT);
-  digitalWrite(BUZZER_GPIO, 1);
-
   pinMode(SOLENOID_GPIO, OUTPUT);
   digitalWrite(SOLENOID_GPIO, 1);
 
@@ -400,15 +391,6 @@ void setCache(MFRC522::Uid uid, bool ok) {
 void closeDoor() {
   doorstate = CLOSED;
   digitalWrite(SOLENOID_GPIO, HIGH);
-
-  buzzer.detach();
-  digitalWrite(BUZZER_GPIO, HIGH);
-}
-
-void buzz() {
-  static int flip = 0;
-  digitalWrite(BUZZER_GPIO, flip);
-  flip = ! flip;
 }
 
 void openDoor() {
@@ -421,16 +403,11 @@ void openDoor() {
   // any already running tickers.
   //
   solenoid.once_ms(DOOR_OPEN_DELAY, &closeDoor);
-
-  // Sound buzzer 5 times / second. Use analog PWM if we need faster than 1kHz.
-  buzzer.attach_ms(200, &buzz);
-
 };
 
 bool isOpen() {
   return digitalRead(SOLENOID_GPIO) == LOW;
 }
-
 
 bool isClosed() {
   return !isOpen();
@@ -561,19 +538,6 @@ void reportStats() {
 
 void loop()
 {
-  {
-    static unsigned long aart = 0;
-    unsigned long del = 1000;
-    if (!eth_connected or !client.connected())
-      del = 100;
-    else if (doorstate != CLOSED)
-      del = 300;
-    if (millis() - aart > del) {
-      digitalWrite(LED_AART, !digitalRead(LED_AART));
-      aart = millis();
-    }
-  }
-
   if (eth_connected) {
     if (ota)
       ArduinoOTA.handle();
