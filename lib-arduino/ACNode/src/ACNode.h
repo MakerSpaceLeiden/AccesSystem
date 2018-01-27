@@ -24,6 +24,9 @@
 #include <ACBase.h>
 
 #include <MSL.h>
+#include <SIG1.h>
+#include <SIG2.h>
+#include <Beat.h>
 
 #define B64D(base64str, bin, what) { \
     if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
@@ -42,6 +45,9 @@
   }
 extern char * strsepspace(char **p);
 extern const char *machinestateName[];
+
+typedef unsigned long beat_t;
+extern beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
 
 typedef enum {
@@ -98,10 +104,12 @@ class ACNode : public ACBase {
 
     void loop();
     void begin();
+    cmd_result_t handle_cmd(char * cmd, char * rest);
 
     void addHandler(ACBase &handler);
     void addSecurityHandler(ACSecurityHandler &handler);
 
+    const char * cloak(const char * lasttaag);
 
     void set_debugAlive(bool debug);
     bool isConnected(); // ethernet/wifi is up with valid IP.
@@ -111,7 +119,14 @@ class ACNode : public ACBase {
     // become private again.
     //
     void send(const char * topic, const char * payload);
+    
+    // This function should be private - but we're calling
+    // it from a C callback in the mqtt subsystem.
+    //
+    void process(char * topic, char * payload);
   private:
+    const char *machine, *moi;
+    
     bool _debug_alive;
     THandlerFunction_Error _error_callback;
     THandlerFunction_Connect _connect_callback;
@@ -125,6 +140,7 @@ class ACNode : public ACBase {
     void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
+
 
     // We register a bunch of handlers - rather than calling them
     // directly with a flag trigger -- as this allows the linker

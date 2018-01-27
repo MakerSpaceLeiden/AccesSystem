@@ -18,7 +18,7 @@ size_t SyslogStream::write(uint8_t c) {
   logbuff[at++] = 0;
   at = 0;
 
-   if (node.isConnected()) {
+   if (_acnode->isConnected()) {
     WiFiUDP syslog;
     if (syslog.begin(_syslogPort)) {
       syslog.beginPacket(WiFi.gatewayIP(), _syslogPort);
