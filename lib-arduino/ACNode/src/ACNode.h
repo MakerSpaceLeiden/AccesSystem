@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _H_ACNODE
+#define _H_ACNODE
 
 // #include <Ethernet.h>
 #ifdef  ESP32
@@ -41,6 +42,8 @@
 extern char * strsepspace(char **p);
 extern const char *machinestateName[];
 
+// typedef unsigned long beat_t;
+// extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
 
 typedef enum {
   ACNODE_ERROR_FATAL,
@@ -161,4 +164,23 @@ extern void send(const char * topic, const char * payload);
 
 extern const char ACNODE_CAPS[];
 
+<<<<<<< Updated upstream
+=======
+#include <MakerspaceMQTT.h>
+#include <LEDs.h>
+#include <ConfigPortal.h>
+#include <WiredEthernet.h>
+
+#include <RFID.h>
+#include <OTA.h>
+
+
+#include <ConfigPortal.h>
+#include <MakerSpaceMQTT.h>
+#include <SIG1.h>
+#include <SIG2.h>
+
+#include <Beat.h>
+#endif
+>>>>>>> Stashed changes
 

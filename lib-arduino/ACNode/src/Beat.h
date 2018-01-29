@@ -2,6 +2,7 @@
 #define _H_BEAT
 
 #include <ACBase.h>
+#include <ACNode.h>
 
 class Beat : public ACSecurityHandler {
     const char * name = "Beat";
@@ -18,8 +19,6 @@ class Beat : public ACSecurityHandler {
     const char *    secure(ACRequest * req);
 private:
     unsigned long last_loop = 0, last_beat = 0;
-    beat_t ast_beat = 0;
-
 };
 
 #endif
