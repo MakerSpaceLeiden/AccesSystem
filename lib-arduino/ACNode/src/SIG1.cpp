@@ -41,26 +41,27 @@ static const char * hmacAsHex(const char *sessionkey,
 //	FAIL	failed to authenticate - reject it.
 //	OK	authenticated OK - accept.
 //
-ACSecurityHandler::acauth_result_t SIG1::verify(const char * topic, const char * line, const char ** payload) {
+ACSecurityHandler::acauth_result_t SIG1::verify(ACRequest * req) {
     char buff[ MAX_MSG ];
     
     // We only accept things starting with SIG/1*<space>hex<space>
     
-    size_t len = strlen(line);
-    if (len <72|| strncmp(line, "SIG/1.", 6) != 0)
+    size_t len = strlen(req->payload);
+    if (len <72|| strncmp(req->payload, "SIG/1.", 6) != 0)
         return ACSecurityHandler::DECLINE;
     
     if (len > sizeof(buff)-1) {
         Log.println("Failing SIG/1 sigature - far too long");
         return FAIL;
     };
-    strncpy(buff,line,sizeof(buff));
+    strncpy(buff,req->payload,sizeof(buff));
     
     char * p = buff;
     
-    SEP(sig, "SIG1Verify - no sig", ACSecurityHandler::FAIL);
-    SEP(hmacString, "SIG1Verify - no hmac", ACSecurityHandler::FAIL);
-    SEP(beatString, "SIG1Verify - no beat", ACSecurityHandler::FAIL);
+    SEP(sig, "SIG1Verify failed - no sig", ACSecurityHandler::FAIL);
+    SEP(hmacString, "SIG1Verify failed - no hmac", ACSecurityHandler::FAIL);
+    SEP(beatString, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
+    
     
     if (strlen(hmacString) != 64) {
         Log.println("Failing SIG/1 sigature - wrong length hmac");
@@ -73,14 +74,18 @@ ACSecurityHandler::acauth_result_t SIG1::verify(const char * topic, const char *
         return FAIL;
     };
     
+
     const char * hmac2 = hmacAsHex(passwd, beatString, topic, p);
     if (strcasecmp(hmac2, hmacString)) {
         Log.println("Invalid SIG/1 sigature");
         return FAIL;
     };
-    
-    size_t i =  beatString - buff;
-    *payload = line + i;
+
+    strncpy(req->sig, sig, sizeof(req->sig));
+    strncpy(req->beat, beatString, sizeof(req->beat));
+    req->beatCounter = beat;
+    req->cmd[0] = '\0';
+    strncpy(req->rest, buff, sizeof(req->rest));
 
     // Leave checking of the beat to the next module in line.
     // so it is a pass, rather than an OK.
@@ -88,19 +93,26 @@ ACSecurityHandler::acauth_result_t SIG1::verify(const char * topic, const char *
     return ACSecurityHandler::PASS;
 }
 
-const char * SIG1::secure(const char * topic, const char * line) {
-    char msg[1024];
-    
+int  SIG1::secure(ACRequest * req) {
     char beatAsString[ MAX_BEAT ];
-    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
+    char msg[MAX_MSG];
     
-    const char * sig  = hmacAsHex(passwd, beatAsString, topic, p+1);
-    snprintf(msg, sizeof(msg), "SIG/1.0 %s %s", sig, line);
+    // Bit sucky - but since we're retiring SIG1 - fine for now.
+    //
+    char * p = index(req->payload,' ');
+    if (!p) return -1;
     
-    return msg;
+    req->sig = "SIG/1.0";
+    strncpy(beatAsString,req->payload, p - req->payload);
+    
+    const char * sig  = hmacAsHex(passwd, beatAsString, req->topic, p+1);
+    snprintf(msg, sizeof(msg), "SIG/1.0 %s %s", sig, req->payload);
+    
+    strncpy(req->payload, msg, sizeof(req->payload));
+    return 0;
 };
 
-const char * SIG1::cloak(const char * tag) {
+int SIG1::cloak(ACRequest * req) {
     char beatAsString[ MAX_BEAT ];
     snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
     
@@ -111,7 +123,8 @@ const char * SIG1::cloak(const char * tag) {
     //
     unsigned char uid[32];
     char tagc[MAX_MSG];
-    strncpy(tagc, tag, sizeof(tagc));
+    strncpy(tagc, req->tag, sizeof(tagc));
+    
     int i = 0;
     for(char * tok = strtok(tagc," -"); (i < sizeof(uid)) && tok; tok = strtok(NULL," -")) {
         uid[i++] = atoi(tok);
@@ -123,7 +136,9 @@ const char * SIG1::cloak(const char * tag) {
     
     const char * tag_encoded = hmacToHex(binresult);
     
-    return tag_encoded;
+    strncpy(req->tag, tag_encoded, sizeof(req->tag));
+    
+    return 0;
 };
 
 

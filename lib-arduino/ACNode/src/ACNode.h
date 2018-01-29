@@ -23,11 +23,6 @@
 
 #include <ACBase.h>
 
-#include <MSL.h>
-#include <SIG1.h>
-#include <SIG2.h>
-#include <Beat.h>
-
 #define B64D(base64str, bin, what) { \
     if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
       Log.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
@@ -45,9 +40,6 @@
   }
 extern char * strsepspace(char **p);
 extern const char *machinestateName[];
-
-typedef unsigned long beat_t;
-extern beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
 
 typedef enum {
@@ -104,7 +96,7 @@ class ACNode : public ACBase {
 
     void loop();
     void begin();
-    cmd_result_t handle_cmd(char * cmd, char * rest);
+    cmd_result_t handle_cmd(ACRequest * req);
 
     void addHandler(ACBase &handler);
     void addSecurityHandler(ACSecurityHandler &handler);
@@ -114,6 +106,7 @@ class ACNode : public ACBase {
     void set_debugAlive(bool debug);
     bool isConnected(); // ethernet/wifi is up with valid IP.
     bool isUp(); // MQTT et.al also running.
+
     // Public - so it can be called from our fake
     // singleton. Once that it solved it should really
     // become private again.
@@ -123,7 +116,7 @@ class ACNode : public ACBase {
     // This function should be private - but we're calling
     // it from a C callback in the mqtt subsystem.
     //
-    void process(char * topic, char * payload);
+    void process(ACRequest * req);
   private:
     const char *machine, *moi;
     
@@ -168,19 +161,4 @@ extern void send(const char * topic, const char * payload);
 
 extern const char ACNODE_CAPS[];
 
-#include <MakerspaceMQTT.h>
-#include <LEDs.h>
-#include <ConfigPortal.h>
-#include <WiredEthernet.h>
-
-#include <RFID.h>
-#include <OTA.h>
-
-
-#include <ConfigPortal.h>
-#include <MakerSpaceMQTT.h>
-#include <SIG1.h>
-#include <SIG2.h>
-
-#include <Beat.h>
 

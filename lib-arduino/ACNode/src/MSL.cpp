@@ -6,21 +6,12 @@
 //	FAIL	failed to authenticate - reject it.
 //	OK	authenticated OK - accept.
 //
-ACSecurityHandler::acauth_result_t MSL::verify(const char * topic, const char * line, const char ** payload) {
+ACSecurityHandler::acauth_result_t MSL::verify(ACRequest *req) {
 	// We only accept short, single word commands.
-
-        if (strlen(line) > 10 || index(line,' '))
+    //
+    if (strlen(req->payload) > 10 || index(req->payload,' '))
 		return ACSecurityHandler::DECLINE;
 
-    *payload = line;
 	return ACSecurityHandler::OK;
-};
-
-const char * MSL::secure(const char * line) {
-	return line;
-};
-
-const char * MSL::cloak(const char * tag) {
-	return tag;
 };
 

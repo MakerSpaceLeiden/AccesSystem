@@ -7,17 +7,20 @@
 #include <ACNode.h>
 
 
-Beat::acauth_result_t Beat::verify(const char * topic, const char * line, const char ** payload) {
-    char * p = index(line,' ');
+Beat::acauth_result_t Beat::verify(ACRequest * req)
+{
+    //const char * topic, const char * line, const char ** payload);
+    char * p = index(req->rest,' ');
     beat_t  b = strtoul(line,NULL,10);
+    size_t bl = req->rest - p;
     
-    if (!p || strlen(line) < 10 || b == 0 || b == ULONG_MAX)
+    if (!p || strlen(line) < 10 || b == 0 || b == ULONG_MAX || bl > 12 || bl < 2) {
+        Log.printf("Malformed beat <%s> - ignoring.\m", req->rest);
         return ACSecurityHandler::DECLINE;
-
+    };
+    
     unsigned long delta = llabs((long long) b - (long long)beatCounter);
     
-    // otherwise - only accept things in a 4 minute window either side.
-    //
     if ((beatCounter < 3600) || (delta < 120)) {
         beatCounter = b;
         if (delta > 10) {
@@ -29,27 +32,30 @@ Beat::acauth_result_t Beat::verify(const char * topic, const char * line, const 
         Log.printf("Good message -- but beats ignored as they are too far off (%lu seconds)\n",delta);
         return ACSecurityHandler::FAIL;
     };
+
+    // Strip off, and accept the beat.
+    //
+    strncpy(req->beat,req->rest, MIN(sizeof(req->beat),bl));
+    strcpy(req->rest, req->rest + bl);
+    req->beatExtracted = b;
     
     return ACSecurityHandler::OK;
 };
 
-Beat::cmd_result_t Beat::handle_cmd(char * cmd, char * rest) {
+Beat::cmd_result_t Beat::handle_cmd(ACRequest * req) {
     if (!strcmp(cmd,"beat"))
         return Beat::CMD_CLAIMED;
 
     return Beat::CMD_DECLINE;
 }
 
-
-const char * Beat::secure(const char * topic, const char * payload) {
-    char tosign[MAX_MSG];
-    snprintf(tosign, sizeof(tosign), BEATFORMAT " %s", beatCounter, payload);
+int Beat::secure(ACRequest * req) {
+    char tmp[sizeof(req->payload)];
     
-    return tosign;
-};
-
-const char * Beat::cloak(const char * tag) {
-    return tag;
+    snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", beatCounter, req->payload);
+    strcpy(req->payload, tmp, sizeof(req->payload));
+    
+    return 0;
 };
 
 void Beat::begin() {

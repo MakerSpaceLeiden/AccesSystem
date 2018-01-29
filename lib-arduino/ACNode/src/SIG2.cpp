@@ -421,26 +421,80 @@ void send_helo(const char * helo) {
   send(NULL, buff);
 }
 
+ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
+    size_t len = strlen(req->payload);
 
-const char * SIG2::secure(const char * topic, const char * payload) {
+    // We only accept things starting with SIG/2*<space>hex<space>
+    if (len <72|| strncmp(req->payload, "SIG/2.", 6) != 0)
+        return ACSecurityHandler::DECLINE;
+    
+    if (len > sizeof(buff)-1) {
+        Log.println("Failing SIG/1 sigature - far too long");
+        return FAIL;
+    };
+    
+    char buff[MAX_MSG];
+    strncpy(buff,line,sizeof(buff));
+    
+    char * p = buff;
+    
+    SEP(sig, "SIG2Verify failed - no sig", ACSecurityHandler::FAIL);
+    SEP(signature64, "SIG2Verify failed - no signature64", ACSecurityHandler::FAIL);
+    SEP(beatString, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
+    
+    if (strlen(signature64) != B64L(ED59919_SIGLEN)) {
+        Log.println("Failing SIG/1 sigature - wrong length signature64");
+        return ACSecurityHandler::FAIL;
+    };
+    
+    unsigned long beat = strtoul(beatString, NULL, 10);
+    if (beat == 0) {
+        Log.println("Failing SIG/1 sigature - beat issues");
+        return ACSecurityHandler::FAIL;
+    };
+    
+    if (!sig2_verify(const char * beat, const char signature64[], const char signed_payload[])) {
+        Log.println("Failing SIG/1 sigature - invalid sig.");
+        return ACSecurityHandler::FAIL;
+    };
+
+    strncpy(req->sig, sig, sizeof(req->sig));
+    strncpy(req->beat, beatString, sizeof(req->beat));
+    req->beatCounter = beat;
+    req->cmd[0] = '\0';
+    strncpy(req->rest, buff, sizeof(req->rest));
+
+    return ACSecurityHandler::PASS;
+};
+
+int SIG2::secure(ACRequest * req) {
+    char msg[MAX_MSG];
     
     if (!sig2_active())
-        return NULL; // ACSecurityHandler::DECLINE;
-
-    char msg[MAX_MSG];
-    sig2_sign(msg, sizeof(msg), payload);
-    return msg;
+        return -1;
+    
+    if (!sig2_sign(msg, sizeof(msg), req->payload))
+        return -1;
+    
+    strncpy(req->payload, msg, sizeof(req->payload))
+    
+    return 0;
 };
 
-const char * SIG2::cloak(const char * tag) {
-    if (!sig2_active())
-        return NULL;
-
+int SIG2::cloak(ACRequest * req) {
     char tag_encoded[MAX_MSG];
-    return sig2_encrypt(tag, tag_encoded, sizeof(tag_encoded));
+
+    if (!sig2_active())
+        return -1;
+
+    if (!sig2_encrypt(req->tag, tag_encoded, sizeof(tag_encoded)) == NULL)
+        return -1;
+    
+    strncpy(req->tag, tag_encoded, sizeof(req->tag))
+    return 0;
 };
 
-SIG2::cmd_result_t SIG2::handle_cmd(char * cmd, char * rest)
+SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
 {
     if (!strncmp("announce", rest, 8)) {
         send_helo((char *)"welcome");

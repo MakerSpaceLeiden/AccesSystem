@@ -5,9 +5,7 @@
 
 class MSL : public ACSecurityHandler {
    const char * name = "MSL";
-   acauth_result_t verify(const char * topic, const char * line, const char ** payload);
-   const char * secure(const char * line);
-   const char * cloak(const char * tag);
+   acauth_result_t verify(ACRequest * rew);
 } ;
 #endif
 

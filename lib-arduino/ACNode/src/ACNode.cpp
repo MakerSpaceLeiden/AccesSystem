@@ -190,13 +190,13 @@ void ACNode::loop() {
 #endif
 }
 
-ACBase::cmd_result_t ACNode::handle_cmd(char * cmd, char * rest)
+ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
 {
-    if (!strncmp("welcome", rest, 7)) {
+    if (!strncmp("welcome", req->cmd, 7)) {
         return ACNode::CMD_CLAIMED;
     }
     
-    if (!strncmp("ping", rest, 4)) {
+    if (!strncmp("ping", req->cmd, 4)) {
         char buff[MAX_MSG];
         IPAddress myIp = WiFi.localIP();
         
@@ -206,7 +206,7 @@ ACBase::cmd_result_t ACNode::handle_cmd(char * cmd, char * rest)
     }
     
 #if 0
-    if (!strcmp("outoforder", rest)) {
+    if (!strcmp("outoforder", req->cmd)) {
         machinestate = OUTOFORDER;
         send(NULL, "event outoforder");
         return ACNode::CMD_CLAIMED;
@@ -216,7 +216,7 @@ ACBase::cmd_result_t ACNode::handle_cmd(char * cmd, char * rest)
 
 }
 
-void ACNode::process(char * topic, char * payload)
+void ACNode::process(char * topic, char * message)
 {
     size_t length = strlen(payload);
     
@@ -229,13 +229,17 @@ void ACNode::process(char * topic, char * payload)
         return;
     };
     
+    ACRequest * req = new ACRequest();
+    req->topic = topic;
+    req->payload = message; // keep a copy of the original
+    req->rest = message;    // allow a copy that is 'eaten' as we parse.
+    
     ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
     for (std::list<ACSecurityHandler>::iterator it =_security_handlers.begin();
          it!=_security_handlers.end() && r != ACSecurityHandler::OK;
          ++it)
     {
-        char * p = payload;
-        r = it->verify(topic, payload, &p);
+        r = it->verify(req);
         switch(r) {
             case ACSecurityHandler::DECLINE:
                 Debug.printf("%s could not parse this payload, trying next.\n", it->name);
@@ -243,7 +247,6 @@ void ACNode::process(char * topic, char * payload)
             case ACSecurityHandler::PASS:
             case ACSecurityHandler::OK:
                 Debug.printf("OK payload with %s signature - handling.\n", it->name);
-                payload = p;
                 break;
             case ACSecurityHandler::FAIL:
             default:
@@ -257,11 +260,24 @@ void ACNode::process(char * topic, char * payload)
         return;
     }
     
+    size_t l = 0;
+    char * endOfCmd = index(req->rest, ' ');
+    if (endOfCmd) {
+        l = endOfCmd - req->rest;
+        if (l >= sizeof(req->cmd))
+            l = sizeof(req->cmd);
+        strncpy(req->cmd, req->rest, l);
+        strncpy(req->rest, rest->rest + l +1, sizeof(req->rest));
+    } else {
+        strncpy(req->cmd,req->rest, sizeof(req->cmd));
+        req->rest[0] = '\0';
+    };
+
     for (std::list<ACSecurityHandler>::iterator  it =_security_handlers.begin();
          it!=_security_handlers.end();
          ++it)
     {
-        cmd_result_t r = it->handle_cmd(topic,payload);
+        cmd_result_t r = it->handle_cmd(req);
         if (r == CMD_CLAIMED)
             return;
     };
@@ -270,7 +286,7 @@ void ACNode::process(char * topic, char * payload)
          it != _handlers.end();
          ++it)
     {
-        cmd_result_t r = it->handle_cmd(topic,payload);
+        cmd_result_t r = it->handle_cmd(req);
         if (r == CMD_CLAIMED)
             return;
     }

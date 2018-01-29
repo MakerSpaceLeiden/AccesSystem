@@ -4,6 +4,9 @@
 #include <list>
 #include <stddef.h>
 
+typedef unsigned long beat_t;
+extern beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
+
 class ACBase {
   public:
     const char * name = NULL;
@@ -14,7 +17,8 @@ class ACBase {
 
     void begin() { return; };
     void loop() { return; };
-    cmd_result_t handle_cmd(char * cmd, char * rest) { return CMD_DECLINE; };
+    
+    cmd_result_t handle_cmd(ACRequest * req) { return CMD_DECLINE; };
     
     void set_debug(bool debug);
   protected:
@@ -29,10 +33,25 @@ class ACSecurityHandler : public ACBase {
     
    typedef enum acauth_results { DECLINE, FAIL, PASS, OK } acauth_result_t;
 
-   acauth_result_t verify(const char * topic, const char * line, char ** payload) { return FAIL; }
+   acauth_result_t verify(ACRequest * req) { return FAIL; }
 
-   const char * secure(const char * topic,  const char * line) { return NULL; };
+   int secure(ACRequest * req) { return 0; };
 
-   const char * cloak(const char * tag) { return NULL; };
+   int cloak(ACRequest * req)) { return 0; };
 };
+
+class ACRequest {
+    public:
+        beat_t beatReceived;
+        // raw data as/when received:
+        char topic[MAX_MSG];
+        char payload[MAX_MSG];
+        // data as extracted from any payload.
+        beat_t beatExtracted;
+        char version[32];
+        char beat[MAX_MSG];
+        char cmd[MAX_MSG];
+        char rest[MAX_MSG];
+        char tag[MAX_MSG];
+}
 #endif

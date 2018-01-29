@@ -7,12 +7,12 @@ class SIG1 : public ACSecurityHandler {
 public:
     const char * name = "SIG1";
     
-    char * password = NULL;
+    char password[MAX_NAME] = "";
 
-    acauth_result_t verify(const char * topic, const char * line, const char ** payload);
+    acauth_result_t verify(ACRequest * req);
 
-    const char * secure(const char * topic, const char * line);
-    const char * cloak(const char * tag);
+    int secure(ACRequest * req);
+    int cloak(ACRequest * req);
 } ;
 
 #endif
