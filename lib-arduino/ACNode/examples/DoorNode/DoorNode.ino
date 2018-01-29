@@ -22,6 +22,16 @@
 #define RFID_RESET_PIN (7)
 
 #include <ACNode.h>
+
+#include <MSL.h>
+#include <SIG1.h>
+#include <SIG2.h>
+
+#include <Beat.h>
+
+#include <OTA.h>
+#include <RFID.h>
+
 #include <SyslogStream.h>
 #include <MqttLogStream.h>
 

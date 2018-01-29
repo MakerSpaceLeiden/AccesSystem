@@ -6,6 +6,8 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
+#include <ETH.h>
+#include "WiredEthernet.h"
 
 #include <esp32-hal-gpio.h> // digitalWrite and friends L	.
 #else
@@ -57,8 +59,6 @@ typedef enum {
   ACNODE_VERBOSE,
   ACNODE_DEBUG
 } acnode_loglevel_t;
-
-const size_t MAX_MSG = 255;
 
 class ACLog : public Print {
 public:
@@ -164,23 +164,4 @@ extern void send(const char * topic, const char * payload);
 
 extern const char ACNODE_CAPS[];
 
-<<<<<<< Updated upstream
-=======
-#include <MakerspaceMQTT.h>
-#include <LEDs.h>
-#include <ConfigPortal.h>
-#include <WiredEthernet.h>
-
-#include <RFID.h>
-#include <OTA.h>
-
-
-#include <ConfigPortal.h>
-#include <MakerSpaceMQTT.h>
-#include <SIG1.h>
-#include <SIG2.h>
-
-#include <Beat.h>
 #endif
->>>>>>> Stashed changes
-

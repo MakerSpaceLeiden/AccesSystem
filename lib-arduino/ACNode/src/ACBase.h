@@ -4,8 +4,25 @@
 #include <list>
 #include <stddef.h>
 
+#include "MakerSpaceMQTT.h"
+
 typedef unsigned long beat_t;
-extern beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
+extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
+
+class ACRequest {
+    public:
+        beat_t beatReceived;
+        // raw data as/when received:
+        char topic[MAX_MSG];
+        char payload[MAX_MSG];
+        // data as extracted from any payload.
+        beat_t beatExtracted;
+        char version[32];
+        char beat[MAX_MSG];
+        char cmd[MAX_MSG];
+        char rest[MAX_MSG];
+        char tag[MAX_MSG];
+};
 
 class ACBase {
   public:
@@ -37,21 +54,7 @@ class ACSecurityHandler : public ACBase {
 
    int secure(ACRequest * req) { return 0; };
 
-   int cloak(ACRequest * req)) { return 0; };
+   int cloak(ACRequest * req) { return 0; };
 };
 
-class ACRequest {
-    public:
-        beat_t beatReceived;
-        // raw data as/when received:
-        char topic[MAX_MSG];
-        char payload[MAX_MSG];
-        // data as extracted from any payload.
-        beat_t beatExtracted;
-        char version[32];
-        char beat[MAX_MSG];
-        char cmd[MAX_MSG];
-        char rest[MAX_MSG];
-        char tag[MAX_MSG];
-}
 #endif

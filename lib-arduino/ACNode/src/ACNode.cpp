@@ -5,8 +5,9 @@
 // make the various destinations classes in their own right you can 'add' to the T.
 //
 //
-#include <ACNode.h>
 #include <ACBase.h>
+#include <ACNode.h>
+#include "ConfigPortal.h"
 
 // Sort of a fake singleton to overcome callback
 // limits in MQTT callback and elsewhere.
@@ -94,7 +95,6 @@ void ACNode::begin() {
     Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
     // configPortal();
     Log.printf("No connection after %d seconds (ssid=%s). Rebooting.\n", del, WiFi.SSID().c_str());
-    setOrangeLED(LED_FAST);
     Log.println("Rebooting...");
     delay(1000);
     ESP.restart();
@@ -216,12 +216,12 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
 
 }
 
-void ACNode::process(char * topic, char * message)
+void ACNode::process(ACRequest * reqin) 
 {
-    size_t length = strlen(payload);
+    size_t length = strlen(reqin->payload);
     
-    Debug.print("["); Debug.print(topic); Debug.print("] <<: ");
-    Debug.print((char *)payload);
+    Debug.print("["); Debug.print(reqin->topic); Debug.print("] <<: ");
+    Debug.print((char *)reqin->payload);
     Debug.println();
     
     if (length < 6 + 2 * HASH_LENGTH + 1 + 12 + 1) {
@@ -230,9 +230,9 @@ void ACNode::process(char * topic, char * message)
     };
     
     ACRequest * req = new ACRequest();
-    req->topic = topic;
-    req->payload = message; // keep a copy of the original
-    req->rest = message;    // allow a copy that is 'eaten' as we parse.
+    req->topic = reqin->topic;
+    req->payload = reqin->message; // keep a copy of the original
+    req->rest = reqin->message;    // allow a copy that is 'eaten' as we parse.
     
     ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
     for (std::list<ACSecurityHandler>::iterator it =_security_handlers.begin();
