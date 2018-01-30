@@ -1,4 +1,5 @@
 #include <ACNode.h>
+#include "LEDs.h"
 
 const char *ledstateName[ NEVERSET ] = { "off", "flash", "slow", "fast", "on" };
 

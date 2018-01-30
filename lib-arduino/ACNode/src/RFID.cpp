@@ -32,10 +32,11 @@ void RFID::loop() {
         strcat(lasttag, buff);
     }
     // lasttagbeat = beatCounter;
-    
-    const char * tag_encoded = _acnode->cloak(lasttag);
-    
-    if (tag_encoded == NULL) {
+
+    char tag_encoded[MAX_MSG];
+    strncpy(tag_encoded, lasttag, MAX_MSG);
+
+    if (_acnode->cloak(tag_encoded)) {
         Log.println("Tag could not be encoded. giving up.");
         return;
     }

@@ -188,7 +188,6 @@ void ACNode::mqttLoop() {
     // here quickly.
     //
     publish_rec_t * rec = publish_queue;
-    char * payload = rec->payload;
     
     ACRequest * reqOut = new ACRequest();
     strncpy(reqOut->topic, rec->topic, sizeof(reqOut->topic));
@@ -199,7 +198,10 @@ void ACNode::mqttLoop() {
     //
     std::list<ACSecurityHandler>::reverse_iterator it;
     ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
-    for (it =_security_handlers.rbegin(); it!=_security_handlers.rend() && r != OK; ++it) {
+    for (it =_security_handlers.rbegin(); 
+	it!=_security_handlers.rend() && r != ACSecurityHandler::OK; 
+	++it) 
+    {
         r = it->secure(reqOut);
         if (r == ACSecurityHandler::FAIL) {
             Log.printf("Adding signature to outbound failed (%s). Aborting.\n", it->name);

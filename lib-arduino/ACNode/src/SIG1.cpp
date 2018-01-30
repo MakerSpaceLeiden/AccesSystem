@@ -1,4 +1,5 @@
 #include <ACNode.h>
+#include "SIG1.h"
 
 // Note - none of below HMAC utility functions is re-entrant/t-safe; they all rely
 // on some private static buffers one is not to meddle with in the 'meantime'.
@@ -41,7 +42,7 @@ static const char * hmacAsHex(const char *sessionkey,
 //	FAIL	failed to authenticate - reject it.
 //	OK	authenticated OK - accept.
 //
-ACSecurityHandler::acauth_result_t SIG1::verify(ACRequest * req) {
+SIG1::acauth_result_t SIG1::verify(ACRequest * req) {
     char buff[ MAX_MSG ];
     
     // We only accept things starting with SIG/1*<space>hex<space>
@@ -75,15 +76,15 @@ ACSecurityHandler::acauth_result_t SIG1::verify(ACRequest * req) {
     };
     
 
-    const char * hmac2 = hmacAsHex(passwd, beatString, topic, p);
+    const char * hmac2 = hmacAsHex(passwd, beatString, req->topic, p);
     if (strcasecmp(hmac2, hmacString)) {
         Log.println("Invalid SIG/1 sigature");
         return FAIL;
     };
 
-    strncpy(req->sig, sig, sizeof(req->sig));
+    strncpy(req->version, sig, sizeof(req->version));
     strncpy(req->beat, beatString, sizeof(req->beat));
-    req->beatCounter = beat;
+    req->beatReceived = beat;
     req->cmd[0] = '\0';
     strncpy(req->rest, buff, sizeof(req->rest));
 
@@ -93,28 +94,28 @@ ACSecurityHandler::acauth_result_t SIG1::verify(ACRequest * req) {
     return ACSecurityHandler::PASS;
 }
 
-int  SIG1::secure(ACRequest * req) {
+SIG1::acauth_result_t SIG1::secure(ACRequest * req) {
     char beatAsString[ MAX_BEAT ];
     char msg[MAX_MSG];
     
     // Bit sucky - but since we're retiring SIG1 - fine for now.
     //
     char * p = index(req->payload,' ');
-    if (!p) return -1;
+    if (!p) return ACSecurityHandler::FAIL;
     
-    req->sig = "SIG/1.0";
+    strncpy(req->version, "SIG/1.0", sizeof(req->version));
     strncpy(beatAsString,req->payload, p - req->payload);
     
     const char * sig  = hmacAsHex(passwd, beatAsString, req->topic, p+1);
-    snprintf(msg, sizeof(msg), "SIG/1.0 %s %s", sig, req->payload);
+    snprintf(msg, sizeof(msg), "%s %s %s", req->version, sig, req->payload);
     
     strncpy(req->payload, msg, sizeof(req->payload));
-    return 0;
+    return ACSecurityHandler::OK;
 };
 
-int SIG1::cloak(ACRequest * req) {
+SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
     char beatAsString[ MAX_BEAT ];
-    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, beatCounter);
+    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, req->beatReceived);
     
     SHA256 sha256;
     sha256.reset();
@@ -138,7 +139,7 @@ int SIG1::cloak(ACRequest * req) {
     
     strncpy(req->tag, tag_encoded, sizeof(req->tag));
     
-    return 0;
+    return ACSecurityHandler::OK;
 };
 
 

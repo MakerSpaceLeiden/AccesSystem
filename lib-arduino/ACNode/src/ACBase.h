@@ -11,6 +11,12 @@ extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI t
 
 class ACRequest {
     public:
+	ACRequest();
+        ACRequest(const char * _topic, const char * _payload) {
+		strncpy(topic, _topic, sizeof(topic));
+		strncpy(payload, _payload, sizeof(payload));
+		strncpy(rest, _payload, sizeof(payload));
+	};
         beat_t beatReceived;
         // raw data as/when received:
         char topic[MAX_MSG];
@@ -52,9 +58,9 @@ class ACSecurityHandler : public ACBase {
 
    acauth_result_t verify(ACRequest * req) { return FAIL; }
 
-   int secure(ACRequest * req) { return 0; };
+   acauth_results secure(ACRequest * req) { return FAIL; }
 
-   int cloak(ACRequest * req) { return 0; };
+   acauth_results cloak(ACRequest * req) { return FAIL; }
 };
 
 #endif

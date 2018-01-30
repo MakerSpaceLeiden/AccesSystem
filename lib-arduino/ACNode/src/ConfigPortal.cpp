@@ -2,6 +2,7 @@
 
 //flag for saving data
 bool shouldSaveConfig = false;
+char passwd[ 64 ] = "";
 
 void  configBegin() {
   if (SPIFFS.begin()) {
@@ -60,9 +61,6 @@ void saveConfigCallback () {
 
 void configPortal() {
   Log.print("Going into AP mode config mode\n");
-  setGreenLED(LED_OFF);
-  setOrangeLED(LED_FAST);
-
   WiFiManager wifiManager;
   wifiManager.setDebugOutput(255); // avoid sensitive stuff to appear needlessly.
 

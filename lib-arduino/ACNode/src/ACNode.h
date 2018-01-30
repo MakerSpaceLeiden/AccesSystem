@@ -104,7 +104,8 @@ class ACNode : public ACBase {
     void addHandler(ACBase &handler);
     void addSecurityHandler(ACSecurityHandler &handler);
 
-    const char * cloak(const char * lasttaag);
+    char * cloak(char tag[MAX_MSG]);
+
 
     void set_debugAlive(bool debug);
     bool isConnected(); // ethernet/wifi is up with valid IP.
@@ -119,7 +120,7 @@ class ACNode : public ACBase {
     // This function should be private - but we're calling
     // it from a C callback in the mqtt subsystem.
     //
-    void process(ACRequest * req);
+    void process(const char * topic, const char * payload);
   private:
     const char *machine, *moi;
     

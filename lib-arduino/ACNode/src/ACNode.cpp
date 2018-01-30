@@ -133,16 +133,18 @@ void ACNode::addSecurityHandler(ACSecurityHandler &handler) {
   addHandler(handler);
 }
 
-const char * ACNode::cloak(const char * lasttag) {
+char * ACNode::cloak(char tag[MAX_MSG]  ) {
+    ACRequest q = ACRequest();
+    strncpy(q.tag, tag, sizeof(q.tag));
     std::list<ACSecurityHandler>::iterator it;
     for (it =_security_handlers.begin(); it!=_security_handlers.end(); ++it) {
-        lasttag = it->cloak(lasttag);
-        if (lasttag == NULL)
+        int r = it->cloak(&q);
+        if (r != 0) 
             return NULL;
     }
-    return lasttag;
+    strncpy(tag, q.tag, MAX_MSG);
+    return tag;
 }
-
 
 void ACNode::loop() {
   // XX to hook into a callback of the ethernet/wifi
@@ -216,12 +218,12 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
 
 }
 
-void ACNode::process(ACRequest * reqin) 
+void ACNode::process(const char * topic, const char * payload)
 {
-    size_t length = strlen(reqin->payload);
+    size_t length = strlen(payload);
     
-    Debug.print("["); Debug.print(reqin->topic); Debug.print("] <<: ");
-    Debug.print((char *)reqin->payload);
+    Debug.print("["); Debug.print(topic); Debug.print("] <<: ");
+    Debug.print((char *)payload);
     Debug.println();
     
     if (length < 6 + 2 * HASH_LENGTH + 1 + 12 + 1) {
@@ -229,10 +231,7 @@ void ACNode::process(ACRequest * reqin)
         return;
     };
     
-    ACRequest * req = new ACRequest();
-    req->topic = reqin->topic;
-    req->payload = reqin->message; // keep a copy of the original
-    req->rest = reqin->message;    // allow a copy that is 'eaten' as we parse.
+    ACRequest * req = new ACRequest(topic, payload);
     
     ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
     for (std::list<ACSecurityHandler>::iterator it =_security_handlers.begin();
@@ -267,7 +266,7 @@ void ACNode::process(ACRequest * reqin)
         if (l >= sizeof(req->cmd))
             l = sizeof(req->cmd);
         strncpy(req->cmd, req->rest, l);
-        strncpy(req->rest, rest->rest + l +1, sizeof(req->rest));
+        strncpy(req->rest, req->rest + l +1, sizeof(req->rest));
     } else {
         strncpy(req->cmd,req->rest, sizeof(req->cmd));
         req->rest[0] = '\0';
@@ -293,7 +292,7 @@ void ACNode::process(ACRequest * reqin)
     
     // Try my own default things.
     //
-    if (handle_cmd(topic,payload) == CMD_CLAIMED)
+    if (handle_cmd(req) == CMD_CLAIMED)
         return;
     
     Log.printf("Do not know what to do with <%s>, ignoring.\n", payload);

@@ -8,14 +8,13 @@ class SIG2 : public ACSecurityHandler {
 public:
     const char * name = "SIG2";
     
-    acauth_result_t verify(ACRequest * req);
-    
     void begin();
     void loop();
     
-    const char *    secure(ACRequest * req);
-    const char *    cloak(ACRequest * req);
-    
     cmd_result_t    handle_cmd(ACRequest * req);
-} ;
+
+    acauth_result_t 	verify(ACRequest * req);
+    acauth_result_t    secure(ACRequest * req);
+    acauth_result_t    cloak(ACRequest * req);
+};
 #endif

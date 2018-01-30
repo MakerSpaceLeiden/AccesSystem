@@ -1,6 +1,6 @@
 #include <ACNode.h>
+#include "SIG2.h"
 #include "MakerSpaceMQTT.h" // needed for MAX_MSG
-
 
 #include <Crypto.h>
 #include <Curve25519.h>
@@ -77,7 +77,7 @@ extern int setup_curve25519();
 // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
 
 extern bool sig2_verify(const char * beat, const char signature64[], const char signed_payload[]);
-extern  void sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign);
+extern bool sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign);
 extern const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxlen);
 
 extern void send_helo(const char * helo);
@@ -332,7 +332,7 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
   return true;
 }
 
-void sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
+bool sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
   const char * vs = "2.0";
   uint8_t signature[ED59919_SIGLEN];
 
@@ -344,6 +344,8 @@ void sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
   encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
 
   snprintf(msg, MAX_MSG, "SIG/%s %s %s", vs, sigb64, tosign);
+
+  return true;
 }
 
 
@@ -423,6 +425,7 @@ void send_helo(const char * helo) {
 
 ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     size_t len = strlen(req->payload);
+    char buff[MAX_MSG];
 
     // We only accept things starting with SIG/2*<space>hex<space>
     if (len <72|| strncmp(req->payload, "SIG/2.", 6) != 0)
@@ -433,8 +436,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
         return FAIL;
     };
     
-    char buff[MAX_MSG];
-    strncpy(buff,line,sizeof(buff));
+    strncpy(buff,req->payload,sizeof(buff));
     
     char * p = buff;
     
@@ -453,50 +455,51 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
         return ACSecurityHandler::FAIL;
     };
     
-    if (!sig2_verify(const char * beat, const char signature64[], const char signed_payload[])) {
+    if (!sig2_verify(beatString, signature64, p)) {
         Log.println("Failing SIG/1 sigature - invalid sig.");
         return ACSecurityHandler::FAIL;
     };
 
-    strncpy(req->sig, sig, sizeof(req->sig));
+    strncpy(req->version, sig, sizeof(req->version));
     strncpy(req->beat, beatString, sizeof(req->beat));
-    req->beatCounter = beat;
+    req->beatReceived = beat;
     req->cmd[0] = '\0';
     strncpy(req->rest, buff, sizeof(req->rest));
 
     return ACSecurityHandler::PASS;
 };
 
-int SIG2::secure(ACRequest * req) {
+SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
     char msg[MAX_MSG];
     
     if (!sig2_active())
-        return -1;
+        return SIG2::FAIL;
     
     if (!sig2_sign(msg, sizeof(msg), req->payload))
-        return -1;
+        return SIG2::FAIL;
     
-    strncpy(req->payload, msg, sizeof(req->payload))
+    strncpy(req->payload, msg, sizeof(req->payload));
     
-    return 0;
+    return SIG2::OK;
 };
 
-int SIG2::cloak(ACRequest * req) {
+SIG2::acauth_result_t cloak(ACRequest * req) {
     char tag_encoded[MAX_MSG];
 
     if (!sig2_active())
-        return -1;
+        return ACSecurityHandler::FAIL;
 
-    if (!sig2_encrypt(req->tag, tag_encoded, sizeof(tag_encoded)) == NULL)
-        return -1;
+    if (sig2_encrypt(req->tag, tag_encoded, sizeof(tag_encoded)) == NULL)
+        return SIG2::FAIL;
     
-    strncpy(req->tag, tag_encoded, sizeof(req->tag))
-    return 0;
+    strncpy(req->tag, tag_encoded, sizeof(req->tag));
+
+    return SIG2::OK;
 };
 
 SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
 {
-    if (!strncmp("announce", rest, 8)) {
+    if (!strncmp("announce", req->rest, 8)) {
         send_helo((char *)"welcome");
         return CMD_CLAIMED;
     }
