@@ -26,10 +26,11 @@
 #define SOLENOID_GPIO     (4)
 #define SOLENOID_OFF      (LOW)
 #define SOLENOID_ENGAGED  (HIGH)
-#define AARTLED_GPIO     (16)
+#define AARTLED_GPIO      (16)
 
 #define DOOR_OPEN_DELAY         (10*1000)   //  10 seconds -- how long to hold the relay engaged; in milli seconds.
 #define CACHE_FALLBACK_TIMEOUT  (500)       // 0.5 second  -- how long to wait for a reply before checking the cache.
+#define MAX_RESPONSE_TIMEOUT    (3500)      // 3.5 seconds -- max wait for reply from the server.
 
 // Report regulary - but swithc to a higher frequency if we are in test mode. Also prefix our MQTT topic with 'test'
 // to avoid confusing production.
@@ -118,7 +119,8 @@ void enableOTA() {
         type = "SPIFFS";
         break;
       default: {
-          const char buff[] = "Unknown type of reprogramming attempt. Rejecting.";
+          char buff[255];
+          snprintf(buff, sizeof(buff), "[%s] Unknown type of reprogramming attempt. Rejecting.", pname);
           Serial.println(buff);
           client.publish(log_topic, buff);
           client.loop();
@@ -321,7 +323,7 @@ void setup()
   } else {
     caching = true;
     unsigned long count = listDir(SPIFFS, "/", "");
-    Serial.println("Total of " + String(count, DEC) + " files.");
+    Serial.println("Caching on - Total of " + String(count, DEC) + " files.");
   };
 
   Serial.println("setup() done.\n\n");
@@ -416,8 +418,11 @@ void closeDoor() {
 }
 
 void openDoor() {
+  char msg[255];
+  snprintf(msg, sizeof(msg), "[%p] Engaging solenoid", pname);
   doorstate = OPEN;
-  client.publish(log_topic, "Engaging solenoid");
+  client.publish(log_topic, msg);
+  Serial.println(msg);
 
   // Engage solenoid.
   digitalWrite(SOLENOID_GPIO, SOLENOID_ENGAGED);
@@ -534,6 +539,12 @@ void callback(char* topic, byte * payload, unsigned int length) {
   if (!strcmp(buff, "open")) {
     Serial.println("Opening door.");
     openDoor();
+    // So we have a lovely security hole here - if someone swipes a card
+    // that has access; and then quickly (before the server respons) swipes
+    // a card that is unknown -- that other card gets caches. And as the system
+    // does not see a 'deny' in the 'as-is' situation - we have a nice window
+    // of naughtyness.
+    //
     if (caching && uid.size)
       setCache(uid, true);
     uid.size = 0;
@@ -558,16 +569,17 @@ void callback(char* topic, byte * payload, unsigned int length) {
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
-           "[%s] alive-uptime %02ld:%02ld "
-           "mqtt: %s (state %d) "
+           "[%s] alive-uptime %02ld:%02ld, "
+           "mqtt %s (state %d) "
            "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, "
-           "door %s, state %s(%d)",
+           "door %s, state %s(%d), caching %s",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            client.connected() ? "connected" : "not-connected", client.state(),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
            isOpen() ? "open" : "closed",
-           doorstates_names[doorstate], doorstate
+           doorstates_names[doorstate], doorstate,
+           caching ? "on" : "off"
           );
   client.publish(log_topic, buff);
   Serial.println(buff);
@@ -596,6 +608,19 @@ void loop()
   }
 
   static doorstate_t lastdoorstate = CLOSED;
+  if (lastdoorstate != doorstate) {
+    char msg[255];
+    snprintf(msg, sizeof(msg), "[%s] Change from state %s(%d) to %s(%d)",
+             pname,
+             doorstates_names[lastdoorstate], lastdoorstate, doorstates_names[doorstate], doorstate);
+    Serial.println(msg);
+#ifndef LOCALMQTT
+    client.publish(log_topic, msg);
+#endif
+    lastdoorstate = doorstate;
+    last_doorstatechange = millis();
+  }
+
   switch (doorstate) {
     case CHECKINGCARD:
       if (millis() - last_doorstatechange > CACHE_FALLBACK_TIMEOUT && caching && checkCache(uid)) {
@@ -605,6 +630,13 @@ void loop()
         client.publish(log_topic, msg);
         openDoor();
       }
+      if (millis() - last_doorstatechange > MAX_RESPONSE_TIMEOUT) {
+        char msg[255];
+        snprintf(msg, sizeof(msg), "[%s] No reply from server. Keeping door closed.", pname);
+        Serial.println(msg);
+        client.publish(log_topic, msg);
+        closeDoor();
+      }
       break;
     case OPEN:
     case CLOSED:
@@ -612,17 +644,6 @@ void loop()
       break;
   };
 
-  if (lastdoorstate != doorstate) {
-    char msg[255];
-    snprintf(msg, sizeof(msg), "Change from state %s(%d) to %s(%d)",
-             doorstates_names[lastdoorstate], lastdoorstate, doorstates_names[doorstate], doorstate);
-    Serial.println(msg);
-#ifndef LOCALMQTT
-    client.publish(log_topic, msg);
-#endif
-    lastdoorstate = doorstate;
-    last_doorstatechange = millis();
-  }
 
   // catch any logic errors or strange cases where the door is open while we think
   // we are not doing anything.
@@ -671,7 +692,11 @@ void loop()
       client.publish(rfid_topic, pyStr.c_str());
 
       char msg[256];
+#ifndef LOCALMQTT
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
+#else
+      snprintf(msg, sizeof(msg), "[%s] Tag swiped", pname);
+#endif
       client.publish(log_topic, msg);
       Serial.println(msg);
 
