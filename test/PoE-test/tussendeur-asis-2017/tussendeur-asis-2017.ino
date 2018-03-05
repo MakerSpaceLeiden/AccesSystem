@@ -622,7 +622,7 @@ void loop()
     if (millis() - lastReport > 3000 || doorstate != lastdoorstate) {
       lastReport = millis();
       char msg[256];
-      snprintf(msg, sizeof(msg), "[%s] Door %sin an odd state-forcing close.", doorstate == lastdoorstate ? "still " : "",  pname);
+      snprintf(msg, sizeof(msg), "[%s] Door %sin an odd state-forcing close.", pname, doorstate == lastdoorstate ? "still " : "");
       Serial.println(msg);
       client.publish(log_topic, msg);
     };
