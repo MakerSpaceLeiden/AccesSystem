@@ -419,7 +419,7 @@ void closeDoor() {
 
 void openDoor() {
   char msg[255];
-  snprintf(msg, sizeof(msg), "[%p] Engaging solenoid", pname);
+  snprintf(msg, sizeof(msg), "[%s] Engaging solenoid", pname);
   doorstate = OPEN;
   client.publish(log_topic, msg);
   Serial.println(msg);
