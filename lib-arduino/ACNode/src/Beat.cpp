@@ -1,29 +1,91 @@
+#include <Beat.h>
+
+#include <string.h>
+#include <stdlib.h>
+#include <limits.h>
+
 #include <ACNode.h>
 
-unsigned long beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
-boolean verify_beat(const char beat[]) {
-  unsigned long  b = strtoul(beat, NULL, 10);
-  if (!b) {
-    Log.print("Unparsable beat - ignoring.");
-    return false;
-  };
+Beat::acauth_result_t Beat::verify(ACRequest * req)
+{
+    //const char * topic, const char * line, const char ** payload);
+    char * p = index(req->rest,' ');
+    beat_t  b = strtoul(req->rest,NULL,10);
+    size_t bl = req->rest - p;
+    
+    if (!p || strlen(req->rest) < 10 || b == 0 || b == ULONG_MAX || bl > 12 || bl < 2) {
+        Log.printf("Malformed beat <%s> - ignoring.\n", req->rest);
+        return ACSecurityHandler::DECLINE;
+    };
+    
+    unsigned long delta = llabs((long long) b - (long long)beatCounter);
+    
+    if ((beatCounter < 3600) || (delta < 120)) {
+        beatCounter = b;
+        if (delta > 10) {
+            Log.printf("Adjusting beat significantly by %lu seconds.\n", delta);
+        } else if (delta) {
+            Debug.printf("Adjusting beat by %lu seconds.\n", delta);
+        }
+    } else {
+        Log.printf("Good message -- but beats ignored as they are too far off (%lu seconds)\n",delta);
+        return ACSecurityHandler::FAIL;
+    };
 
-  unsigned long delta = llabs((long long) b - (long long)beatCounter);
+    // Strip off, and accept the beat.
+    //
+    size_t l = bl;
+    if (bl >= sizeof(req->beat))
+	bl = sizeof(req->beat) -1;
+    strncpy(req->beat,req->rest, l);
+    strcpy(req->rest, req->rest + bl);
+    req->beatExtracted = b;
+    
+    return ACSecurityHandler::OK;
+};
 
-  // otherwise - only accept things in a 4 minute window either side.
-  //
-  if ((beatCounter < 3600) || (delta < 120)) {
-    beatCounter = b;
-    if (delta > 10) {
-      Log.print("Adjusting beat by "); Log.print(delta); Log.println(" seconds.");
-    } else if (delta) {
-      Debug.print("Adjusting beat by "); Debug.print(delta); Debug.println(" seconds.");
-    }
-  } else {
-    Log.print("Good message -- but beats ignored as they are too far off ("); Log.print(delta); Log.println(" seconds).");
-    return false;
-  };
+Beat::cmd_result_t Beat::handle_cmd(ACRequest * req) {
+    if (!strcmp(req->cmd,"beat"))
+        return Beat::CMD_CLAIMED;
 
- return true;
+    return Beat::CMD_DECLINE;
 }
+
+Beat::acauth_result_t Beat::secure(ACRequest * req) {
+    char tmp[sizeof(req->payload)];
+    
+    snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", beatCounter, req->payload);
+    strncpy(req->payload, tmp, sizeof(req->payload));
+    
+    return Beat::OK;
+};
+
+void Beat::begin() {
+    // potentially read it from disk or some other persistent store
+    // at some point in the future
+    //
+    beatCounter = 0;
+}
+
+void Beat::loop() {
+    // Keepting time is a bit messy; the millis() wrap around and
+    // the SPI access to the reader seems to mess with the millis().
+    // So we revert to doing 'our own'.
+    //
+    if (millis() - last_loop >= 1000) {
+        unsigned long secs = (millis() - last_loop + 499) / 1000;
+        beatCounter += secs;
+        last_loop = millis();
+    }
+
+    if (_debug_alive) {
+        if (millis() - last_beat > 3000 && _acnode->isConnected()) {
+            send(NULL, "ping");
+            last_beat = millis();
+        }
+    }
+
+    return;
+}
+

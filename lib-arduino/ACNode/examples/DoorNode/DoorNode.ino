@@ -23,13 +23,25 @@
 
 #include <ACNode.h>
 
+#include <MSL.h>
+#include <SIG1.h>
+#include <SIG2.h>
+
+#include <Beat.h>
+
+#include <OTA.h>
+#include <RFID.h>
+
+#include <SyslogStream.h>
+#include <MqttLogStream.h>
+
 ACNode node = ACNode(true); // Force wired PoE ethernet.
 
 typedef enum {
   BOOTING, SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
   WAITINGFORCARD,             // waiting for card.
   CHECKINGCARD,
-  BUZZING,
+  BUZZING,                    // this is where we engage the solenoid.
   REJECTED,
   NOTINUSE
 } machinestates_t;
@@ -49,6 +61,9 @@ machinestates_t machinestate = BOOTING;
 OTA ota = OTA("FooBar");		// Over the air config, passowrd.
 RFID reader(RFID_SELECT_PIN, RFID_RESET_PIN);
 MSL msl = MSL();			// MSL `no security' handler as currently used for the doors.
+SIG1 sig1 = SIG1();
+SIG2 sig2 = SIG2();
+Beat beat = Beat();
 
 void setup() {
 
@@ -89,9 +104,27 @@ void setup() {
 
   node.addHandler(ota);
   node.addHandler(reader);
-  node.addSecurityHandler(msl);
 
-  machinestate = BOOTING;
+#if 0
+    // 2017 situation
+  node.addSecurityHandler(msl);
+#else
+    node.addSecurityHandler(sig1);
+    node.addSecurityHandler(beat);
+#endif
+
+// default syslog port and destination (gateway address or broadcast address).
+//
+SyslogStream syslogStream = SyslogStream();
+Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+
+// assumes the client connection for MQTT (and network, etc) is up - otherwise silenty fails/buffers.
+//
+MqttLogStream mqttlogStream = MqttLogStream("test", "moi");
+Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+
+machinestate = BOOTING;
 
   node.set_debug(true);
   node.set_debugAlive(true);

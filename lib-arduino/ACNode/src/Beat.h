@@ -1,6 +1,24 @@
 #ifndef _H_BEAT
 #define _H_BEAT
 
-extern unsigned long beatCounter;
-boolean verify_beat(const char beat[]);
+#include <ACBase.h>
+#include <ACNode.h>
+
+class Beat : public ACSecurityHandler {
+    const char * name = "Beat";
+    bool _debug_alive;
+    
+
+    void            begin();
+    void            loop();
+    
+    cmd_result_t    handle_cmd(ACRequest * req);
+
+    acauth_result_t verify(ACRequest * req);
+    acauth_result_t secure(ACRequest * req);
+
+private:
+    unsigned long last_loop = 0, last_beat = 0;
+};
+
 #endif

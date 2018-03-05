@@ -74,13 +74,7 @@ extern char moi[MAX_NAME];    // Name of the sender
 extern char machine[MAX_NAME];
 extern char master[MAX_NAME];    // Destination for commands
 extern char logpath[MAX_NAME];       // Destination for human readable text/logging info.
-extern char passwd[MAX_NAME];
-
-#include "SIG1.h"
-#include "SIG2.h"
 
 // Forward declarations..
 //
 extern const char * state2str(int state);
-bool sig2_active();
-

@@ -166,6 +166,10 @@ class ACNodeBase:
   def announce(self,dstnode):
     return self.send(dstnode, "announce " + socket.gethostbyname(socket.gethostname()));
 
+  def on_disconnect(self,client,userdata,rc):
+    self.logger.critical("Got disconnected: erro {}".format(rc));
+    self.client.reconnect()
+
   def on_connect(self, client, userdata, flags, rc):
     self.logger.info("(re)Connected to '" + self.cnf.mqtthost + "'")
     if self.cnf.node == self.cnf.master:
@@ -273,6 +277,7 @@ class ACNodeBase:
       self.client.on_message = self.on_message
       self.client.on_connect = self.on_connect
       self.client.on_subscribe= self.on_subscribe
+      self.client.on_disconnect = self.on_disconnect
    except:
       self.logger.critical("MQTT connection setup to '"+self.cnf.mqtthost+"' failed:")
       if self.cnf.verbose> 1 :

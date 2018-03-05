@@ -14,20 +14,14 @@ void OTA::begin() {
 
   ArduinoOTA.onStart([]() {
     Log.println("OTA process started.");
-    setGreenLED(LED_SLOW);
-    setOrangeLED(LED_SLOW);
   });
   ArduinoOTA.onEnd([]() {
     Log.println("OTA process completed. Resetting.");
-    setGreenLED(LED_OFF);
-    setOrangeLED(LED_ON);
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Serial.printf("Progress: %u\n", (progress / (total / 100)));
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    setGreenLED(LED_FAST);
-    setOrangeLED(LED_FAST);
     Log.printf("Error[%u]: ", error);
     if (error == OTA_AUTH_ERROR) Log.println("OTA: Auth failed");
     else if (error == OTA_BEGIN_ERROR) Log.println("OTA: Begin failed");

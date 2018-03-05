@@ -4,9 +4,8 @@
 #include <ACBase.h>
 
 class MSL : public ACSecurityHandler {
-   acauth_result_t verify(const char * line, const char ** payload);
-   const char * secure(const char * line);
-   const char * cloak(const char * tag);
+   const char * name = "MSL";
+   acauth_result_t verify(ACRequest * rew);
 } ;
 #endif
 

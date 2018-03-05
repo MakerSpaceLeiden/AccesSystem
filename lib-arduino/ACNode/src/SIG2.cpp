@@ -1,13 +1,86 @@
 #include <ACNode.h>
+#include "SIG2.h"
+#include "MakerSpaceMQTT.h" // needed for MAX_MSG
 
+#include <Crypto.h>
+#include <Curve25519.h>
+#include <Ed25519.h>
+#include <RNG.h>
+#include <SHA256.h>
+
+#include <CBC.h>
+#include <AES256.h>
+
+#include <EEPROM.h>
+
+// Curve/Ed25519 related (and SIG/2.0 protocol)
+
+#define CURVE259919_KEYLEN      (32)
+#define CURVE259919_SESSIONLEN  (CURVE259919_KEYLEN)
+#define ED59919_SIGLEN          (64)
 
 #if HASH_LENGTH != CURVE259919_SESSIONLEN
 #error SHA256 "hash HASH_LENGTH should be the same size as the session key CURVE259919_SESSIONLEN"
 #endif
 
-#if HASH_LENGTH != 32 // AES256::keySize() 
+#if HASH_LENGTH != 32 // AES256::keySize()
 #error SHA256 "hash should be the same size as the encryption key"
 #endif
+
+typedef struct __attribute__ ((packed)) {
+#define EEPROM_VERSION (0x0103)
+    uint16_t version;
+    uint8_t flags;
+    uint8_t spare;
+    
+    // Ed25519 key (Curve25519 key in Edwards y space)
+    uint8_t node_privatesign[CURVE259919_KEYLEN];
+    uint8_t master_publicsignkey[CURVE259919_KEYLEN];
+    
+} eeprom_t;
+
+extern eeprom_t eeprom;
+extern uint8_t node_publicsign[CURVE259919_KEYLEN];
+
+// Curve25519 key (In montgomery x space) - not kept in
+// persistent storage as we renew on reboot in a PFS
+// sort of 'light' mode.
+//
+extern uint8_t node_publicsession[CURVE259919_KEYLEN];
+extern uint8_t node_privatesession[CURVE259919_KEYLEN];
+extern uint8_t sessionkey[CURVE259919_SESSIONLEN];
+
+#define CRYPTO_HAS_PRIVATE_KEYS (1<<0)
+#define CRYPTO_HAS_MASTER_TOFU (1<<1)
+
+#ifdef BUILD
+#define RNG_APP_TAG BUILD
+#else
+#define RNG_APP_TAG  __FILE__  __DATE__  __TIME__
+#endif
+
+#define RNG_EEPROM_ADDRESS (sizeof(eeprom)+4)
+
+extern bool sig2_active();
+extern void kickoff_RNG();
+extern void maintain_rng();
+extern void load_eeprom();
+extern void save_eeprom();
+extern void wipe_eeprom();
+extern void init_curve();
+extern int setup_curve25519();
+
+// Option 1 (caninical) - a (correctly) signed message with a known key.
+// Option 2 - a (correctly) signed message with an unknwon key and still pre-TOFU
+//            we need to check against the key passed rather than the one we know.
+// Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
+// Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
+
+extern bool sig2_verify(const char * beat, const char signature64[], const char signed_payload[]);
+extern bool sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign);
+extern const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxlen);
+
+extern void send_helo(const char * helo);
 
 eeprom_t eeprom;
 
@@ -48,16 +121,6 @@ void kickoff_RNG() {
 
   RNG.setAutoSaveTime(60);
 }
-
-void maintain_rng() {
-  RNG.loop();
-
-  if (RNG.available(1024 * 4))
-    return;
-  uint32_t seed = trng();
-  RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
-}
-
 #define EEPROM_PRIVATE_OFFSET (0x100)
 void load_eeprom() {
   for (size_t adr = 0; adr < sizeof(eeprom); adr++)
@@ -94,11 +157,6 @@ int setup_curve25519() {
     Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
   }
 
-  // Avoid running in the first seconds after powerup.
-  //
-  if (millis() < 1000)
-    return -1;
-
   Log.println("Generating Curve25519 session keypair");
 
   resetWatchdog();
@@ -121,13 +179,41 @@ int setup_curve25519() {
   return 0;
 }
 
+void SIG2::begin() {
+    init_curve();
+}
+
+void SIG2::loop() {
+    if (!_acnode->isConnected())
+        return;
+    
+    static int init_done = 0;
+    if (init_done == 0) {
+        kickoff_RNG();
+        init_done = 1;
+    };
+    RNG.loop();
+    
+    if (RNG.available(1024 * 4))
+        return;
+    
+    uint32_t seed = trng();
+    RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
+    
+    if (init_done == 1) {
+        setup_curve25519();
+        init_done = 2;
+    }
+}
+
+
+bool verify_beat(const char * beat);
 
 // Option 1 (caninical) - a (correctly) signed message with a known key.
 // Option 2 - a (correctly) signed message with an unknwon key and still pre-TOFU
 //            we need to check against the key passed rather than the one we know.
 // Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
 // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
-
 
 bool sig2_verify(const char * beat, const char signature64[], const char signed_payload[]) {
 #define B64L(n) ((((4 * n / 3) + 3) & ~3)+1)
@@ -246,7 +332,7 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
   return true;
 }
 
-void sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
+bool sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
   const char * vs = "2.0";
   uint8_t signature[ED59919_SIGLEN];
 
@@ -258,6 +344,8 @@ void sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
   encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
 
   snprintf(msg, MAX_MSG, "SIG/%s %s %s", vs, sigb64, tosign);
+
+  return true;
 }
 
 
@@ -334,3 +422,90 @@ void send_helo(const char * helo) {
   Log.println(buff);
   send(NULL, buff);
 }
+
+ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
+    size_t len = strlen(req->payload);
+    char buff[MAX_MSG];
+
+    // We only accept things starting with SIG/2*<space>hex<space>
+    if (len <72|| strncmp(req->payload, "SIG/2.", 6) != 0)
+        return ACSecurityHandler::DECLINE;
+    
+    if (len > sizeof(buff)-1) {
+        Log.println("Failing SIG/1 sigature - far too long");
+        return FAIL;
+    };
+    
+    strncpy(buff,req->payload,sizeof(buff));
+    
+    char * p = buff;
+    
+    SEP(sig, "SIG2Verify failed - no sig", ACSecurityHandler::FAIL);
+    SEP(signature64, "SIG2Verify failed - no signature64", ACSecurityHandler::FAIL);
+    SEP(beatString, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
+    
+    if (strlen(signature64) != B64L(ED59919_SIGLEN)) {
+        Log.println("Failing SIG/1 sigature - wrong length signature64");
+        return ACSecurityHandler::FAIL;
+    };
+    
+    unsigned long beat = strtoul(beatString, NULL, 10);
+    if (beat == 0) {
+        Log.println("Failing SIG/1 sigature - beat issues");
+        return ACSecurityHandler::FAIL;
+    };
+    
+    if (!sig2_verify(beatString, signature64, p)) {
+        Log.println("Failing SIG/1 sigature - invalid sig.");
+        return ACSecurityHandler::FAIL;
+    };
+
+    strncpy(req->version, sig, sizeof(req->version));
+    strncpy(req->beat, beatString, sizeof(req->beat));
+    req->beatReceived = beat;
+    req->cmd[0] = '\0';
+    strncpy(req->rest, buff, sizeof(req->rest));
+
+    return ACSecurityHandler::PASS;
+};
+
+SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
+    char msg[MAX_MSG];
+    
+    if (!sig2_active())
+        return SIG2::FAIL;
+    
+    if (!sig2_sign(msg, sizeof(msg), req->payload))
+        return SIG2::FAIL;
+    
+    strncpy(req->payload, msg, sizeof(req->payload));
+    
+    return SIG2::OK;
+};
+
+SIG2::acauth_result_t cloak(ACRequest * req) {
+    char tag_encoded[MAX_MSG];
+
+    if (!sig2_active())
+        return ACSecurityHandler::FAIL;
+
+    if (sig2_encrypt(req->tag, tag_encoded, sizeof(tag_encoded)) == NULL)
+        return SIG2::FAIL;
+    
+    strncpy(req->tag, tag_encoded, sizeof(req->tag));
+
+    return SIG2::OK;
+};
+
+SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
+{
+    if (!strncmp("announce", req->rest, 8)) {
+        send_helo((char *)"welcome");
+        return CMD_CLAIMED;
+    }
+    return CMD_DECLINE;
+}
+
+
+
+

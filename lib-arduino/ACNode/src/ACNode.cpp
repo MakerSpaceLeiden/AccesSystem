@@ -5,54 +5,33 @@
 // make the various destinations classes in their own right you can 'add' to the T.
 //
 //
-#include <ACNode.h>
 #include <ACBase.h>
-
-
-const char ACNODE_CAPS[] = 
-#ifdef OTA
-              " ota"
-#endif
-#ifdef CONFIGAP
-              " configAP"
-#endif
-#ifdef WIRED_ETHERNET
-              " ethernet"
-#else
-              " wifi"
-#endif
-#ifdef DEBUG
-              " debug"
-#endif
-#ifdef DEBUG_ALIVE
-              " fast-alive-beat"
-#endif
-#ifdef HASRFID
-              " rfid-reader"
-#endif
-#ifdef SIG1
-              " sig1"
-#endif
-#ifdef SIG2
-              " sig2"
-#endif
-	;
+#include <ACNode.h>
+#include "ConfigPortal.h"
 
 // Sort of a fake singleton to overcome callback
 // limits in MQTT callback and elsewhere.
 //
-ACNode &_acnode;
+ACNode * _acnode;
+ACLog Log;
+ACLog Debug;
+
+beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
 ACNode::ACNode(bool wired) : 
 	_ssid(NULL), _ssid_passwd(NULL), _wired(wired) 
 {
-	_acnode = *this;
+	_acnode = this;
 }
 
 ACNode::ACNode(const char * ssid , const char * ssid_passwd ) :
 	_ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false) 
 {
-	_acnode = *this;
+	_acnode = this;
+}
+
+void send(const char * topic, const char * payload) {
+        _acnode->send(topic,payload);
 }
 
 void ACNode::set_debugAlive(bool debug) { _debug_alive = debug; }
@@ -64,9 +43,10 @@ bool ACNode::isConnected() {
 };
 
 void ACNode::begin() {
-
+#if 0
   if (_debug)
   	debugFlash();
+#endif
 
   if (_wired) {
     Debug.println("starting up ethernet");
@@ -115,7 +95,6 @@ void ACNode::begin() {
     Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
     // configPortal();
     Log.printf("No connection after %d seconds (ssid=%s). Rebooting.\n", del, WiFi.SSID().c_str());
-    setOrangeLED(LED_FAST);
     Log.println("Rebooting...");
     delay(1000);
     ESP.restart();
@@ -126,11 +105,14 @@ void ACNode::begin() {
   Log.print("IP address: ");
   Log.println(WiFi.localIP());
 
-  WiFiClient _espClient = WiFiClient();
-  _client = PubSubClient(_espClient);
+  	_espClient = WiFiClient();
+  	_client = PubSubClient(_espClient);
+#if 0
+	_ethClient = EthernetClient();
+  	_client = PubSubClient(ethClient);
+#endif
 
   configureMQTT();
-
 
   if (_debug)
   	debugListFS("/");
@@ -151,6 +133,19 @@ void ACNode::addSecurityHandler(ACSecurityHandler &handler) {
   addHandler(handler);
 }
 
+char * ACNode::cloak(char tag[MAX_MSG]  ) {
+    ACRequest q = ACRequest();
+    strncpy(q.tag, tag, sizeof(q.tag));
+    std::list<ACSecurityHandler>::iterator it;
+    for (it =_security_handlers.begin(); it!=_security_handlers.end(); ++it) {
+        int r = it->cloak(&q);
+        if (r != 0) 
+            return NULL;
+    }
+    strncpy(tag, q.tag, MAX_MSG);
+    return tag;
+}
+
 void ACNode::loop() {
   // XX to hook into a callback of the ethernet/wifi
   // once we figure out how we can get this from the wifi.
@@ -164,26 +159,9 @@ void ACNode::loop() {
 		_disconnect_callback();
 	lastconnectedstate = connectedstate;
   };
-  // Keepting time is a bit messy; the millis() wrap around and
-  // the SPI access to the reader seems to mess with the millis().
-  // So we revert to doing 'our own'.
-  //
-  static unsigned long last_loop = 0;
-  if (millis() - last_loop >= 1000) {
-    unsigned long secs = (millis() - last_loop + 499) / 1000;
-    beatCounter += secs;
-    last_loop = millis();
-  }
-
-  mqttLoop();
-
-  if (_debug_alive) {
-    static unsigned long last_beat = 0;
-    if (millis() - last_beat > 3000 && _client.connected()) {
-      send(NULL, "ping");
-      last_beat = millis();
-    }
-  }
+    
+  if(isConnected())
+  	mqttLoop();
 
   std::list<ACBase>::iterator it;
   for (it=_handlers.begin(); it!=_handlers.end(); ++it)
@@ -213,3 +191,111 @@ void ACNode::loop() {
 };
 #endif
 }
+
+ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
+{
+    if (!strncmp("welcome", req->cmd, 7)) {
+        return ACNode::CMD_CLAIMED;
+    }
+    
+    if (!strncmp("ping", req->cmd, 4)) {
+        char buff[MAX_MSG];
+        IPAddress myIp = WiFi.localIP();
+        
+        snprintf(buff, sizeof(buff), "ack %s %s %d.%d.%d.%d", master, moi, myIp[0], myIp[1], myIp[2], myIp[3]);
+        send(NULL, buff);
+        return ACNode::CMD_CLAIMED;
+    }
+    
+#if 0
+    if (!strcmp("outoforder", req->cmd)) {
+        machinestate = OUTOFORDER;
+        send(NULL, "event outoforder");
+        return ACNode::CMD_CLAIMED;
+    }
+#endif
+    return ACNode::CMD_DECLINE;
+
+}
+
+void ACNode::process(const char * topic, const char * payload)
+{
+    size_t length = strlen(payload);
+    
+    Debug.print("["); Debug.print(topic); Debug.print("] <<: ");
+    Debug.print((char *)payload);
+    Debug.println();
+    
+    if (length < 6 + 2 * HASH_LENGTH + 1 + 12 + 1) {
+        Log.println("Too short - ignoring.");
+        return;
+    };
+    
+    ACRequest * req = new ACRequest(topic, payload);
+    
+    ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
+    for (std::list<ACSecurityHandler>::iterator it =_security_handlers.begin();
+         it!=_security_handlers.end() && r != ACSecurityHandler::OK;
+         ++it)
+    {
+        r = it->verify(req);
+        switch(r) {
+            case ACSecurityHandler::DECLINE:
+                Debug.printf("%s could not parse this payload, trying next.\n", it->name);
+                break;
+            case ACSecurityHandler::PASS:
+            case ACSecurityHandler::OK:
+                Debug.printf("OK payload with %s signature - handling.\n", it->name);
+                break;
+            case ACSecurityHandler::FAIL:
+            default:
+                Log.printf("Invalid/unknown payload or signature (%s) - failing.\n", it->name);
+                return;
+                break;
+        }
+    }
+    if (r != ACSecurityHandler::OK) {
+        Log.println("Unrecognized payload. Ignoring.");
+        return;
+    }
+    
+    size_t l = 0;
+    char * endOfCmd = index(req->rest, ' ');
+    if (endOfCmd) {
+        l = endOfCmd - req->rest;
+        if (l >= sizeof(req->cmd))
+            l = sizeof(req->cmd);
+        strncpy(req->cmd, req->rest, l);
+        strncpy(req->rest, req->rest + l +1, sizeof(req->rest));
+    } else {
+        strncpy(req->cmd,req->rest, sizeof(req->cmd));
+        req->rest[0] = '\0';
+    };
+
+    for (std::list<ACSecurityHandler>::iterator  it =_security_handlers.begin();
+         it!=_security_handlers.end();
+         ++it)
+    {
+        cmd_result_t r = it->handle_cmd(req);
+        if (r == CMD_CLAIMED)
+            return;
+    };
+
+    for (std::list<ACBase>::iterator it = _handlers.begin();
+         it != _handlers.end();
+         ++it)
+    {
+        cmd_result_t r = it->handle_cmd(req);
+        if (r == CMD_CLAIMED)
+            return;
+    }
+    
+    // Try my own default things.
+    //
+    if (handle_cmd(req) == CMD_CLAIMED)
+        return;
+    
+    Log.printf("Do not know what to do with <%s>, ignoring.\n", payload);
+    return;
+}
+

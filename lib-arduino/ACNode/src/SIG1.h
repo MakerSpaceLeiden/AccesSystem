@@ -1,9 +1,18 @@
-#pragma once
+#ifndef _H_SIG1
+#define _H_SIG1
 
-#define SIG1
+#include "ACBase.h"
 
-extern const char * hmacToHex(const unsigned char * hmac);
-extern void hmac_sign(char * msg, size_t len, const char * beat, const char * payload);
-extern bool hmac_valid(const char * hmac_signature, const char *password, const char * beat, const char *topic, const char *payload);
+class SIG1 : public ACSecurityHandler {
+public:
+    const char * name = "SIG1";
+    
+    char passwd[MAX_NAME] = "";
 
+    acauth_result_t verify(ACRequest * req);
 
+    acauth_result_t secure(ACRequest * req);
+    acauth_result_t cloak(ACRequest * req);
+} ;
+
+#endif
