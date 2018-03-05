@@ -37,11 +37,13 @@
 #else
 #define REPORTING_PERIOD        (10*1000)   //  10 seconds -- -- how often to report our states; in milli seconds.
 #define PREFIX "test"
+#define MQTT_KEEPALIVE          (10)        // seconds -- keep alive check; default is 2 minutes - but it is 
+// easier to keep this short during debugging - i.e. when testing breaking connections. Note that this may not
+// work if the Arduino CPP gets the order wrong.
 #endif
 
-
 typedef enum doorstates { CLOSED, CHECKINGCARD, OPEN } doorstate_t;
-const char doorstates_names[OPEN+1][15] = { "closed", "checking-card", "open" };
+const char doorstates_names[OPEN + 1][15] = { "closed", "checking-card", "open" };
 
 doorstate_t doorstate;
 unsigned long long last_doorstatechange = 0;
@@ -56,8 +58,10 @@ long cnt_cards = 0, cnt_opens = 0, cnt_closes = 0, cnt_fails = 0, cnt_misreads =
 #include <ArduinoOTA.h>
 #include <ESP32Ticker.h>
 #include <PubSubClient.h>
-#include <MFRC522.h>    // Requires modifed MFRC522 (see pull rq) or the -master branch as of late DEC 2017.
+
+// Requires modifed MFRC522 (see pull rq) or the -master branch as of late DEC 2017.
 // https://github.com/miguelbalboa/rfid.git
+#include <MFRC522.h>
 
 
 
@@ -551,12 +555,16 @@ void callback(char* topic, byte * payload, unsigned int length) {
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
-           "[%s] alive-uptime %02ld:%02ld :"
-           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, door %s",
+           "[%s] alive-uptime %02ld:%02ld "
+           "mqtt: %s (state %d) "
+           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, "
+           "door %s, state %s(%d)",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
+           client.connected() ? "connected" : "not-connected", client.state(),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
-           isOpen() ? "open" : "closed"
+           isOpen() ? "open" : "closed",
+           doorstates_names[doorstate], doorstate
           );
   client.publish(log_topic, buff);
   Serial.println(buff);
@@ -603,7 +611,7 @@ void loop()
 
   if (lastdoorstate != doorstate) {
     char msg[255];
-    snprintf(msg, sizeof(msg), "Change from state %s(%d) to (%s)%d\n",
+    snprintf(msg, sizeof(msg), "Change from state %s(%d) to %s(%d)",
              doorstates_names[lastdoorstate], lastdoorstate, doorstates_names[doorstate], doorstate);
     Serial.println(msg);
 #ifndef LOCALMQTT
@@ -632,7 +640,13 @@ void loop()
   {
     static unsigned long tock = 0;
     if (millis() - tock > REPORTING_PERIOD) {
-      cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
+      static unsigned long last_min = 0;
+      unsigned long delta = millis() - last_min;
+      unsigned int mins = delta / 60 / 1000;
+      if (mins > 0) {
+        cnt_minutes += mins;
+        last_min += mins * 60 * 1000;
+      }
       reportStats();
       tock = millis();
     }
