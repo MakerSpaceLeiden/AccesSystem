@@ -23,7 +23,10 @@
 #define MFRC522_RSTO    (32)
 #define MFRC522_3V3     /* 3v3 */
 
-#define SOLENOID_GPIO     (14)
+#define SOLENOID_GPIO     (4)
+#define SOLENOID_OFF      (LOW)
+#define SOLENOID_ENGAGED  (HIGH)
+#define AARTLED_GPIO     (16)
 
 #define DOOR_OPEN_DELAY         (10*1000)   //  10 seconds -- how long to hold the relay engaged; in milli seconds.
 #define CACHE_FALLBACK_TIMEOUT  (500)       // 0.5 second  -- how long to wait for a reply before checking the cache.
@@ -283,7 +286,7 @@ void setup()
   Serial.println(" -- buuld: " __DATE__ " " __TIME__ );
 
   pinMode(SOLENOID_GPIO, OUTPUT);
-  digitalWrite(SOLENOID_GPIO, 1);
+  digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 
   WiFi.onEvent(WiFiEvent);
 
@@ -409,7 +412,7 @@ void setCache(MFRC522::Uid uid, bool ok) {
 
 void closeDoor() {
   doorstate = CLOSED;
-  digitalWrite(SOLENOID_GPIO, HIGH);
+  digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 }
 
 void openDoor() {
@@ -417,7 +420,7 @@ void openDoor() {
   client.publish(log_topic, "Engaging solenoid");
 
   // Engage solenoid.
-  digitalWrite(SOLENOID_GPIO, LOW);
+  digitalWrite(SOLENOID_GPIO, SOLENOID_ENGAGED);
 
   // according to Ticker examples - this will reset/overwrite
   // any already running tickers.
@@ -426,7 +429,7 @@ void openDoor() {
 };
 
 bool isOpen() {
-  return digitalRead(SOLENOID_GPIO) == LOW;
+  return digitalRead(SOLENOID_GPIO) == SOLENOID_ENGAGED;
 }
 
 bool isClosed() {
