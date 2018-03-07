@@ -2,6 +2,7 @@
     to the existing setup late 2017.
 */
 
+#include "/Users/dirkx/.passwd.h"
 // Wired ethernet.
 //
 #define ETH_PHY_ADDR      1
@@ -341,7 +342,7 @@ void setup()
     wipeCache();
   } else {
     caching = true;
-    listDir(SPIFFS, " / ", "");
+    listDir(SPIFFS, "/", "");
   };
 
   Serial.println("setup() done.\n\n");
@@ -394,7 +395,7 @@ void wipeCache() {
     SPIFFS.mkdir(String(i));
 
   Serial.println("Directory structure created.");
-  listDir(SPIFFS, " / ", "");
+  listDir(SPIFFS, "/", "");
   caching = true;
 };
 
@@ -403,7 +404,7 @@ String uid2path(MFRC522::Uid uid) {
   for (int i = 0; i < uid.size; i++) {
     path += String(uid.uidByte[i], DEC);
     if (i == 0)
-      path += " / ";
+      path += "/";
     else
       path += ".";
   };
