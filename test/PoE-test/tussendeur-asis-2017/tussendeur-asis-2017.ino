@@ -2,7 +2,7 @@
     to the existing setup late 2017.
 
 */
-#include "/Users/dirkx/.passwd.h"
+// #include "/Users/dirkx/.passwd.h"
 
 // Wired ethernet.
 //
@@ -23,12 +23,32 @@
 #define MFRC522_RSTO    (32)
 #define MFRC522_3V3     /* 3v3 */
 
-#define SOLENOID_GPIO     (14)
+#define SOLENOID_GPIO     (4)
+#define SOLENOID_OFF      (LOW)
+#define SOLENOID_ENGAGED  (HIGH)
+#define AARTLED_GPIO      (16)
 
-#define DOOR_OPEN_DELAY   (10*1000)
-#define REPORTING_PERIOD  (300*1000)
+#define DOOR_OPEN_DELAY         (10*1000)   //  10 seconds -- how long to hold the relay engaged; in milli seconds.
+#define CACHE_FALLBACK_TIMEOUT  (500)       // 0.5 second  -- how long to wait for a reply before checking the cache.
+#define MAX_RESPONSE_TIMEOUT    (3500)      // 3.5 seconds -- max wait for reply from the server.
+
+// Report regulary - but swithc to a higher frequency if we are in test mode. Also prefix our MQTT topic with 'test'
+// to avoid confusing production.
+//
+#ifdef LOCALMQTT
+#define REPORTING_PERIOD        (300*1000)  //   5 minutes -- how often to report our states; in milli seconds.
+#define PREFIX ""
+#else
+#define REPORTING_PERIOD        (10*1000)   //  10 seconds -- -- how often to report our states; in milli seconds.
+#define PREFIX "test"
+#define MQTT_KEEPALIVE          (10)        // seconds -- keep alive check; default is 2 minutes - but it is 
+// easier to keep this short during debugging - i.e. when testing breaking connections. Note that this may not
+// work if the Arduino CPP gets the order wrong.
+#endif
 
 typedef enum doorstates { CLOSED, CHECKINGCARD, OPEN } doorstate_t;
+const char doorstates_names[OPEN + 1][15] = { "closed", "checking-card", "open" };
+
 doorstate_t doorstate;
 unsigned long long last_doorstatechange = 0;
 
@@ -42,8 +62,10 @@ long cnt_cards = 0, cnt_opens = 0, cnt_closes = 0, cnt_fails = 0, cnt_misreads =
 #include <ArduinoOTA.h>
 #include <ESP32Ticker.h>
 #include <PubSubClient.h>
-#include <MFRC522.h>    // Requires modifed MFRC522 (see pull rq) or the -master branch as of late DEC 2017.
+
+// Requires modifed MFRC522 (see pull rq) or the -master branch as of late DEC 2017.
 // https://github.com/miguelbalboa/rfid.git
+#include <MFRC522.h>
 
 
 
@@ -64,12 +86,6 @@ const unsigned short mqtt_port = 1883;
 extern void callback(char* topic, byte * payload, unsigned int length);
 
 bool caching = false;
-
-#ifdef LOCALMQTT
-#define PREFIX ""
-#else
-#define PREFIX "test"
-#endif
 
 const char rfid_topic[] = PREFIX "deur/tussendeur/rfid";
 const char door_topic[] = PREFIX "deur/tussendeur/open";
@@ -103,7 +119,8 @@ void enableOTA() {
         type = "SPIFFS";
         break;
       default: {
-          const char buff[] = "Unknown type of reprogramming attempt. Rejecting.";
+          char buff[255];
+          snprintf(buff, sizeof(buff), "[%s] Unknown type of reprogramming attempt. Rejecting.", pname);
           Serial.println(buff);
           client.publish(log_topic, buff);
           client.loop();
@@ -154,7 +171,8 @@ void enableOTA() {
   // force it to ETH -- requires pull RQ https://github.com/espressif/arduino-esp32/issues/944
   // and https://github.com/espressif/esp-idf/issues/1431.
   //
-  ArduinoOTA.begin(TCPIP_ADAPTER_IF_ETH);
+  // ArduinoOTA.begin(TCPIP_ADAPTER_IF_ETH);
+  ArduinoOTA.begin();
 
   Serial.println("OTA enabled.");
   ota = true;
@@ -180,11 +198,11 @@ void WiFiEvent(WiFiEvent_t event)
 {
   switch (event) {
     case SYSTEM_EVENT_ETH_START:
-      Serial.println("ETH Started");
+      Serial.println("ETH Started" + ETH.macAddress());
       ETH.setHostname(pname);
       break;
     case SYSTEM_EVENT_ETH_CONNECTED:
-      Serial.println("ETH Connected");
+      Serial.println("ETH Connected " + ETH.macAddress());
       break;
     case SYSTEM_EVENT_ETH_GOT_IP:
     case SYSTEM_EVENT_STA_GOT_IP:
@@ -256,9 +274,8 @@ void setup()
   if (p)
     strncpy(pname, p + 1, sizeof(pname));
 
-  p = index(pname, '.');
-  if (p)
-    *p = 0;
+  if ((p = index(pname, '.')))
+    * p = '\0';
 
 #ifndef LOCALMQTT
   // Alert us to safe, non production versions.
@@ -271,11 +288,13 @@ void setup()
   Serial.println(" -- buuld: " __DATE__ " " __TIME__ );
 
   pinMode(SOLENOID_GPIO, OUTPUT);
-  digitalWrite(SOLENOID_GPIO, 1);
+  digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 
   WiFi.onEvent(WiFiEvent);
 
-  ETH.begin();
+  if (!(ETH.begin(ETH_PHY_ADDR, ETH_PHY_POWER, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_TYPE, ETH_CLK_MODE))) {
+    Serial.println("Ethernet failed to begin() up\n");
+  }
 
   Serial.println("SPI init");
   spirfid.begin(MFRC522_SCK, MFRC522_MISO, MFRC522_MOSI, MFRC522_SDA);
@@ -290,7 +309,7 @@ void setup()
   byte regVal = 0xA0; //rx irq
   mfrc522.PCD_WriteRegister(mfrc522.ComIEnReg, regVal);
 
-  Serial.println("Setting up MQTT");
+  Serial.println("Setting up MQTT to " + String(mqtt_host)  + ":" + String(mqtt_port, DEC));
   client.setServer(mqtt_host, mqtt_port);
   client.setCallback(callback);
 
@@ -303,39 +322,44 @@ void setup()
     wipeCache();
   } else {
     caching = true;
-    listDir(SPIFFS, " / ", "");
+    unsigned long count = listDir(SPIFFS, "/", "");
+    Serial.println("Caching on - Total of " + String(count, DEC) + " files.");
   };
 
   Serial.println("setup() done.\n\n");
 }
 
 // This function is taken from the SPIFFS_Test example. Under the expressif ESP32 license.
+// It returns the number of entries found (files only).
 //
-void listDir(fs::FS &fs, const char * dirname, String prefix) {
+unsigned long listDir(fs::FS &fs, const char * dirname, String prefix) {
   Serial.print(prefix);
   Serial.println(dirname);
+  unsigned long count = 0;
 
   File root = fs.open(dirname);
   if (!root) {
     Serial.println("Failed to open directory");
-    return;
+    return 0;
   }
   if (!root.isDirectory()) {
     Serial.println("Not a directory");
-    return;
+    return 0;
   }
 
   File file = root.openNextFile();
   while (file) {
     if (file.isDirectory()) {
-      listDir(fs, file.name(), prefix + " ");
+      count += listDir(fs, file.name(), prefix + " ");
     } else {
       Serial.print(prefix + " ");
       Serial.println(file.name());
+      count ++;
     }
     file = root.openNextFile();
   }
   root.close();
+  return count;
 }
 
 void wipeCache() {
@@ -356,7 +380,7 @@ void wipeCache() {
     SPIFFS.mkdir(String(i));
 
   Serial.println("Directory structure created.");
-  listDir(SPIFFS, " / ", "");
+  listDir(SPIFFS, "/", "");
   caching = true;
 };
 
@@ -365,7 +389,7 @@ String uid2path(MFRC522::Uid uid) {
   for (int i = 0; i < uid.size; i++) {
     path += String(uid.uidByte[i], DEC);
     if (i == 0)
-      path += " / ";
+      path += "/";
     else
       path += ".";
   };
@@ -390,14 +414,18 @@ void setCache(MFRC522::Uid uid, bool ok) {
 
 void closeDoor() {
   doorstate = CLOSED;
-  digitalWrite(SOLENOID_GPIO, HIGH);
+  digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 }
 
 void openDoor() {
+  char msg[255];
+  snprintf(msg, sizeof(msg), "[%s] Engaging solenoid", pname);
   doorstate = OPEN;
+  client.publish(log_topic, msg);
+  Serial.println(msg);
 
   // Engage solenoid.
-  digitalWrite(SOLENOID_GPIO, LOW);
+  digitalWrite(SOLENOID_GPIO, SOLENOID_ENGAGED);
 
   // according to Ticker examples - this will reset/overwrite
   // any already running tickers.
@@ -406,7 +434,7 @@ void openDoor() {
 };
 
 bool isOpen() {
-  return digitalRead(SOLENOID_GPIO) == LOW;
+  return digitalRead(SOLENOID_GPIO) == SOLENOID_ENGAGED;
 }
 
 bool isClosed() {
@@ -443,8 +471,9 @@ void callback(char* topic, byte * payload, unsigned int length) {
     if (c >= 32 && c < 128)
       buff[l++] = c;
   };
+
   buff[l] = 0;
-  Serial.println(buff);
+  Serial.println("Handling command: <" + String(buff) + ">");
 
   if (!strcmp(buff, "reboot")) {
     ESP.restart();
@@ -453,6 +482,16 @@ void callback(char* topic, byte * payload, unsigned int length) {
 
   if (!strcmp(buff, "report")) {
     reportStats();
+    return;
+  }
+
+  if (!strcmp(buff, "cache")) {
+    char msg[255];
+    unsigned long count = listDir(SPIFFS, "/", "");
+
+    snprintf(msg, sizeof(msg), "[%s] Number of files in the cache: %lu", pname, count);
+    client.publish(log_topic, msg);
+    Serial.println(msg);
     return;
   }
 
@@ -500,6 +539,12 @@ void callback(char* topic, byte * payload, unsigned int length) {
   if (!strcmp(buff, "open")) {
     Serial.println("Opening door.");
     openDoor();
+    // So we have a lovely security hole here - if someone swipes a card
+    // that has access; and then quickly (before the server respons) swipes
+    // a card that is unknown -- that other card gets caches. And as the system
+    // does not see a 'deny' in the 'as-is' situation - we have a nice window
+    // of naughtyness.
+    //
     if (caching && uid.size)
       setCache(uid, true);
     uid.size = 0;
@@ -524,12 +569,17 @@ void callback(char* topic, byte * payload, unsigned int length) {
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
-           "[%s] alive-uptime %02ld:%02ld :"
-           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, door %s",
+           "[%s] alive-uptime %02ld:%02ld, "
+           "mqtt %s (state %d) "
+           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, "
+           "door %s, state %s(%d), caching %s",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
+           client.connected() ? "connected" : "not-connected", client.state(),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
-           isOpen() ? "open" : "closed"
+           isOpen() ? "open" : "closed",
+           doorstates_names[doorstate], doorstate,
+           caching ? "on" : "off"
           );
   client.publish(log_topic, buff);
   Serial.println(buff);
@@ -547,7 +597,7 @@ void loop()
     client.loop();
     if (!client.connected()) {
       long now = millis();
-      if (now - lastReconnectAttempt > 10*1000) {
+      if (now - lastReconnectAttempt > 10 * 1000) {
         lastReconnectAttempt = now;
         reconnect();
       }
@@ -557,45 +607,70 @@ void loop()
       client.disconnect();
   }
 
-  {
-    static doorstate_t lastdoorstate = CLOSED;
-    switch (doorstate) {
-      case CHECKINGCARD:
-        if (millis() - last_doorstatechange > 1500 && caching && checkCache(uid)) {
-          char msg[255];
-          snprintf(msg, sizeof(msg), "[%s] Allowing door to open based on cached information.", pname);
-          Serial.println(msg);
-          client.publish(log_topic, msg);
-          openDoor();
-        }
-        break;
-      case OPEN:
-      case CLOSED:
-      default:
-        break;
-    };
-
-    if (lastdoorstate != doorstate) {
-      lastdoorstate = doorstate;
-      last_doorstatechange = millis();
-    }
+  static doorstate_t lastdoorstate = CLOSED;
+  if (lastdoorstate != doorstate) {
+    char msg[255];
+    snprintf(msg, sizeof(msg), "[%s] Change from state %s(%d) to %s(%d)",
+             pname,
+             doorstates_names[lastdoorstate], lastdoorstate, doorstates_names[doorstate], doorstate);
+    Serial.println(msg);
+#ifndef LOCALMQTT
+    client.publish(log_topic, msg);
+#endif
+    lastdoorstate = doorstate;
+    last_doorstatechange = millis();
   }
+
+  switch (doorstate) {
+    case CHECKINGCARD:
+      if (millis() - last_doorstatechange > CACHE_FALLBACK_TIMEOUT && caching && checkCache(uid)) {
+        char msg[255];
+        snprintf(msg, sizeof(msg), "[%s] Allowing door to open based on cached information.", pname);
+        Serial.println(msg);
+        client.publish(log_topic, msg);
+        openDoor();
+      }
+      if (millis() - last_doorstatechange > MAX_RESPONSE_TIMEOUT) {
+        char msg[255];
+        snprintf(msg, sizeof(msg), "[%s] No reply from server. Keeping door closed.", pname);
+        Serial.println(msg);
+        client.publish(log_topic, msg);
+        closeDoor();
+      }
+      break;
+    case OPEN:
+    case CLOSED:
+    default:
+      break;
+  };
+
+
   // catch any logic errors or strange cases where the door is open while we think
   // we are not doing anything.
   //
   if ((millis() - last_doorstatechange > 10 * DOOR_OPEN_DELAY) && ((doorstate != CLOSED) || (!isClosed()))) {
     closeDoor();
-    char msg[256];
-    snprintf(msg, sizeof(msg), "[%s] Door in an odd state-forcing close.", pname);
-    Serial.println(msg);
-    client.publish(log_topic, msg);
+    static unsigned long lastReport = 0;
+    if (millis() - lastReport > 3000 || doorstate != lastdoorstate) {
+      lastReport = millis();
+      char msg[256];
+      snprintf(msg, sizeof(msg), "[%s] Door %sin an odd state-forcing close.", pname, doorstate == lastdoorstate ? "still " : "");
+      Serial.println(msg);
+      client.publish(log_topic, msg);
+    };
     cnt_fails ++;
   }
 
   {
     static unsigned long tock = 0;
     if (millis() - tock > REPORTING_PERIOD) {
-      cnt_minutes += ((millis() - tock) + 500) / 1000 / 60;
+      static unsigned long last_min = 0;
+      unsigned long delta = millis() - last_min;
+      unsigned int mins = delta / 60 / 1000;
+      if (mins > 0) {
+        cnt_minutes += mins;
+        last_min += mins * 60 * 1000;
+      }
       reportStats();
       tock = millis();
     }
@@ -617,7 +692,11 @@ void loop()
       client.publish(rfid_topic, pyStr.c_str());
 
       char msg[256];
+#ifndef LOCALMQTT
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
+#else
+      snprintf(msg, sizeof(msg), "[%s] Tag swiped", pname);
+#endif
       client.publish(log_topic, msg);
       Serial.println(msg);
 
