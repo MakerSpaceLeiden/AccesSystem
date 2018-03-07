@@ -2,7 +2,7 @@
     to the existing setup late 2017.
 */
 
-#include "/Users/dirkx/.passwd.h"
+// #include "/Users/dirkx/.passwd.h"
 // Wired ethernet.
 //
 #define ETH_PHY_ADDR      1
