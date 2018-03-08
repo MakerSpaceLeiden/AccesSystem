@@ -2,7 +2,7 @@
     to the existing setup late 2017.
 
 */
-//#include "/Users/dirkx/.passwd.h"
+#include "/Users/dirkx/.passwd.h"
 
 // Wired ethernet.
 //
@@ -581,20 +581,33 @@ void callback(char* topic, byte * payload, unsigned int length) {
   cnt_mqttfails ++;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+uint8_t temprature_sens_read();
+#ifdef __cplusplus
+}
+#endif
+double coreTemp() {
+  double   temp_farenheit= temprature_sens_read();  
+  return ( temp_farenheit - 32 ) / 1.8;
+}
+
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
            "[%s] alive-uptime %02ld:%02ld, "
            "mqtt %s (state %d) "
            "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, "
-           "door %s, state %s(%d), caching %s",
+           "door %s, state %s(%d), caching %s, temperature %.1f",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            client.connected() ? "connected" : "not-connected", client.state(),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
            isOpen() ? "open" : "closed",
            doorstates_names[doorstate], doorstate,
-           caching ? "on" : "off"
+           caching ? "on" : "off",
+           coreTemp()
           );
   client.publish(log_topic, buff);
   Serial.println(buff);

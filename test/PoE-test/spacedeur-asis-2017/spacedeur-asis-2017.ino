@@ -572,7 +572,7 @@ void reportStats() {
   snprintf(buff, sizeof(buff),
            "[%s] alive-uptime %02ld:%02ld :"
            "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, "
-           "stepper %s at %ld (target %ld), temperatur %.1f",
+           "stepper %s at %ld (target %ld), temperature %.1f",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
@@ -711,7 +711,7 @@ void loop()
       client.publish(rfid_topic, pyStr.c_str());
 
       char msg[256];
-#ifdef LOCALMQTT
+#ifndef LOCALMQTT
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
 #else
       snprintf(msg, sizeof(msg), "[%s] Tag swiped", pname);
