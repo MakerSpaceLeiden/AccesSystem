@@ -27,7 +27,7 @@ default_master = 'master'
 default_node  = 'unamednode'
 default_host = 'localhost'
 default_sub = default_node
-default_protocol = "publish.MQTTv311"
+default_protocol = mqtt.MQTTv311
 default_machine = 'deur'
 
 class ACNodeBase:
@@ -67,7 +67,7 @@ class ACNodeBase:
     self.parser.add('-m','--mqtthost',default=default_host,
          help='MQTT host (default :'+default_host+')'),
     self.parser.add('--mqttprotocol',default=default_protocol,
-         help='MQTT protocol (default :'+default_protocol+')'),
+         help='MQTT protocol (default :'+str(default_protocol)+')'),
     self.parser.add('--topic','-t',default=default_sub,
          help='MQTT topic to subcribe to for replies from the master (default: '+default_sub+').'),
 

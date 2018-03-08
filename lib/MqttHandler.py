@@ -1,9 +1,10 @@
+import paho.mqtt.client as mqtt
 import paho.mqtt.publish as publish
 import logging
 
 class MqttHandler(logging.Handler):
   def __init__(self, host='localhost', topic='/loggging', 
-                 protocol="publish.MQTTv311"):
+                 protocol=mqtt.MQTTv311):
 
     logging.Handler.__init__(self)
 

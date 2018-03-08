@@ -9,9 +9,9 @@ import TrustOnFirstContact as TrustOnFirstContact
 #    pass
 
 # Protocol SIG/1
-class ACNode(SharedSecret.SharedSecret):
-    pass
+# class ACNode(SharedSecret.SharedSecret):
+#    pass
 
 # Protocol SIG/1 and /2
-#class ACNode(TrustOnFirstContact.TrustOnFirstContact, SharedSecret.SharedSecret):
-#     pass
+class ACNode(TrustOnFirstContact.TrustOnFirstContact, SharedSecret.SharedSecret):
+     pass

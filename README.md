@@ -82,3 +82,8 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
    to activate the stepper to open the door.
 
 
+Currentl dependencyies for a `pip install' are:
+
+	daemon setproctitle configargparse python-axolotl_curve25519 ed25519 python-axolotl  
+
+

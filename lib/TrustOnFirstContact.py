@@ -54,6 +54,7 @@ class TrustOnFirstContact(Beat.Beat):
            self.logger.info("Wrote out newly generated private key");
        else:
            self.logger.info("Using empheral private key");
+           self.cnf.privatekey = base64.b64encode(privatekey.to_seed())
 
     if self.cnf.privatekey:
          seed = base64.b64decode(self.cnf.privatekey)
