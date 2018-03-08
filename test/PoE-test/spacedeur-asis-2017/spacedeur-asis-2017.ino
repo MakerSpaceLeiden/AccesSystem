@@ -696,7 +696,11 @@ void loop()
       client.publish(rfid_topic, pyStr.c_str());
 
       char msg[256];
+#ifdef LOCALMQTT
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
+#else
+      snprintf(msg, sizeof(msg), "[%s] Tag swiped", pname);
+#endif
       client.publish(log_topic, msg);
       Serial.println(msg);
 
