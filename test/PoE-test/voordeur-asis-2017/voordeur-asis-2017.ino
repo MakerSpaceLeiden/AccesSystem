@@ -27,10 +27,6 @@
 #define SOLENOID_OFF      (LOW)
 #define SOLENOID_ENGAGED  (HIGH)
 
-#define BUZZER_GPIO       (2)
-#define BUZZER_OFF        (HIGH)
-#define BUZZER_ENGAGED    (LOW)
-
 #define AARTLED_GPIO      (16)
 
 #define DOOR_OPEN_DELAY         (10*1000)   //  10 seconds -- how long to hold the relay engaged; in milli seconds.
@@ -76,7 +72,7 @@ SPIClass spirfid = SPIClass(VSPI);
 const SPISettings spiSettings = SPISettings(SPI_CLOCK_DIV4, MSBFIRST, SPI_MODE0);
 MFRC522 mfrc522(MFRC522_SDA, MFRC522_RSTO, &spirfid, spiSettings);
 
-Ticker buzzer, solenoid;
+Ticker solenoid;
 
 #ifdef LOCALMQTT
 #warning "Production build"
@@ -303,12 +299,13 @@ void setup()
   pinMode(AARTLED_GPIO, OUTPUT);
   digitalWrite(AARTLED_GPIO, HIGH);
 
-  pinMode(BUZZER_GPIO, OUTPUT);
-  digitalWrite(BUZZER_GPIO, BUZZER_OFF);
-
   WiFi.onEvent(WiFiEvent);
-
-  if (!(ETH.begin(ETH_PHY_ADDR, ETH_PHY_POWER, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_TYPE, ETH_CLK_MODE))) {
+  if (!(ETH.begin(ETH_PHY_ADDR, ETH_PHY_POWER, ETH_PHY_MDC,
+                  ETH_PHY_MDIO, ETH_PHY_TYPE
+#ifdef ETH_CLK_MODE
+                  , ETH_CLK_MODE
+#endif
+                 ))) {
     Serial.println("Ethernet failed to begin() up\n");
   }
 
@@ -428,18 +425,11 @@ void setCache(MFRC522::Uid uid, bool ok) {
   }
 }
 
-void buzz() {
-  static int flip = 0;
-  digitalWrite(BUZZER_GPIO, flip ? BUZZER_ENGAGED : BUZZER_OFF);
-  flip = ! flip;
-}
 
 void closeDoor() {
   doorstate = CLOSED;
   digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 
-  buzzer.detach();
-  digitalWrite(BUZZER_GPIO, BUZZER_OFF);
 }
 
 void openDoor() {
@@ -456,9 +446,6 @@ void openDoor() {
   // any already running tickers.
   //
   solenoid.once_ms(DOOR_OPEN_DELAY, &closeDoor);
-
-  // Sound buzzer 5 times / second. Use analog PWM if we need faster than 1kHz.
-  buzzer.attach_ms(200, &buzz);
 };
 
 bool isOpen() {
@@ -594,20 +581,33 @@ void callback(char* topic, byte * payload, unsigned int length) {
   cnt_mqttfails ++;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+uint8_t temprature_sens_read();
+#ifdef __cplusplus
+}
+#endif
+double coreTemp() {
+  double   temp_farenheit= temprature_sens_read();  
+  return ( temp_farenheit - 32 ) / 1.8;
+}
+
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
            "[%s] alive-uptime %02ld:%02ld, "
            "mqtt %s (state %d) "
            "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, "
-           "door %s, state %s(%d), caching %s",
+           "door %s, state %s(%d), caching %s, temperature %.1f",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            client.connected() ? "connected" : "not-connected", client.state(),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
            isOpen() ? "open" : "closed",
            doorstates_names[doorstate], doorstate,
-           caching ? "on" : "off"
+           caching ? "on" : "off",
+           coreTemp()
           );
   client.publish(log_topic, buff);
   Serial.println(buff);
@@ -617,7 +617,7 @@ void reportStats() {
 void loop()
 {
 #ifdef AARTLED_GPIO
-  // Slow on/off 1 second pattern if we are alive. Very fast flash if we've lost a 
+  // Slow on/off 1 second pattern if we are alive. Very fast flash if we've lost a
   // network connectionm and a quickish flash while we think the door is open.
   //
   {
@@ -627,7 +627,7 @@ void loop()
       del = 100;
     else if (doorstate != CLOSED)
       del = 300;
-      
+
     if (millis() - aart > del) {
       digitalWrite(AARTLED_GPIO, !digitalRead(AARTLED_GPIO));
       aart = millis();

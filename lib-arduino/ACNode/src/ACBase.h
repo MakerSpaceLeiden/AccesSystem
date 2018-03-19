@@ -11,7 +11,7 @@ extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI t
 
 class ACRequest {
     public:
-	ACRequest();
+	ACRequest() { /* null stuff */ };
         ACRequest(const char * _topic, const char * _payload) {
 		strncpy(topic, _topic, sizeof(topic));
 		strncpy(payload, _payload, sizeof(payload));
@@ -28,11 +28,13 @@ class ACRequest {
         char cmd[MAX_MSG];
         char rest[MAX_MSG];
         char tag[MAX_MSG];
+
 };
 
 class ACBase {
   public:
-    const char * name = NULL;
+    const char * name;
+    ACBase() : name("acbase") {}
 
     typedef enum cmd_results { CMD_DECLINE, CMD_CLAIMED } cmd_result_t;
 
@@ -52,7 +54,8 @@ class ACBase {
 
 class ACSecurityHandler : public ACBase {
   public:
-    const char * name = NULL;
+   const char * name;
+   ACSecurityHandler() : name("acsechandler") {}
     
    typedef enum acauth_results { DECLINE, FAIL, PASS, OK } acauth_result_t;
 

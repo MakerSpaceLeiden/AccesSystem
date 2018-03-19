@@ -2,6 +2,7 @@
     to the existing setup late 2017.
 */
 
+ #include "/Users/dirkx/.passwd.h"
 // Wired ethernet.
 //
 #define ETH_PHY_ADDR      1
@@ -341,7 +342,7 @@ void setup()
     wipeCache();
   } else {
     caching = true;
-    listDir(SPIFFS, " / ", "");
+    listDir(SPIFFS, "/", "");
   };
 
   Serial.println("setup() done.\n\n");
@@ -394,7 +395,7 @@ void wipeCache() {
     SPIFFS.mkdir(String(i));
 
   Serial.println("Directory structure created.");
-  listDir(SPIFFS, " / ", "");
+  listDir(SPIFFS, "/", "");
   caching = true;
 };
 
@@ -403,7 +404,7 @@ String uid2path(MFRC522::Uid uid) {
   for (int i = 0; i < uid.size; i++) {
     path += String(uid.uidByte[i], DEC);
     if (i == 0)
-      path += " / ";
+      path += "/";
     else
       path += ".";
   };
@@ -553,15 +554,30 @@ void callback(char* topic, byte * payload, unsigned int length) {
   cnt_mqttfails ++;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+uint8_t temprature_sens_read();
+#ifdef __cplusplus
+}
+#endif
+double coreTemp() {
+  double   temp_farenheit= temprature_sens_read();  
+  return ( temp_farenheit - 32 ) / 1.8;
+}
+
+
 void reportStats() {
   char buff[255];
   snprintf(buff, sizeof(buff),
            "[%s] alive-uptime %02ld:%02ld :"
-           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, stepper %s at %ld (target %ld)",
+           "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, "
+           "stepper %s at %ld (target %ld), temperature %.1f",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            cnt_cards,
            cnt_opens, cnt_closes, cnt_fails, cnt_misreads, cnt_reconnects, cnt_mqttfails,
-           stepper.run() ? "running" : "halted", stepper.currentPosition(), stepper.targetPosition()
+           stepper.run() ? "running" : "halted", stepper.currentPosition(), stepper.targetPosition(),
+           coreTemp()
           );
   client.publish(log_topic, buff);
   Serial.println(buff);
@@ -695,7 +711,11 @@ void loop()
       client.publish(rfid_topic, pyStr.c_str());
 
       char msg[256];
+#ifndef LOCALMQTT
       snprintf(msg, sizeof(msg), "[%s] Tag <%s> (len=%d) swiped", pname, uidStr.c_str(), uid.size);
+#else
+      snprintf(msg, sizeof(msg), "[%s] Tag swiped", pname);
+#endif
       client.publish(log_topic, msg);
       Serial.println(msg);
 

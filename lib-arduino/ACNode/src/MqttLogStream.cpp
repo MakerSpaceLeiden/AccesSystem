@@ -8,10 +8,11 @@
 #include <ACNode.h>
 #include <MqttLogStream.h>
 
-MqttLogStream::MqttLogStream(const char *prefix, const char * maoi) {
-  const char * logpath = "log";
+#include "time.h"
 
-  snprintf(_logtopic, sizeof(_logtopic), "%s/%s/%s", prefix, logpath, moi);
+MqttLogStream::MqttLogStream(const char *prefix, const char * maoi) {
+  snprintf(_logtopic, sizeof(_logtopic), "%s/%s/%s", prefix, 
+	(_acnode->logpath && _acnode->logpath[0]) ? _acnode->logpath : "log", _acnode->moi);
   _logbuff[0] = 0; _at = 0;
   return;
 }
@@ -24,7 +25,12 @@ size_t MqttLogStream::write(uint8_t c) {
     _logbuff[_at] = 0;
     _at = 0;
 
-     send(_logtopic, _logbuff);
+     char buff[256];
+     struct tm timeinfo;
+     getLocalTime(&timeinfo);
+
+     snprintf(buff,sizeof(buff),"%s %s %s", asctime(&timeinfo), _acnode->moi, _logbuff);
+     _acnode->send(_logtopic, buff, true);
   }
   return 1;
 }

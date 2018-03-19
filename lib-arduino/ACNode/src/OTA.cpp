@@ -5,7 +5,7 @@ OTA::OTA(const char * password) : _ota_password(password) {};
 
 void OTA::begin() {
   ArduinoOTA.setPort(8266);
-  ArduinoOTA.setHostname(moi);
+  ArduinoOTA.setHostname((_acnode->moi && _acnode->moi[0]) ? _acnode->moi : "unset-acnode");
 
   if (_ota_password) 
 	  ArduinoOTA.setPassword(_ota_password);

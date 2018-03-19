@@ -1,0 +1,32 @@
+{
+  "DVTSourceControlWorkspaceBlueprintPrimaryRemoteRepositoryKey" : "D85C1A13828518944CE1854ED44B876AB821A2B7",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyRepositoryLocationsKey" : {
+    "453b2c15-1c28-0410-ab6f-d8598ae2fa74" : {
+
+    }
+  },
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyStatesKey" : {
+    "D85C1A13828518944CE1854ED44B876AB821A2B7" : 9223372036854775807,
+    "453b2c15-1c28-0410-ab6f-d8598ae2fa74" : 9223372036854775807
+  },
+  "DVTSourceControlWorkspaceBlueprintIdentifierKey" : "5B9CE396-4AA1-4886-B17D-F59F69B8C98E",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyPathsKey" : {
+    "D85C1A13828518944CE1854ED44B876AB821A2B7" : "AccesSystem\/",
+    "453b2c15-1c28-0410-ab6f-d8598ae2fa74" : ".."
+  },
+  "DVTSourceControlWorkspaceBlueprintNameKey" : "ACNodePlus",
+  "DVTSourceControlWorkspaceBlueprintVersion" : 204,
+  "DVTSourceControlWorkspaceBlueprintRelativePathToProjectKey" : "lib-arduino\/ACNodePlus\/ACNodePlus.xcodeproj",
+  "DVTSourceControlWorkspaceBlueprintRemoteRepositoriesKey" : [
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "https:\/\/weser.webweaving.org\/repos",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Subversion",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "453b2c15-1c28-0410-ab6f-d8598ae2fa74"
+    },
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "github.com:dirkx\/AccesSystem.git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "D85C1A13828518944CE1854ED44B876AB821A2B7"
+    }
+  ]
+}

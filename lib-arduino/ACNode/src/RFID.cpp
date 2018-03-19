@@ -42,7 +42,7 @@ void RFID::loop() {
     }
     
     static char buff[MAX_MSG];
-    snprintf(buff, sizeof(buff), "energize %s %s %s", moi, machine, tag_encoded);
+    snprintf(buff, sizeof(buff), "energize %s %s %s", _acnode->moi, _acnode->machine, tag_encoded);
     send(NULL, buff);
     
     _swipe_cb(lasttag); 
