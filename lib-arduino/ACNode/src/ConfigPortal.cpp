@@ -2,7 +2,6 @@
 
 //flag for saving data
 bool shouldSaveConfig = false;
-char passwd[ 64 ] = "";
 
 void  configBegin() {
   if (SPIFFS.begin()) {
@@ -66,17 +65,18 @@ void configPortal() {
 
   char mqtt_port_buff[5];
   char passwd_buff[MAX_NAME];
-  snprintf(mqtt_port_buff, sizeof(mqtt_port_buff), "%d", mqtt_port);
+  snprintf(mqtt_port_buff, sizeof(mqtt_port_buff), "%d", _acnode->mqtt_port);
   passwd_buff[0] = 0; // force user to (re)set the password; rather than reveal anything.
 
-  WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, sizeof(mqtt_server));
+  WiFiManagerParameter custom_mqtt_server("server", "mqtt server", 
+	_acnode->mqtt_server, sizeof(_acnode->mqtt_server));
   WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port_buff, sizeof(mqtt_port_buff));
-  WiFiManagerParameter custom_node("node", "node name", moi, sizeof(moi));
-  WiFiManagerParameter custom_machine("machine", "machine", machine, sizeof(machine));
-  WiFiManagerParameter custom_prefix("topic_prefix", "topix prefix", mqtt_topic_prefix, sizeof(mqtt_topic_prefix));
+  WiFiManagerParameter custom_node("node", "node name", _acnode->moi, sizeof(_acnode->moi));
+  WiFiManagerParameter custom_machine("machine", "machine", _acnode->machine, sizeof(_acnode->machine));
+  WiFiManagerParameter custom_prefix("topic_prefix", "topix prefix", _acnode->mqtt_topic_prefix, sizeof(_acnode->mqtt_topic_prefix));
   WiFiManagerParameter custom_passwd("passwd", "shared secret", passwd_buff, sizeof(passwd_buff));
-  WiFiManagerParameter custom_master("master", "master node", master, sizeof(master));
-  WiFiManagerParameter custom_logpath("logpath", "logpath", logpath, sizeof(logpath));
+  WiFiManagerParameter custom_master("master", "master node", _acnode->master, sizeof(_acnode->master));
+  WiFiManagerParameter custom_logpath("logpath", "logpath", _acnode->logpath, sizeof(_acnode->logpath));
 
   wifiManager.addParameter(&custom_mqtt_server);
   wifiManager.addParameter(&custom_mqtt_port);
@@ -155,22 +155,22 @@ int configLoad() {
   int defined = 0;
 
 #define JSONR(d,v) { \
-    const char * str = json[v]; \
-    if (str) { strncpy(d,str,sizeof(d)); defined++; }; \
+    const char * str = json[(v)]; \
+    if (str) { strncpy((d),str,sizeof((d))); defined++; }; \
     Debug.printf("%s=\"%s\" ==> %s\n", v, str ? (strcmp(v,"passwd") ? str : "****") : "\\0",  (strcmp(v,"passwd") ? d : "****"));\
   }
-  JSONR(mqtt_server, "mqtt_server");
+  JSONR(_acnode->mqtt_server, "mqtt_server");
   JSONR(tmp_port, "mqtt_port");
-  JSONR(moi, "moi");
-  JSONR(mqtt_topic_prefix, "prefix");
-  JSONR(passwd, "passwd");
-  JSONR(logpath, "logpath");
-  JSONR(master, "master");
-  JSONR(machine, "machine");
+  JSONR(_acnode->moi, "moi");
+  JSONR(_acnode->mqtt_topic_prefix, "prefix");
+  JSONR(_acnode->passwd, "passwd");
+  JSONR(_acnode->logpath, "logpath");
+  JSONR(_acnode->master, "master");
+  JSONR(_acnode->machine, "machine");
 
   int p = atoi(tmp_port);
   if (p == 0) p = MQTT_DEFAULT_PORT;
-  if (p < 65564) mqtt_port = p;
+  if (p < 65564) _acnode->mqtt_port = p;
 
   return defined == 8;
 }

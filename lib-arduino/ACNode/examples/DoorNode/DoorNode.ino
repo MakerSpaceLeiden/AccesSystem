@@ -1,5 +1,5 @@
 /*
-      Copyright 2015-2016 Dirk-Willem van Gulik <dirkx@webweaving.org>
+      Copyright 2015-2018 Dirk-Willem van Gulik <dirkx@webweaving.org>
                           Stichting Makerspace Leiden, the Netherlands.
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -108,8 +108,12 @@ void setup() {
 #if 0
     // 2017 situation
   node.addSecurityHandler(msl);
-#else
+#if 0
     node.addSecurityHandler(sig1);
+#else
+    node.addSecurityHandler(sig2);
+#endif
+#else
     node.addSecurityHandler(beat);
 #endif
 
@@ -161,8 +165,7 @@ void loop() {
 
     case REJECTED:
       digitalWrite(BUZZER, ((millis() % 200) < 100) ? 1 : 0);
-      if ((millis() - laststatechange) > 5000)
-        machinestate = WAITINGFORCARD;
+      machinestate = WAITINGFORCARD;
       break;
 
     case NOCONN:

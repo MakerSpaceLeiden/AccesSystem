@@ -6,7 +6,8 @@
 
 class SIG2 : public ACSecurityHandler {
 public:
-    const char * name = "SIG2";
+    const char * name;
+    SIG2() : name("SIG2") { Serial.println("init of SIG2"); Serial.println(name); }
     
     void begin();
     void loop();

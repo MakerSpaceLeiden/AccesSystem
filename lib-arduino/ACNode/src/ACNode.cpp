@@ -1,10 +1,3 @@
-// Simple 'tee' class - that sends all 'serial' port data also to the Syslog and/or MQTT bus - 
-// to the 'log' topic if such is possible/enabled.
-//
-// XXX should refactor in a generic buffered 'add a Stream' class and then
-// make the various destinations classes in their own right you can 'add' to the T.
-//
-//
 #include <ACBase.h>
 #include <ACNode.h>
 #include "ConfigPortal.h"
@@ -71,12 +64,14 @@ void ACNode::begin() {
 #endif
 
   if (_wired) {
-	Debug.println("starting up wifi");
+	Debug.println("starting up ethernet ");
   	WiFi.mode(WIFI_STA);
   };
   if (_ssid) {
+	Serial.println("starting up wifi (fixed SSID)");
   	WiFi.begin(_ssid, _ssid_passwd);
   } else {
+	Serial.println("Staring wifi auto connect.");
   	WiFiManager wifiManager;
   	wifiManager.autoConnect();
   };
@@ -112,22 +107,35 @@ void ACNode::begin() {
   	_client = PubSubClient(ethClient);
 #endif
 
+  configBegin();
   configureMQTT();
 
   if (_debug)
   	debugListFS("/");
-
+{
   std::list<ACBase>::iterator it;
-  for (it =_handlers.begin(); it!=_handlers.end(); ++it)
+  for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
+        Serial.printf("%s.begin()\n", it->name);
 	it->begin();
+  }
+}
+{
+  std::list<ACSecurityHandler>::iterator its;
+  for (its =  _security_handlers.begin(); its !=  _security_handlers.end(); ++its) {
+        Serial.printf("%s.begin()\n", its->name);
+	its->begin();
+  }
+}
 }
 
 void ACNode::addHandler(ACBase &handler) {
   _handlers.insert (_handlers.end(), handler);
 }
 
-void ACNode::addSecurityHandler(ACSecurityHandler &handler) {
-  _security_handlers.insert (_security_handlers.end(), handler);
+void ACNode::addSecurityHandler(ACSecurityHandler handler) {
+  Serial.println("Adding");
+  Serial.println(handler.name);
+  _security_handlers.insert(_security_handlers.end(), handler);
 
   // Some handlers need a begin or loop maintenance cycle.
   addHandler(handler);
@@ -164,8 +172,15 @@ void ACNode::loop() {
   	mqttLoop();
 
   std::list<ACBase>::iterator it;
-  for (it=_handlers.begin(); it!=_handlers.end(); ++it)
+  for (it=_handlers.begin(); it!=_handlers.end(); ++it) {
+        Serial.printf("%s.loop()\n", it->name);
 	it->loop();
+}
+  std::list<ACSecurityHandler>::iterator its;
+  for (its =  _security_handlers.begin(); its !=  _security_handlers.end(); ++its) {
+        Serial.printf("%s.loop()\n", its->name);
+	its->loop();
+  }
 
 #if 0
   if (_debug) {
@@ -221,6 +236,8 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
 void ACNode::process(const char * topic, const char * payload)
 {
     size_t length = strlen(payload);
+    size_t l = 0;
+    char * endOfCmd = NULL;
     
     Debug.print("["); Debug.print(topic); Debug.print("] <<: ");
     Debug.print((char *)payload);
@@ -250,17 +267,16 @@ void ACNode::process(const char * topic, const char * payload)
             case ACSecurityHandler::FAIL:
             default:
                 Log.printf("Invalid/unknown payload or signature (%s) - failing.\n", it->name);
-                return;
+                goto _done;
                 break;
         }
     }
     if (r != ACSecurityHandler::OK) {
         Log.println("Unrecognized payload. Ignoring.");
-        return;
+        goto _done;
     }
     
-    size_t l = 0;
-    char * endOfCmd = index(req->rest, ' ');
+    endOfCmd = index(req->rest, ' ');
     if (endOfCmd) {
         l = endOfCmd - req->rest;
         if (l >= sizeof(req->cmd))
@@ -278,7 +294,7 @@ void ACNode::process(const char * topic, const char * payload)
     {
         cmd_result_t r = it->handle_cmd(req);
         if (r == CMD_CLAIMED)
-            return;
+          goto _done;
     };
 
     for (std::list<ACBase>::iterator it = _handlers.begin();
@@ -287,15 +303,18 @@ void ACNode::process(const char * topic, const char * payload)
     {
         cmd_result_t r = it->handle_cmd(req);
         if (r == CMD_CLAIMED)
-            return;
+          goto _done;
     }
     
     // Try my own default things.
     //
     if (handle_cmd(req) == CMD_CLAIMED)
-        return;
+        goto _done;
     
     Log.printf("Do not know what to do with <%s>, ignoring.\n", payload);
+
+_done:
+   delete req;
     return;
 }
 

@@ -11,11 +11,9 @@ uint16_t mqtt_port = MQTT_DEFAULT_PORT;
 // MQTT topics are constructed from <prefix> / <dest> / <sender>
 //
 char mqtt_topic_prefix[MAX_TOPIC] = "test";
-char moi[MAX_NAME] = "exhaustnode";    // Name of the sender
 char machine[MAX_NAME] = "fan";
 char master[MAX_NAME] = "master";    // Destination for commands
 char logpath[MAX_NAME] = "log";       // Destination for human readable text/logging info.
-char passwd[MAX_NAME] = "none-set";
 
 
 // We're having a bit of an issue with publishing within/near the reconnect and mqtt callback. So we
@@ -26,15 +24,17 @@ typedef struct publish_rec {
     char * topic;
     char * payload;
     struct publish_rec * nxt;
+    bool raw;
 } publish_rec_t;
+
 publish_rec_t *publish_queue = NULL;
 
 
-void ACNode::send(const char * topic, const char * payload) {
+void ACNode::send(const char * topic, const char * payload, bool _raw) {
     char _topic[MAX_TOPIC];
     
     if (topic == NULL) {
-        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, moi);
+        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, ACNode::moi);
         topic = _topic;
     }
     
@@ -42,6 +42,7 @@ void ACNode::send(const char * topic, const char * payload) {
     if (rec) {
         rec->topic = strdup(topic);
         rec->payload = strdup(payload);
+	rec->raw = _raw;
         rec->nxt = NULL;
     }
     
@@ -62,7 +63,7 @@ void ACNode::send(const char * topic, const char * payload) {
 }
 
 
-const char * state2str(int state) {
+const char * ACNode::state2str(int state) {
 #if __ATMEL_8BIT
     static char buff[10]; snprintf(buff, sizeof(buff), "Error: %d", state);
     return buff;
@@ -96,10 +97,15 @@ const char * state2str(int state) {
 }
 
 void ACNode::reconnectMQTT() {
-    Debug.printf("Attempting MQTT connection to %s:%d (MQTT State : %s)\n",
-                 mqtt_server, mqtt_port, state2str(_client.state()));
+    Serial.println("---x--\n");
+    Serial.println(ACNode::moi);
+    Serial.println("---x--\n");
+
+    Debug.printf("Attempting MQTT connection of <%s> to %s:%d (MQTT State : %s)\n", 
+		ACNode::moi, mqtt_server, mqtt_port, 
+		state2str(_client.state()));
     
-    if (!_client.connect(moi)) {
+    if (!_client.connect(ACNode::moi)) {
         Log.print("Reconnect failed : ");
         Log.println(state2str(_client.state()));
     }
@@ -107,7 +113,7 @@ void ACNode::reconnectMQTT() {
     Debug.println("(re)connected ");
     
     char topic[MAX_TOPIC];
-    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, ACNode::moi, master);
     _client.subscribe(topic);
     Debug.print("Subscribed to ");
     Debug.println(topic);
@@ -126,6 +132,11 @@ void ACNode::reconnectMQTT() {
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
 
 void ACNode::configureMQTT()  {
+    if (ACNode::moi == NULL || *ACNode::moi == 0)
+	strncpy(moi,"no-mqtt-client-id-set",sizeof(moi));
+    if (mqtt_port ==0)
+	mqtt_port = MQTT_DEFAULT_PORT;
+
     _client.setServer(mqtt_server, mqtt_port);
     _client.setCallback(mqtt_callback);
 }
@@ -190,6 +201,12 @@ void ACNode::mqttLoop() {
     publish_rec_t * rec = publish_queue;
     
     ACRequest * reqOut = new ACRequest();
+    if (!reqOut) {
+	Serial.println("Out of memory. Rebooting");
+	delay(1000);
+	ESP.restart();
+    };
+
     strncpy(reqOut->topic, rec->topic, sizeof(reqOut->topic));
     strncpy(reqOut->payload, rec->payload, sizeof(reqOut->payload));
     
@@ -198,19 +215,23 @@ void ACNode::mqttLoop() {
     //
     std::list<ACSecurityHandler>::reverse_iterator it;
     ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
-    for (it =_security_handlers.rbegin(); 
+
+    if (rec->raw == false) for (it =_security_handlers.rbegin(); 
 	it!=_security_handlers.rend() && r != ACSecurityHandler::OK; 
 	++it) 
     {
         r = it->secure(reqOut);
         if (r == ACSecurityHandler::FAIL) {
-            Log.printf("Adding signature to outbound failed (%s). Aborting.\n", it->name);
+            Log.printf("Adding signature to outbound failed (%s). Aborting.\n", 
+		(it->name && it->name[0])? it->name : "unset-name");
+	    Log.printf("\t%s\n\t%s\n", reqOut->topic, reqOut->payload);
             goto _done_without_send;
         };
     }
     _client.publish(reqOut->topic, reqOut->payload);
 
 _done_without_send:
+    delete reqOut;
     publish_queue = rec->nxt;
     free(rec->topic);
     free(rec->payload);

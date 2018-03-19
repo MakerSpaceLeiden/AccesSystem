@@ -5,9 +5,11 @@
 #include <ACNode.h>
 
 class Beat : public ACSecurityHandler {
-    const char * name = "Beat";
+public:
+    const char * name;
+    Beat() : name("Beat") {}
+
     bool _debug_alive;
-    
 
     void            begin();
     void            loop();

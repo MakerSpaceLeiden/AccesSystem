@@ -77,6 +77,17 @@ private:
 
 class ACNode : public ACBase {
   public:
+    uint16_t mqtt_port;
+    char moi[MAX_NAME];
+    char mqtt_server[MAX_HOST];
+    char machine[MAX_NAME];
+    char master[MAX_NAME]; 
+    char logpath[MAX_NAME]; 
+    char mqtt_topic_prefix[MAX_NAME]; 
+
+    // For SIG1
+    char passwd[MAX_NAME]; 
+
     ACNode(const char * ssid, const char * ssid_passwd);
     ACNode(bool wired);
 
@@ -102,7 +113,7 @@ class ACNode : public ACBase {
     cmd_result_t handle_cmd(ACRequest * req);
 
     void addHandler(ACBase &handler);
-    void addSecurityHandler(ACSecurityHandler &handler);
+    void addSecurityHandler(ACSecurityHandler handler);
 
     char * cloak(char tag[MAX_MSG]);
 
@@ -115,14 +126,14 @@ class ACNode : public ACBase {
     // singleton. Once that it solved it should really
     // become private again.
     //
-    void send(const char * topic, const char * payload);
+    void send(const char * topic, const char * payload, bool raw = false);
     
     // This function should be private - but we're calling
     // it from a C callback in the mqtt subsystem.
     //
     void process(const char * topic, const char * payload);
+
   private:
-    const char *machine, *moi;
     
     bool _debug_alive;
     THandlerFunction_Error _error_callback;
@@ -137,7 +148,7 @@ class ACNode : public ACBase {
     void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
-
+    const char * state2str(int state);
 
     // We register a bunch of handlers - rather than calling them
     // directly with a flag trigger -- as this allows the linker

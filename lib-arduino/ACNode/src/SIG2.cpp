@@ -147,6 +147,7 @@ void init_curve() {
     Log.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
     wipe_eeprom();
   }
+  Serial.println("Got a valid eeprom.");
 }
 // Ideally called from the runloop - i.e. late once we have at least a modicum of
 // entropy from wifi/etc.
@@ -180,13 +181,16 @@ int setup_curve25519() {
 }
 
 void SIG2::begin() {
+    Serial.println("Started init_curve()");
     init_curve();
 }
 
 void SIG2::loop() {
+    Serial.println("Sig 2 loop.");
     if (!_acnode->isConnected())
         return;
     
+    Serial.println("check init.");
     static int init_done = 0;
     if (init_done == 0) {
         kickoff_RNG();
@@ -194,16 +198,21 @@ void SIG2::loop() {
     };
     RNG.loop();
     
+    Serial.println("check rnd.");
     if (RNG.available(1024 * 4))
         return;
     
+    Serial.println("stir.");
     uint32_t seed = trng();
     RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
     
+    Serial.println("init ?.");
     if (init_done == 1) {
+    Serial.println("setup?.");
         setup_curve25519();
         init_done = 2;
-    }
+    };
+    Serial.println("done?.");
 }
 
 
