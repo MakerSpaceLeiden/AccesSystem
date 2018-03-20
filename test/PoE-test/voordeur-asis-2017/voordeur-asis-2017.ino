@@ -3,6 +3,7 @@
 
 */
 #include "/Users/dirkx/.passwd.h"
+#include "MFRC522.h"
 
 // Wired ethernet.
 //
@@ -29,7 +30,7 @@
 
 #define AARTLED_GPIO      (16)
 
-#define DOOR_OPEN_DELAY         (10*1000)   //  10 seconds -- how long to hold the relay engaged; in milli seconds.
+#define DOOR_OPEN_DELAY         (5*1000)   //  10 seconds -- how long to hold the relay engaged; in milli seconds.
 #define CACHE_FALLBACK_TIMEOUT  (500)       // 0.5 second  -- how long to wait for a reply before checking the cache.
 #define MAX_RESPONSE_TIMEOUT    (3500)      // 3.5 seconds -- max wait for reply from the server.
 
@@ -53,7 +54,7 @@ const char doorstates_names[OPEN + 1][15] = { "closed", "checking-card", "open" 
 doorstate_t doorstate;
 unsigned long long last_doorstatechange = 0;
 
-long cnt_cards = 0, cnt_opens = 0, cnt_closes = 0, cnt_fails = 0, cnt_misreads = 0, cnt_minutes = 0, cnt_reconnects = 0, cnt_mqttfails = 0;
+long cnt_cards = 0, cnt_opens = 0, cnt_closes = 0, cnt_fails = 0, cnt_misreads = 0, cnt_minutes = 0, cnt_reconnects = 0, cnt_mqttfails = 0, cnt_failed_rfid = 0;
 
 #include <ETH.h>
 #include <SPI.h>
@@ -273,6 +274,18 @@ boolean reconnect() {
   return client.connected();
 }
 
+void reinitRFID() {
+  Serial.println("MFRC522 IRQ and callback setup.");
+
+  mfrc522.PCD_Init();   // Init MFRC522
+  // mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD-MFRC522 Card Reader details
+
+  pinMode(MFRC522_IRQ, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(MFRC522_IRQ), readCard, FALLING);
+
+  byte regVal = 0xA0; //rx irq
+  mfrc522.PCD_WriteRegister(mfrc522.ComIEnReg, regVal);
+}
 void setup()
 {
   const char * f = __FILE__;
@@ -312,16 +325,7 @@ void setup()
   Serial.println("SPI init");
   spirfid.begin(MFRC522_SCK, MFRC522_MISO, MFRC522_MOSI, MFRC522_SDA);
 
-  Serial.println("MFRC522 IRQ and callback setup.");
-  mfrc522.PCD_Init();   // Init MFRC522
-  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD-MFRC522 Card Reader details
-
-  pinMode(MFRC522_IRQ, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(MFRC522_IRQ), readCard, FALLING);
-
-  byte regVal = 0xA0; //rx irq
-  mfrc522.PCD_WriteRegister(mfrc522.ComIEnReg, regVal);
-
+  reinitRFID();
   Serial.println("Setting up MQTT to " + String(mqtt_host)  + ":" + String(mqtt_port, DEC));
   client.setServer(mqtt_host, mqtt_port);
   client.setCallback(callback);
@@ -589,7 +593,7 @@ uint8_t temprature_sens_read();
 }
 #endif
 double coreTemp() {
-  double   temp_farenheit= temprature_sens_read();  
+  double   temp_farenheit = temprature_sens_read();
   return ( temp_farenheit - 32 ) / 1.8;
 }
 
@@ -599,7 +603,7 @@ void reportStats() {
            "[%s] alive-uptime %02ld:%02ld, "
            "mqtt %s (state %d) "
            "swipes %ld, opens %ld, closes %ld, fails %ld, mis-swipes %ld, mqtt reconnects %ld, mqtt fails %ld, "
-           "door %s, state %s(%d), caching %s, temperature %.1f",
+           "door %s, state %s(%d), caching %s, temperature %.1f, failed rfid-selftests: %ld",
            pname, cnt_minutes / 60, (cnt_minutes % 60),
            client.connected() ? "connected" : "not-connected", client.state(),
            cnt_cards,
@@ -607,7 +611,8 @@ void reportStats() {
            isOpen() ? "open" : "closed",
            doorstates_names[doorstate], doorstate,
            caching ? "on" : "off",
-           coreTemp()
+           coreTemp(),
+           cnt_failed_rfid
           );
   client.publish(log_topic, buff);
   Serial.println(buff);
@@ -713,6 +718,16 @@ void loop()
       static unsigned long last_min = 0;
       unsigned long delta = millis() - last_min;
       unsigned int mins = delta / 60 / 1000;
+
+      mfrc522.PCD_Reset();
+      if (!mfrc522.PCD_PerformSelfTest()) {
+        cnt_failed_rfid++;
+        if (cnt_failed_rfid > 2)
+          ESP.restart();
+      };
+      mfrc522.PCD_Reset();
+      reinitRFID();
+      
       if (mins > 0) {
         cnt_minutes += mins;
         last_min += mins * 60 * 1000;
