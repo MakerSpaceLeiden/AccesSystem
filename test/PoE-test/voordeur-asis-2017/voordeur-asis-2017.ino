@@ -30,6 +30,9 @@
 
 #define AARTLED_GPIO      (16)
 
+// #define WIRECHECK_GPIO	  (0)
+// #define WIRECHECK_REDLED  (HIGH)
+
 #define DOOR_OPEN_DELAY         (5*1000)   //  10 seconds -- how long to hold the relay engaged; in milli seconds.
 #define CACHE_FALLBACK_TIMEOUT  (500)       // 0.5 second  -- how long to wait for a reply before checking the cache.
 #define MAX_RESPONSE_TIMEOUT    (3500)      // 3.5 seconds -- max wait for reply from the server.
@@ -249,8 +252,6 @@ void activateRec(MFRC522 mfrc522) {
 void clearInt(MFRC522 mfrc522) {
   mfrc522.PCD_WriteRegister(mfrc522.ComIrqReg, 0x7F);
 }
-
-
 
 static long lastReconnectAttempt = 0;
 
@@ -690,7 +691,26 @@ void loop()
       }
       break;
     case OPEN:
+      break;
     case CLOSED:
+#ifdef WIRECHECK_GPIO
+      {
+	static unsigned long lastWireFail = 0;
+        if (digitalRead(WIRECHECK_GPIO) == WIRECHECK_REDLED) {
+	   lastWireFail = millis();
+	} else {
+           if (millis() - lastWireFail > 2 * DOOR_OPEN_DELAY && lastWireFail != 0) {
+		lastWireFail += 300 * 1000; // 5 minute reporting interval.
+        
+                 char msg[255];
+                 snprintf(msg, sizeof(msg), "[%s] RED led still on - despite closed door. Possible wire issue.", pname);
+                 Serial.println(msg);
+                 client.publish(log_topic, msg);
+           } 
+        }
+      }
+#endif
+      break;
     default:
       break;
   };
@@ -722,7 +742,15 @@ void loop()
       mfrc522.PCD_Reset();
       if (!mfrc522.PCD_PerformSelfTest()) {
         cnt_failed_rfid++;
-        if (cnt_failed_rfid > 2)
+
+        char msg[256];
+        snprintf(msg, sizeof(msg), "[%s] RFID selftest failed (%d times since boot%s).", 
+		pname, cnt_failed_rfid, 
+		(cnt_failed_rfid == 3) ? " and will reboot on next fail." : "");
+        Serial.println(msg);
+        client.publish(log_topic, msg);
+
+        if (cnt_failed_rfid > 3)
           ESP.restart();
       };
       mfrc522.PCD_Reset();
