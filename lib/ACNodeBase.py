@@ -93,6 +93,7 @@ class ACNodeBase:
     setproctitle.setproctitle(self.cnf.node)
 
     loglevel=logging.ERROR
+    FORMAT = "%(message)s"
 
     if self.cnf.verbose:
         loglevel=logging.INFO
