@@ -20,7 +20,7 @@
 #include <ArduinoOTA.h>
 
 void ota_setup() {
-    static uint8_t p;
+    static float p;
 
   // Port defaults to 3232
   // ArduinoOTA.setPort(3232);
@@ -50,9 +50,9 @@ void ota_setup() {
     Serial.println("\nEnd");
   })
   .onProgress([](unsigned int progress, unsigned int total) {
-    uint8_t q = (uint8_t) (0.5 + 100. * (progress / total));
+    float q = 0.5 + 100. * progress / total;
     if (q-p > 10) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+      Serial.printf("Progress: %u%%\r", (unsigned int) (0.5 + (progress / (total / 100))));
       p = q;
     };
   })

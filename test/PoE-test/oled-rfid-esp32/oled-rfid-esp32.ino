@@ -2,10 +2,14 @@
 #include <ESPmDNS.h>
 #include <Wire.h>
 
-#define SSD1306_128_64 1
+#define SSD1306_128_32 1
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
+#if SSD1306_LCDWIDTH != 128 || SSD1306_LCDHEIGHT != 32
+#error Mismatching sizes
+#endif
 
 #include <MFRC522_I2C.h>
 
@@ -25,9 +29,8 @@
 
 #include "/Users/dirkx/.passwd.h"
 
-
-Adafruit_SSD1306 display(-1);  // -1 = no reset pin
-MFRC522 mfrc522(0x28, RFID_RST); // Create MFRC522 instance.
+Adafruit_SSD1306 display(-1);  // no reset pin or any extras.
+ MFRC522 mfrc522(0x28, RFID_RST); // Create MFRC522 instance.
 
 const char name[] = "test-lcd-scr";
 
@@ -105,11 +108,14 @@ void setup() {
   pinMode(GPIO_NUM_5, OUTPUT);
   digitalWrite(GPIO_NUM_5, HIGH);
 
-  Wire.begin(I2C_SDA, I2C_SCL, 0);
+  Wire.begin(I2C_SDA, I2C_SCL, 100000);
   i2c_scan();
 
+  Serial.println("Setting up display");
+
   display.begin();
-  display.invertDisplay(0);
+
+  // display.invertDisplay(1);
   display.clearDisplay();
 
   display.setTextSize(1);
@@ -118,13 +124,19 @@ void setup() {
   display.setCursor(0, 0);
   display.print("IP: ");
   display.println(WiFi.localIP());
+  display.display();
 
+#if 0
+  Serial.println("Setting up RFID");
   mfrc522.PCD_Init();             // Init MFRC522
   byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
   display.printf("MFRC522: 0x%02x %s", v, (v == 0x91) ? "v1.0" : (v == 0x92) ? "v2.0" : "unknown");
   display.display();
 
   rfid_setup();
+#endif
+
+  Serial.println("Setting up OTA");
   ota_setup();
   Serial.println("Started loop");
 }
@@ -156,20 +168,29 @@ void loop() {
     if (millis() - t > 1000) {
       t = millis();
       digitalWrite(LED_BLUE, (s++) & 1);
+      Serial.println(s);
       if (!newCard)
         rfid_reactivate(mfrc522);
     }
   }
 
-
   static unsigned long lastScan;
-  if (millis() - lastScan > 2000) {
+
+  display.clearDisplay();
+  drawMeter(0.5 + 0.5 * sin(((millis() >> 6) / M_PI)));
+  display.display();
+
+  return;
+
+  static bool hasScan;
+  if (millis() - lastScan > 2000 && hasScan) {
     display.clearDisplay();
     display.setCursor(0, 0);
     display.printf("Waiting for card");
     display.display();
     digitalWrite(LED_GREEN, !digitalRead(BUTTON_GREEN));
     digitalWrite(LED_RED, !digitalRead(BUTTON_RED));
+    hasScan = false;
   }
 
   if (newCard) {
@@ -193,6 +214,7 @@ void loop() {
 
     display.display();
     lastScan = millis();
+    hasScan = true;
 
     mfrc522.PICC_HaltA();
     mfrc522.PCD_WriteRegister(mfrc522.ComIrqReg, 0x7F);
