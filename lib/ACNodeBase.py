@@ -93,6 +93,7 @@ class ACNodeBase:
     setproctitle.setproctitle(self.cnf.node)
 
     loglevel=logging.ERROR
+    FORMAT = "%(message)s"
 
     if self.cnf.verbose:
         loglevel=logging.INFO
@@ -157,7 +158,7 @@ class ACNodeBase:
       
       topic = self.cnf.topic+ "/" + dstnode + "/" + self.cnf.node
 
-      self.logger.debug(">>>>Sending @"+topic+": "+payload)
+      self.logger.debug(">>>>Sending @"+topic+":\n\t"+payload)
       try:
          publish.single(topic, payload, hostname=self.cnf.mqtthost, protocol=self.cnf.mqttprotocol)
       except:
@@ -225,7 +226,7 @@ class ACNodeBase:
 
     }
     try:
-      self.logger.debug("<<<<Reccing @"+message.topic+": "+message.payload.decode('ASCII'))
+      self.logger.debug("<<<<Reccing @"+message.topic+":\n\t"+message.payload.decode('ASCII'))
     except:
       pass
 

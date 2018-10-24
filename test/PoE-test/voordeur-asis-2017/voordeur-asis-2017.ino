@@ -2,7 +2,7 @@
     to the existing setup late 2017.
 
 */
-#include "/Users/dirkx/.passwd.h"
+// #include "/Users/dirkx/.passwd.h"
 #include "MFRC522.h"
 
 // Wired ethernet.
@@ -30,8 +30,8 @@
 
 #define AARTLED_GPIO      (16)
 
-// #define WIRECHECK_GPIO	  (0)
-// #define WIRECHECK_REDLED  (HIGH)
+#define WIRECHECK_GPIO	  (5)
+#define WIRECHECK_REDLED  (HIGH)
 
 #define DOOR_OPEN_DELAY         (5*1000)   //  10 seconds -- how long to hold the relay engaged; in milli seconds.
 #define CACHE_FALLBACK_TIMEOUT  (500)       // 0.5 second  -- how long to wait for a reply before checking the cache.
@@ -715,6 +715,17 @@ void loop()
       break;
   };
 
+#ifdef WIRECHECK_GPIO
+  {
+    static unsigned long last = 0;
+    if (millis() - last > 5000) {
+      char msg[256];
+      snprintf(msg,sizeof(msg),"%s: Wire pin: %d", pname, digitalRead(WIRECHECK_GPIO));
+                 Serial.println(msg);
+                 client.publish(log_topic, msg);      
+    }
+  }
+#endif
 
   // catch any logic errors or strange cases where the door is open while we think
   // we are not doing anything.

@@ -71,7 +71,7 @@ class TrustOnFirstContact(Beat.Beat):
                  self.logger.critical("Private key in file is not exactly 32 bytes. aborting.");
                  sys.exit(1);
         else:
-            self.logger.critical("No seed.");
+            self.logger.critical("No seed (private key).");
             sys.exit(1);
         
     self.cnf.privatekey = ed25519.SigningKey(seed)
@@ -195,6 +195,11 @@ class TrustOnFirstContact(Beat.Beat):
     if not msg['node'] in self.pubkeys:
         self.pubkeys[ msg['node'] ] = publickey
         self.logger.info("Learned a public key of node {} on first contact.".format(msg['node']))
+    else:
+        if (self.pubkeys[ msg['node'] ] == publickey):
+        	self.logger.debug("Already have this very public key recorded for this node {}.".format(msg['node']))
+        else:
+        	self.logger.warning("Does NOT match the key recorded for node {}.".format(msg['node']))
 
     if (cmd == 'announce' or cmd == 'welcome') and seskey:
         session_key = curve.calculateAgreement(self.session_priv, seskey)
