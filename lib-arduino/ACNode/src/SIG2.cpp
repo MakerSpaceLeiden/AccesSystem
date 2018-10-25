@@ -290,6 +290,13 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
   };
 
   resetWatchdog();
+#if 1
+    unsigned char key_b64[128];
+    encode_base64(signature, sizeof(signature), key_b64);
+    Serial.print("RAW signature: "); Serial.println((char *)key_b64);
+    encode_base64(signkey,CURVE259919_KEYLEN, key_b64);
+    Serial.print("RAW signkey: "); Serial.println((char *)key_b64);
+#endif
   if (!Ed25519::verify(signature, signkey, signed_payload, strlen(signed_payload))) {
     Log.println("Invalid Ed25519 signature on message - ignoring.");
     return false;
