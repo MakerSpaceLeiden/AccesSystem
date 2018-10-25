@@ -10,6 +10,8 @@
 
 class RFID : public ACBase {
   public:
+    const char * name() { return "RFID"; }
+    
     RFID(const byte sspin, const byte rstpin); // Allow -1 to signal a not-connected pin.
 
     void begin();

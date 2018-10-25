@@ -27,7 +27,6 @@
 #endif
 
 #include <ArduinoOTA.h>
-#include <WiFiManager.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/
 
 #include <WiFiUdp.h>

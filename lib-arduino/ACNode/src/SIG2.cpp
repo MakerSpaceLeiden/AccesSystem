@@ -183,14 +183,13 @@ int setup_curve25519() {
 void SIG2::begin() {
     Serial.println("Started init_curve()");
     init_curve();
+    
 }
 
 void SIG2::loop() {
-    Serial.println("Sig 2 loop.");
     if (!_acnode->isConnected())
         return;
     
-    Serial.println("check init.");
     static int init_done = 0;
     if (init_done == 0) {
         kickoff_RNG();
@@ -198,21 +197,17 @@ void SIG2::loop() {
     };
     RNG.loop();
     
-    Serial.println("check rnd.");
     if (RNG.available(1024 * 4))
         return;
     
-    Serial.println("stir.");
     uint32_t seed = trng();
     RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
     
-    Serial.println("init ?.");
     if (init_done == 1) {
-    Serial.println("setup?.");
         setup_curve25519();
         init_done = 2;
+        Debug.println("Full init. Ready for crypto");
     };
-    Serial.println("done?.");
 }
 
 
@@ -229,6 +224,8 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
   char master_publicsignkey_b64[B64L(CURVE259919_KEYLEN )];
   char master_publicencryptkey_b64[B64L(CURVE259919_KEYLEN)];
 
+Serial.printf("SIG2_verify %s\n", signed_payload);
+
   uint8_t pubsign_tmp[CURVE259919_KEYLEN];
   uint8_t pubencr_tmp[CURVE259919_SESSIONLEN];
 
@@ -241,10 +238,11 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
 
   B64D(signature64, signature, "Ed25519 signature");
   char * p = index(signed_payload, ' ');
-  while (*p == ' ') p++;
-  p = index(p, ' ');
+  while (p && *p == ' ') p++;
+  
+  // if (p) p = index(p, ' ');
   if (!p || !*p || *++p) {
-    Log.println("Maformed payload; no command");
+    Log.println("SIG/2 verify -- maformed payload; no command");
     return false;
   };
 
@@ -292,9 +290,13 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
     return false;
   };
 
+#if 0
   if (!verify_beat(beat))
     return false;
-
+#else
+    Log.println("Fix me - verify beat!.");
+#endif
+    
   if (newtofu) {
     Debug.println("TOFU for Ed25519 key of master, stored in persistent store..");
     memcpy(eeprom.master_publicsignkey, signkey, sizeof(eeprom.master_publicsignkey));
@@ -441,7 +443,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
         return ACSecurityHandler::DECLINE;
     
     if (len > sizeof(buff)-1) {
-        Log.println("Failing SIG/1 sigature - far too long");
+        Log.println("Failing SIG/2 sigature - far too long");
         return FAIL;
     };
     
@@ -453,19 +455,22 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     SEP(signature64, "SIG2Verify failed - no signature64", ACSecurityHandler::FAIL);
     SEP(beatString, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
     
-    if (strlen(signature64) != B64L(ED59919_SIGLEN)) {
-        Log.println("Failing SIG/1 sigature - wrong length signature64");
+    // Annoyingly - not all implementations of base64 are careful
+    // with the final = and ==.
+    //
+    if (abs(strlen(signature64)-B64L(ED59919_SIGLEN)) < 4) {
+        Log.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",strlen(signature64),B64L(ED59919_SIGLEN));
         return ACSecurityHandler::FAIL;
     };
     
     unsigned long beat = strtoul(beatString, NULL, 10);
     if (beat == 0) {
-        Log.println("Failing SIG/1 sigature - beat issues");
+        Log.println("Failing SIG/2 sigature - beat parsing failed");
         return ACSecurityHandler::FAIL;
     };
     
     if (!sig2_verify(beatString, signature64, p)) {
-        Log.println("Failing SIG/1 sigature - invalid sig.");
+        Log.println("Failing SIG/2 sigature - invalid sig.");
         return ACSecurityHandler::FAIL;
     };
 
@@ -475,10 +480,14 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     req->cmd[0] = '\0';
     strncpy(req->rest, buff, sizeof(req->rest));
 
+    Debug.printf("Final %s\n", req->rest);
+    
     return ACSecurityHandler::PASS;
 };
 
 SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
+    Serial.println("SIG2::secure");
+    
     char msg[MAX_MSG];
     
     if (!sig2_active())
@@ -492,7 +501,7 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
     return SIG2::OK;
 };
 
-SIG2::acauth_result_t cloak(ACRequest * req) {
+SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
     char tag_encoded[MAX_MSG];
 
     if (!sig2_active())

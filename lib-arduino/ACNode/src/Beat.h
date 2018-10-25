@@ -6,8 +6,7 @@
 
 class Beat : public ACSecurityHandler {
 public:
-    const char * name;
-    Beat() : name("Beat") {}
+    const char * name() { return "Beat"; }
 
     bool _debug_alive;
 

@@ -34,7 +34,7 @@ void OTA::begin() {
     };
   });
   
-#ifdef  ESP32
+#ifdef  ESP32_PRE_CP
   ArduinoOTA.begin(TCPIP_ADAPTER_IF_ETH);
   Log.println("OTA Enabled on the wired Ethernet interface");
 #else

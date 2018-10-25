@@ -5,8 +5,7 @@
 
 class SIG1 : public ACSecurityHandler {
 public:
-    const char * name;
-    SIG1() : name("SIG1") {}
+    const char * name() { return "SIG1"; }
     
     char passwd[MAX_NAME] = "";
 

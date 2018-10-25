@@ -6,6 +6,7 @@
 
 class MqttLogStream: public Print {
   public:
+    const char * name() { return "MqttLogStream"; }
     MqttLogStream(const char * prefix = "log", const char * moi = "moi");
     virtual size_t write(uint8_t c); 
   private:

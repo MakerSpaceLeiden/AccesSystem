@@ -1,4 +1,5 @@
 #include <ACNode.h>
+#include "ConfigPortal.h"
 
 //flag for saving data
 bool shouldSaveConfig = false;
@@ -163,7 +164,7 @@ int configLoad() {
   JSONR(tmp_port, "mqtt_port");
   JSONR(_acnode->moi, "moi");
   JSONR(_acnode->mqtt_topic_prefix, "prefix");
-  JSONR(_acnode->passwd, "passwd");
+//  JSONR(_acnode->passwd, "passwd");
   JSONR(_acnode->logpath, "logpath");
   JSONR(_acnode->master, "master");
   JSONR(_acnode->machine, "machine");

@@ -1,4 +1,4 @@
-// Simple 'tee' class - that sends all 'serial' port data also to the Syslog and/or MQTT bus - 
+// Simple 'tee' class - that sends all 'serial' port data also to the Syslog and/or MQTT bus -
 // to the 'log' topic if such is possible/enabled.
 //
 // XXX should refactor in a generic buffered 'add a Stream' class and then
@@ -9,24 +9,29 @@
 #include "SyslogStream.h"
 
 size_t SyslogStream::write(uint8_t c) {
-  if (c >= 32 && c < 128) 
-    logbuff[ at++ ] = c;
-
-  if (c != '\n' && at <= sizeof(logbuff) - 1)
-    return 1;
-
-  logbuff[at++] = 0;
-  at = 0;
-
-   if (_acnode->isConnected()) {
-    WiFiUDP syslog;
-    if (syslog.begin(_syslogPort)) {
-      syslog.beginPacket(WiFi.gatewayIP(), _syslogPort);
-      syslog.printf("<135> NoTimeStamp %s %s", _acnode->moi, logbuff);
-      syslog.endPacket();
+    
+    if (at >= sizeof(logbuff)-1) {
+        Serial.println("Purged logbuffer");
+        at = 0;
     };
-};
-
-  return 1;
+    
+    if (c >= 32 && c < 128)
+        logbuff[ at++ ] = c;
+    
+    if (c == '\n' || at >= sizeof(logbuff) - 1) {
+        
+        logbuff[at++] = 0;
+        at = 0;
+        
+        if (_acnode->isConnected()) {
+            WiFiUDP syslog;
+            if (syslog.begin(_syslogPort)) {
+                syslog.beginPacket(WiFi.gatewayIP(), _syslogPort);
+                syslog.printf("<135> NoTimeStamp %s %s", _acnode->moi, logbuff);
+                syslog.endPacket();
+            };
+        };
+    };
+    return 1;
 }
 

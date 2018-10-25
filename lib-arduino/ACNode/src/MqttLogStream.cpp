@@ -14,11 +14,18 @@ MqttLogStream::MqttLogStream(const char *prefix, const char * maoi) {
   snprintf(_logtopic, sizeof(_logtopic), "%s/%s/%s", prefix, 
 	(_acnode->logpath && _acnode->logpath[0]) ? _acnode->logpath : "log", _acnode->moi);
   _logbuff[0] = 0; _at = 0;
+  
+  Serial.printf("Sending output to logtopic %s\n", _logtopic);
   return;
 }
 
 size_t MqttLogStream::write(uint8_t c) {
-  if (c  >= 32) 
+    if (_at >= sizeof(_logbuff)-1) {
+        Serial.println("Purged logbuffer");
+        _at = 0;
+    };
+
+  if (c  >= 32)
     _logbuff[ _at++ ] = c;
 
   if (c == '\n' || _at >= sizeof(_logbuff) - 1) {
@@ -28,8 +35,10 @@ size_t MqttLogStream::write(uint8_t c) {
      char buff[256];
      struct tm timeinfo;
      getLocalTime(&timeinfo);
+    char * tstr = asctime(&timeinfo);
+    tstr[strlen(tstr)-1] = '\0';
 
-     snprintf(buff,sizeof(buff),"%s %s %s", asctime(&timeinfo), _acnode->moi, _logbuff);
+     snprintf(buff,sizeof(buff),"%s %s %s", tstr , _acnode->moi, _logbuff);
      _acnode->send(_logtopic, buff, true);
   }
   return 1;

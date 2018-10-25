@@ -58,7 +58,7 @@ Beat::acauth_result_t Beat::secure(ACRequest * req) {
     snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", beatCounter, req->payload);
     strncpy(req->payload, tmp, sizeof(req->payload));
     
-    return Beat::OK;
+    return Beat::PASS;
 };
 
 void Beat::begin() {

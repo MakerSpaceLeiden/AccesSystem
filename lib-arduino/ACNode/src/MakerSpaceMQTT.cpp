@@ -97,11 +97,7 @@ const char * ACNode::state2str(int state) {
 }
 
 void ACNode::reconnectMQTT() {
-    Serial.println("---x--\n");
-    Serial.println(ACNode::moi);
-    Serial.println("---x--\n");
-
-    Debug.printf("Attempting MQTT connection of <%s> to %s:%d (MQTT State : %s)\n", 
+    Debug.printf("Attempting MQTT connection of <%s> to %s:%d (MQTT State : %s)\n",
 		ACNode::moi, mqtt_server, mqtt_port, 
 		state2str(_client.state()));
     
@@ -141,7 +137,6 @@ void ACNode::configureMQTT()  {
     _client.setCallback(mqtt_callback);
 }
 
-#ifndef ESP32
 char * strsepspace(char **p) {
     char *q = *p;
     while (**p && **p != ' ') {
@@ -156,7 +151,6 @@ char * strsepspace(char **p) {
         return q;
     return NULL;
 }
-#endif
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     char payload[MAX_MSG], *q = payload;
@@ -213,21 +207,25 @@ void ACNode::mqttLoop() {
     // We are runing in reverse order. As we need to
     // `wrap things' back up.
     //
-    std::list<ACSecurityHandler>::reverse_iterator it;
+    std::list<ACSecurityHandler *>::reverse_iterator it;
     ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
 
-    if (rec->raw == false) for (it =_security_handlers.rbegin(); 
-	it!=_security_handlers.rend() && r != ACSecurityHandler::OK; 
-	++it) 
-    {
-        r = it->secure(reqOut);
+    if (rec->raw == false) {
+       for (it =_security_handlers.rbegin();
+        it!=_security_handlers.rend() && r != ACSecurityHandler::OK;
+        ++it) {
+        Debug.printf("PRE  %s: %s %s\n", (*it)->name(), reqOut->payload, reqOut->rest);
+        r = (*it)->secure(reqOut);
         if (r == ACSecurityHandler::FAIL) {
-            Log.printf("Adding signature to outbound failed (%s). Aborting.\n", 
-		(it->name && it->name[0])? it->name : "unset-name");
-	    Log.printf("\t%s\n\t%s\n", reqOut->topic, reqOut->payload);
+            Log.printf("Adding signature to outbound failed (%s). Aborting.\n", (*it)->name());
+            Log.printf("\t%s\n\t%s\n", reqOut->topic, reqOut->payload);
             goto _done_without_send;
         };
+        Debug.printf("POST %s: %s %s\n", (*it)->name(), reqOut->payload, reqOut->rest);
+      }
     }
+    Debug.printf("[%s]%s>>: %s\n", reqOut->topic, rec->raw ? "r" : " ", reqOut->payload);
+    
     _client.publish(reqOut->topic, reqOut->payload);
 
 _done_without_send:

@@ -6,6 +6,7 @@
 class OTA: public ACBase
 {
   public:
+    const char * name() { return "OTA"; }
     OTA(const char * password);
     void loop();
     void begin();

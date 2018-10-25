@@ -15,17 +15,12 @@
    limitations under the License.
 */
 
-#define WHPULS_GPIO      (4)  // digital in - Wh pulse
 #define CURRENT_GPIO    (24)  // Analog in - current
 #define RELAY_GPIO       (5)  // output
-
+#define OFF_BUTTON       (4)
 #define AART_LED        (16)  // superfluous indicator LED.
 
-#define REPORTING_PERIOD    (300 * 1000)      // every 5 minutes when on.
-#define REPORTING_PERIOD_OFF  (3600 * 1000)   // every hour when we are off.
-
-// #define RFID_SELECT_PIN (6)
-// #define RFID_RESET_PIN (7)
+#define MAX_IDLE_TIME   (305 * 60 * 1000) // auto power off after 30 minutes of no use.
 
 #define LWIP_DHCP_GET_NTP_SRV 1
 #include "apps/sntp/sntp.h"
@@ -59,30 +54,24 @@ typedef enum {
   BOOTING, SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
   WAITINGFORCARD,             // waiting for card.
   CHECKINGCARD,
-  POWERED,                    // this is where we engage the relay.
   REJECTED,
-  POWEROFF,                 // power down an report use.
+  POWERED,                    // this is where we engage the relay.
+  RUNNING,
   NOTINUSE
 } machinestates_t;
 
 const char *machinestateName[NOTINUSE] = {
-  "Software Error", "Out of order", "No network",
+  "Booting", "Software Error", "Out of order", "No network",
   "Waiting for card",
-  "Powered",
+  "Checking card",
   "Rejecting noise/card",
-  "Poweroff",
-  "== not in use == "
+  "Powered - but idle",
+  "Running"
 };
 
 unsigned long laststatechange = 0;
 static machinestates_t laststate = OUTOFORDER;
 machinestates_t machinestate = BOOTING;
-
-
-unsigned long whCounter = 0, startWhCounter = 0;
-void irqWattHourPulse() {
-  whCounter++;
-}
 
 #define SLOW_PERIOD (300)
 #define FAST_PERIOD (1000)
@@ -92,7 +81,7 @@ Ticker aartLed;
 
 
 #ifdef  ESP32
-// The ESP32 does not yet have automatic PWN when its GPIOs are 
+// The ESP32 does not yet have automatic PWN when its GPIOs are
 // given an analogeWrite(). So we have fake that for now - until
 // we can ifdef this out at some Espressif SDK version #.
 //
@@ -144,16 +133,6 @@ void blink() {
 };
 
 
-void reportUse(bool isFinal) {
-  if (isFinal)
-    Log.printf("Final %.1f; by %s\n", (whCounter - startWhCounter) / 1000., "xxx");
-  else if (machinestate == POWERED)
-    Log.printf("Use %.1f, kWh Counter: %.1f\n", (whCounter - startWhCounter) / 1000., whCounter / 1000.);
-  else
-    Log.printf("idle, kWh Counter: %.1f\n", whCounter / 1000.);
-}
-
-
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
@@ -167,11 +146,11 @@ void setup() {
   pinMode(AART_LED, OUTPUT);
   digitalWrite(AART_LED, 0);
 
-  pinMode(CURRENT_GPIO, INPUT);
-  pinMode(WHPULS_GPIO, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(WHPULS_GPIO), irqWattHourPulse, FALLING);
+  pinMode(CURRENT_GPIO, INPUT); // analog input.
+  pinMode(OFF_BUTTON, INPUT_PULLUP);
 
 #define Strncpy(dst,src) { strncpy(dst,src,sizeof(dst)); }
+
   Strncpy(_acnode->moi, "test-ceramitcs");
   Strncpy(_acnode->mqtt_server, "space.vijn.org");
   Strncpy(_acnode->machine, "test-ceramitcs");
@@ -197,10 +176,6 @@ void setup() {
   node.onValidatedCmd([](const char *cmd, const char *restl) {
     if (!strcasecmp("energize", cmd)) {
       machinestate = POWERED;
-      startWhCounter = whCounter;
-    }
-    else if (!strcasecmp("report", cmd)) {
-      reportUse(false);
     }
     else if (!strcasecmp("denied", cmd)) {
       machinestate = REJECTED;
@@ -211,7 +186,7 @@ void setup() {
   node.addHandler(&ota);
 
 #ifdef RFID_SELECT_PIN
-   RFID reader(RFID_SELECT_PIN, RFID_RESET_PIN);
+  RFID reader(RFID_SELECT_PIN, RFID_RESET_PIN);
   reader.onSwipe([](const char * tag) {
     Log.printf("Card <%s> wiped - being checked.\n", tag);
     machinestate = CHECKINGCARD;
@@ -245,15 +220,56 @@ void setup() {
 
 void loop() {
   node.loop();
+  blink();
+
+  if (analogRead(CURRENT_GPIO) > 512) {
+    if (machinestate < POWERED) {
+      Log.printf("Error -- device in state '%s' but current detected!",
+                 machinestateName[machinestate]);
+    }
+    if (machinestate == POWERED) {
+      machinestate = RUNNING;
+      Log.printf("Machine running.");
+    }
+  } else if (machinestate == RUNNING) {
+    machinestate = POWERED;
+    Log.printf("Machine halted.");
+  }
+
+  // We do not worry much about button bounce; as it is just an off
+  // we want to detect.
+  //
+  if (digitalRead(OFF_BUTTON) == LOW) {
+    if (machinestate == RUNNING) {
+      Log.printf("Machine switched off with button while running (not so nice)");
+    } else if (machinestate == POWERED) {
+      Log.printf("Machine switched off with button (normal)");;
+    } else {
+      Log.printf("Off button pressed (currently in state %s)",
+                 machinestateName[machinestate]);
+    }
+    machinestate = WAITINGFORCARD;
+  };
 
   if (laststate != machinestate) {
+    Log.printf("Changing from state %s to state %s)",
+               machinestateName[laststate], machinestateName[machinestate]);
     laststate = machinestate;
     laststatechange = millis();
   }
 
+  if (laststate < POWERED)
+    digitalWrite(RELAY_GPIO, 0);
+  else
+    digitalWrite(RELAY_GPIO, 1);
+
+  if (machinestate >= POWERED) {
+    blinkstate = ON;
+    digitalWrite(AART_LED, 1);
+  }
+
   switch (machinestate) {
     case WAITINGFORCARD:
-      digitalWrite(RELAY_GPIO, 0);
       blinkstate = HEARTBEAT;
       break;
 
@@ -265,22 +281,19 @@ void loop() {
       break;
 
     case POWERED:
-      blinkstate = ON;
-      digitalWrite(RELAY_GPIO, 1);
-      digitalWrite(AART_LED, 1);
-      if ((millis() - laststatechange) > 5000)
+      if ((millis() - laststatechange) > MAX_IDLE_TIME) {
+        Log.printf("Machine idle for too long - switching off..");
         machinestate = WAITINGFORCARD;
+      }
+      break;
+
+    case RUNNING:
       break;
 
     case REJECTED:
-      digitalWrite(RELAY_GPIO, 0);
-      machinestate = WAITINGFORCARD;
-      break;
-
-    case POWEROFF:
-      digitalWrite(RELAY_GPIO, 0);
-      reportUse(true);
-      machinestate = WAITINGFORCARD;
+      blinkstate = FAST;
+      if ((millis() - laststatechange) > 1000)
+        machinestate = WAITINGFORCARD;
       break;
 
     case NOCONN:
@@ -299,11 +312,6 @@ void loop() {
     case NOTINUSE:
       blinkstate = FAST;
       break;
-  };
-
-  static unsigned long lastReportUse = 0;
-  if (millis() - lastReportUse > ((machinestate == POWERED) ? REPORTING_PERIOD : REPORTING_PERIOD_OFF)) {
-    reportUse(false);
   };
 }
 

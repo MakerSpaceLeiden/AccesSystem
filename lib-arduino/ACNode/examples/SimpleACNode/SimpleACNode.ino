@@ -472,7 +472,8 @@ void loop() {
   otaLoop();
 #endif
 
-  client.loop();
+  client.loop(); // MQTT library loop.
+
   publish_loop();
   mqttLoop();
 
