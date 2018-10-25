@@ -55,10 +55,9 @@ public:
     
     typedef enum acauth_results { DECLINE, FAIL, PASS, OK } acauth_result_t;
     
-    virtual acauth_result_t verify(ACRequest * req) { return FAIL; }
-    
+    virtual acauth_results helo(ACRequest * req) { return ACSecurityHandler::DECLINE; }
+    virtual acauth_results verify(ACRequest * req) { return FAIL; }
     virtual acauth_results secure(ACRequest * req) { return FAIL; }
-    
     virtual acauth_results cloak(ACRequest * req) { return FAIL; }
 };
 

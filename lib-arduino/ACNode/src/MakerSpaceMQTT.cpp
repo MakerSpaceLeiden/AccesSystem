@@ -122,6 +122,28 @@ void ACNode::reconnectMQTT() {
     char buff[MAX_MSG];
     IPAddress myIp = WiFi.localIP();
     snprintf(buff, sizeof(buff), "announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
+
+    ACRequest * req = new ACRequest(topic, buff);
+
+    ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
+    for (std::list<ACSecurityHandler *>::iterator it =_security_handlers.begin();
+         it!=_security_handlers.end() && r != ACSecurityHandler::OK;
+         ++it)
+    {
+        r = (*it)->helo(req);
+        switch(r) {
+            case ACSecurityHandler::DECLINE:
+                break;
+            case ACSecurityHandler::PASS:
+            case ACSecurityHandler::OK:
+                break;
+            case ACSecurityHandler::FAIL:
+            default:
+                Log.printf("Failing HELO on (%s) - failing.\n", (*it)->name());
+                return;
+                break;
+        }
+    }
     send(topic, buff);
 }
 

@@ -151,9 +151,9 @@ void setup() {
 
 #define Strncpy(dst,src) { strncpy(dst,src,sizeof(dst)); }
 
-  Strncpy(_acnode->moi, "test-ceramitcs");
+  Strncpy(_acnode->moi, "test-woodlathe");
   Strncpy(_acnode->mqtt_server, "space.vijn.org");
-  Strncpy(_acnode->machine, "test-ceramitcs");
+  Strncpy(_acnode->machine, "test-woodlathe");
   Strncpy(_acnode->master, "test-master");
   Strncpy(_acnode->logpath, "log");
   Strncpy(_acnode->mqtt_topic_prefix, "test");

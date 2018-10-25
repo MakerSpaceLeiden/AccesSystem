@@ -13,8 +13,9 @@ public:
     
     cmd_result_t    handle_cmd(ACRequest * req);
 
-    acauth_result_t 	verify(ACRequest * req);
-    acauth_result_t    secure(ACRequest * req);
-    acauth_result_t    cloak(ACRequest * req);
+    acauth_result_t helo(ACRequest * req);
+    acauth_result_t verify(ACRequest * req);
+    acauth_result_t secure(ACRequest * req);
+    acauth_result_t cloak(ACRequest * req);
 };
 #endif

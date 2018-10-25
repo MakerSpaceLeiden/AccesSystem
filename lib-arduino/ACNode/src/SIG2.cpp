@@ -94,8 +94,10 @@ uint8_t node_publicsession[CURVE259919_KEYLEN];
 uint8_t node_privatesession[CURVE259919_KEYLEN];
 uint8_t sessionkey[CURVE259919_SESSIONLEN];
 
+static int init_done = 0;
+
 bool sig2_active() {
-  return (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS);
+  return (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS && init_done >= 2);
 }
 
 void kickoff_RNG() {
@@ -190,7 +192,6 @@ void SIG2::loop() {
     if (!_acnode->isConnected())
         return;
     
-    static int init_done = 0;
     if (init_done == 0) {
         kickoff_RNG();
         init_done = 1;
@@ -207,6 +208,7 @@ void SIG2::loop() {
         setup_curve25519();
         init_done = 2;
         Debug.println("Full init. Ready for crypto");
+	send_helo("announce");
     };
 }
 
@@ -224,7 +226,7 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
   char master_publicsignkey_b64[B64L(CURVE259919_KEYLEN )];
   char master_publicencryptkey_b64[B64L(CURVE259919_KEYLEN)];
 
-Serial.printf("SIG2_verify %s\n", signed_payload);
+  Serial.printf("SIG2_verify %s\n", signed_payload);
 
   uint8_t pubsign_tmp[CURVE259919_KEYLEN];
   uint8_t pubencr_tmp[CURVE259919_SESSIONLEN];
@@ -237,14 +239,17 @@ Serial.printf("SIG2_verify %s\n", signed_payload);
   bool newtofu = false;
 
   B64D(signature64, signature, "Ed25519 signature");
-  char * p = index(signed_payload, ' ');
+  // char * p = index(signed_payload, ' ');
+  char * p = (char *)signed_payload;
   while (p && *p == ' ') p++;
-  
+ 
+#if 0 
   // if (p) p = index(p, ' ');
   if (!p || !*p || *++p) {
-    Log.println("SIG/2 verify -- maformed payload; no command");
+    Log.println("SIG/2 verify -- malformed payload; no command");
     return false;
   };
+#endif
 
   char * q = index(p, ' ');
   size_t cmd_len = (q && *q) ? q - p : strlen(p + 1);
@@ -439,8 +444,10 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     char buff[MAX_MSG];
 
     // We only accept things starting with SIG/2*<space>hex<space>
-    if (len <72|| strncmp(req->payload, "SIG/2.", 6) != 0)
+    if (len <72|| strncmp(req->payload, "SIG/2.", 6) != 0) {
+	Serial.println("SIG/2. - declining.");
         return ACSecurityHandler::DECLINE;
+    };
     
     if (len > sizeof(buff)-1) {
         Log.println("Failing SIG/2 sigature - far too long");
@@ -456,10 +463,11 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     SEP(beatString, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
     
     // Annoyingly - not all implementations of base64 are careful
-    // with the final = and ==.
+    // with the final = and == and trailing \0.
     //
-    if (abs(strlen(signature64)-B64L(ED59919_SIGLEN)) < 4) {
-        Log.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",strlen(signature64),B64L(ED59919_SIGLEN));
+    if (abs(strlen(signature64)-B64L(ED59919_SIGLEN)) > 3) {
+        Log.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",
+		strlen(signature64),B64L(ED59919_SIGLEN));
         return ACSecurityHandler::FAIL;
     };
     
@@ -470,7 +478,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     };
     
     if (!sig2_verify(beatString, signature64, p)) {
-        Log.println("Failing SIG/2 sigature - invalid sig.");
+        Log.println("Failing SIG/2 sigature - invalid signature");
         return ACSecurityHandler::FAIL;
     };
 
@@ -492,7 +500,7 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
     
     if (!sig2_active())
         return SIG2::FAIL;
-    
+  
     if (!sig2_sign(msg, sizeof(msg), req->payload))
         return SIG2::FAIL;
     
@@ -524,6 +532,14 @@ SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
     return CMD_DECLINE;
 }
 
+SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
+    	if (sig2_active() && init_done > 1) {
+        	send_helo("announce" /* req->payload */ );
+	        return PASS; // DECLINE, FAIL, PASS, OK 
+	};
+	// not enough data yet to actually do an helo.
+	return FAIL;
+}
 
 
 
