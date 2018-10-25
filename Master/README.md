@@ -5,3 +5,4 @@ Run in test mode with:
 Note the use of --topic to get a 'personal' channel to test on!
 
 
+pip3.6 install daemon setproctitle paho-mqtt axolotl_curve25519 axolotl python-axolotl-curve25519 ed25519 Crypto pycrypto
