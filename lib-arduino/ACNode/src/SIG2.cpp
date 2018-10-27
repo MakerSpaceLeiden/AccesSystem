@@ -221,12 +221,12 @@ bool verify_beat(const char * beat);
 // Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
 // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
 
-bool sig2_verify(const char * beat, const char signature64[], const char signed_payload[]) {
+bool sig2_verify(const char * beat, const char signature64[], const char tail_signed_payload[]) {
 #define B64L(n) ((((4 * n / 3) + 3) & ~3)+1)
   char master_publicsignkey_b64[B64L(CURVE259919_KEYLEN )];
   char master_publicencryptkey_b64[B64L(CURVE259919_KEYLEN)];
 
-  Serial.printf("SIG2_verify %s\n", signed_payload);
+  Serial.printf("SIG2_verify %s %s\n", beat, tail_signed_payload);
 
   uint8_t pubsign_tmp[CURVE259919_KEYLEN];
   uint8_t pubencr_tmp[CURVE259919_SESSIONLEN];
@@ -240,7 +240,10 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
 
   B64D(signature64, signature, "Ed25519 signature");
   // char * p = index(signed_payload, ' ');
-  char * p = (char *)signed_payload;
+  char tmp[MAX_MSG];
+  char * p = tmp;
+  strncpy(tmp, tail_signed_payload, sizeof(tmp));
+
   while (p && *p == ' ') p++;
  
 #if 0 
@@ -251,18 +254,24 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
   };
 #endif
 
+  while(p && *p == ' ') p++;
   char * q = index(p, ' ');
   size_t cmd_len = (q && *q) ? q - p : strlen(p + 1);
   char cmd[cmd_len + 1];
   cmd[cmd_len] = '\0';
   strncpy(cmd, p, cmd_len);
-
+  p = q;
+  while(p && *p == ' ') p++;
+ 
   if (strcmp(cmd, "welcome") == 0  || strcmp(cmd, "announce") == 0) {
     newsession = true;
 
     SEP(host_ip, "IP address", false);
+Debug.printf(" ** host_ip=%s\n", host_ip);
     SEP(master_publicsignkey_b64, "B64 public signing key", false);
+Debug.printf(" ** master_publicsignkey_b64=%s\n", master_publicsignkey_b64);
     SEP(master_publicencryptkey_b64, "B64 public encryption key", false);
+Debug.printf(" ** master_publicencryptkey_b64=%s\n", master_publicencryptkey_b64);
 
     B64D(master_publicsignkey_b64, pubsign_tmp, "Ed25519 public key");
     B64D(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key");
@@ -277,6 +286,7 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
       Debug.println("Unknown Ed25519 signature on message - giving the benefit of the doubt.");
       signkey = pubsign_tmp;
 
+
       // We are not setting the TOFU flag in the EEPROM yet, as we've not yet checked
       // for reply by means of the beat.
       //
@@ -289,16 +299,19 @@ bool sig2_verify(const char * beat, const char signature64[], const char signed_
     };
   };
 
+  if (signkey == NULL) {
+    Log.println("No signing key for message found - ignoring.");
+    return false;
+  };
+
   resetWatchdog();
-#if 1
-    unsigned char key_b64[128];
-    encode_base64(signature, sizeof(signature), key_b64);
-    Serial.print("RAW signature: "); Serial.println((char *)key_b64);
-    encode_base64(signkey,CURVE259919_KEYLEN, key_b64);
-    Serial.print("RAW signkey: "); Serial.println((char *)key_b64);
-#endif
+  // XX remove this and move beat parsing.
+  char signed_payload[MAX_MSG];
+  snprintf(signed_payload, sizeof(signed_payload), "%s %s", beat, tail_signed_payload);
+
   if (!Ed25519::verify(signature, signkey, signed_payload, strlen(signed_payload))) {
     Log.println("Invalid Ed25519 signature on message - ignoring.");
+    Debug.printf(" ** Payload is <%s>\n", signed_payload);
     return false;
   };
 
@@ -361,10 +374,18 @@ bool sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
 
 
   resetWatchdog();
-  Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, maxlen);
+  Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, strlen(tosign));
 
   char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
   encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
+
+Serial.println("==== sign - start");
+Serial.println(tosign);
+Serial.println(sigb64);
+char b64[ED59919_SIGLEN * 2];
+    encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
+Serial.println(b64);
+Serial.println("==== sign - end");
 
   snprintf(msg, MAX_MSG, "SIG/%s %s %s", vs, sigb64, tosign);
 
@@ -452,12 +473,11 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
 
     // We only accept things starting with SIG/2*<space>hex<space>
     if (len <72|| strncmp(req->payload, "SIG/2.", 6) != 0) {
-	Serial.println("SIG/2. - declining.");
         return ACSecurityHandler::DECLINE;
     };
     
     if (len > sizeof(buff)-1) {
-        Log.println("Failing SIG/2 sigature - far too long");
+        Debug.println("Failing SIG/2 sigature - far too long");
         return FAIL;
     };
     
@@ -473,19 +493,19 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     // with the final = and == and trailing \0.
     //
     if (abs(strlen(signature64)-B64L(ED59919_SIGLEN)) > 3) {
-        Log.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",
+        Debug.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",
 		strlen(signature64),B64L(ED59919_SIGLEN));
         return ACSecurityHandler::FAIL;
     };
     
     unsigned long beat = strtoul(beatString, NULL, 10);
     if (beat == 0) {
-        Log.println("Failing SIG/2 sigature - beat parsing failed");
+        Debug.println("Failing SIG/2 sigature - beat parsing failed");
         return ACSecurityHandler::FAIL;
     };
     
     if (!sig2_verify(beatString, signature64, p)) {
-        Log.println("Failing SIG/2 sigature - invalid signature");
+        Debug.println("Failing SIG/2 sigature - invalid signature");
         return ACSecurityHandler::FAIL;
     };
 

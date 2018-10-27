@@ -161,10 +161,12 @@ void ACNode::configureMQTT()  {
 
 char * strsepspace(char **p) {
     char *q = *p;
+    if (p == NULL || *p == NULL)
+	return NULL;
     while (**p && **p != ' ') {
         (*p)++;
     };
-    if (**p == ' ') {
+    if (**p && **p == ' ') {
         **p = 0;
         (*p)++;
         return q;
@@ -196,8 +198,9 @@ bool ACNode::isUp() {
 
 void ACNode::mqttLoop() {
     static unsigned long last_mqtt_connect_try = 0;
+    _client.loop();
     
-    if (last_mqtt_connect_try == 0 || !isUp()) {
+    if (!isUp()) {
         // report transient error ? Which ? And how often ?
         if (millis() - last_mqtt_connect_try > 10000 || last_mqtt_connect_try == 0) {
             reconnectMQTT();
@@ -205,8 +208,6 @@ void ACNode::mqttLoop() {
         }
         return;
     };
-    
-    _client.loop();
     
     if (!publish_queue)
         return;

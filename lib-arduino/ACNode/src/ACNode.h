@@ -28,7 +28,8 @@
 
 #define B64D(base64str, bin, what) { \
 if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
-Log.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
+Debug.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", \
+	sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
 return false; \
 }; \
 decode_base64((unsigned char *)base64str, bin); \
@@ -37,8 +38,7 @@ decode_base64((unsigned char *)base64str, bin); \
 #define SEP(tok, err, errorOnReturn) \
 char *  tok = strsepspace(&p); \
 if (!tok) { \
-Log.print("Malformed/missing " err ": " ); \
-Log.println(p); \
+Debug.printf("Malformed/missing " err ": %s]n", p ); \
 return errorOnReturn; \
 }
 extern char * strsepspace(char **p);

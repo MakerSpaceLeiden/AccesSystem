@@ -202,8 +202,8 @@ void setup() {
   // default syslog port and destination (gateway address or broadcast address).
   //
   SyslogStream syslogStream = SyslogStream();
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  // Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
   // assumes the client connection for MQTT (and network, etc) is up - otherwise silenty fails/buffers.
   //
