@@ -26,8 +26,14 @@ size_t SyslogStream::write(uint8_t c) {
         if (_acnode->isConnected()) {
             WiFiUDP syslog;
             if (syslog.begin(_syslogPort)) {
-                syslog.beginPacket(WiFi.gatewayIP(), _syslogPort);
-                syslog.printf("<135> NoTimeStamp %s %s", _acnode->moi, logbuff);
+	    	if (_dest) 
+                	syslog.beginPacket(_dest, _syslogPort);
+		else
+                	syslog.beginPacket(WiFi.gatewayIP(), _syslogPort);
+		if (_raw)
+                	syslog.printf("%s\n", logbuff);
+		else
+                	syslog.printf("<135> NoTimeStamp %s %s", _acnode->moi, logbuff);
                 syslog.endPacket();
             };
         };

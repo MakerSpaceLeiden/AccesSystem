@@ -8,6 +8,8 @@
 ACNode * _acnode;
 ACLog Log;
 ACLog Debug;
+ACLog _Trace;
+#define Trace if (0) _Trace
 
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
@@ -78,9 +80,9 @@ void ACNode::begin() {
     if (_wired) {
         Debug.println("starting up ethernet ");
         WiFi.mode(WIFI_STA);
-    };
+    } else
     if (_ssid) {
-        Serial.println("starting up wifi (fixed SSID)");
+        Serial.printf("Starting up wifi (hardcoded SSID <%s>)\n", _ssid);
         WiFi.begin(_ssid, _ssid_passwd);
     } else {
         Serial.println("Staring wifi auto connect.");
@@ -110,14 +112,13 @@ void ACNode::begin() {
         Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
     
     Log.print("IP address: ");
-    Log.println(WiFi.localIP());
-    
+    Log.println(localIP());
+ 
+    Log.begin();
+    Debug.begin(); 
+
     _espClient = WiFiClient();
     _client = PubSubClient(_espClient);
-#if 0
-    _ethClient = EthernetClient();
-    _client = PubSubClient(ethClient);
-#endif
     
     configBegin();
     configureMQTT();
@@ -150,19 +151,36 @@ char * ACNode::cloak(char tag[MAX_MSG]  ) {
 }
 
 void ACNode::loop() {
+    {
+	static unsigned long lastReport = 0, lastCntr = 0, Cntr = 0;
+	Cntr++;
+	if (millis() - lastReport > 10000) {
+		float rate =  1000. * (Cntr - lastCntr)/(millis() - lastReport) + 0.05;
+		if (rate > 10)
+			Debug.printf("Loop rate: %.1f #/second\n", rate);
+		else
+			Log.printf("Warning: LOW Loop rate: %.1f #/second\n", rate);
+		lastReport = millis();
+		lastCntr = Cntr;
+	}
+    }
     // XX to hook into a callback of the ethernet/wifi
     // once we figure out how we can get this from the wifi.
     //
     static bool lastconnectedstate = false;
     bool connectedstate = isConnected();
     if (lastconnectedstate != connectedstate) {
-        if (connectedstate)
+        if (connectedstate) {
             _connect_callback();
-        else
+	} else {
             _disconnect_callback();
+	};
         lastconnectedstate = connectedstate;
     };
-    
+  
+    Log.loop();
+    Debug.loop();
+ 
     if(isConnected())
         mqttLoop();
     
@@ -202,13 +220,9 @@ void ACNode::loop() {
 
 ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
 {
-    if (!strncmp("welcome", req->cmd, 7)) {
-        return ACNode::CMD_CLAIMED;
-    }
-    
     if (!strncmp("ping", req->cmd, 4)) {
         char buff[MAX_MSG];
-        IPAddress myIp = WiFi.localIP();
+        IPAddress myIp = localIP();
         
         snprintf(buff, sizeof(buff), "ack %s %s %d.%d.%d.%d", master, moi, myIp[0], myIp[1], myIp[2], myIp[3]);
         send(NULL, buff);
@@ -254,21 +268,28 @@ void ACNode::process(const char * topic, const char * payload)
                 Debug.printf("%s could not parse this payload, trying next.\n", (*it)->name());
                 break;
             case ACSecurityHandler::PASS:
+                Trace.printf("OK payload with %s signature - passing on to next.\n", (*it)->name());
+                break;
             case ACSecurityHandler::OK:
-                Debug.printf("OK payload with %s signature - handling.\n", (*it)->name());
+                Trace.printf("OK payload with %s signature - handling.\n", (*it)->name());
                 break;
             case ACSecurityHandler::FAIL:
             default:
                 Log.printf("Invalid/unknown payload or signature (%s) - failing.\n", (*it)->name());
                 goto _done;
                 break;
-        }
+        };
+    	Trace.printf("Post %s verify\n\tV=%s\n\tB=%s\n\tC=<%s>\n\tP=<%s>\n\tR=<%s>\n\t=<%s>\n",  
+		(*it)->name(), req->version, req->beat, req->cmd, req->payload, req->rest, payload);
     }
     if (r != ACSecurityHandler::OK) {
         Log.println("Unrecognized payload. Ignoring.");
         goto _done;
     }
     
+    Trace.printf("Post verify\n\tV=%s\n\tB=%s\n\tC=<%s>\n\tP=<%s>\n\tR=<%s>\n\t=<%s>\n", 
+	req->version, req->beat, req->cmd, req->payload, req->rest, payload);
+
     endOfCmd = index(req->rest, ' ');
     if (endOfCmd) {
         l = endOfCmd - req->rest;
@@ -303,8 +324,10 @@ void ACNode::process(const char * topic, const char * payload)
     //
     if (handle_cmd(req) == CMD_CLAIMED)
         goto _done;
-    
-    Log.printf("Do not know what to do with <%s>, ignoring.\n", payload);
+   
+    Log.printf("No handling of %s\n", payload);
+    Trace.printf("Bailing out on \n\tV=%s\n\tB=%s\n\tC=<%s>\n\tP=<%s>\n\tR=<%s>\n\t=<%s>\n", 
+	req->version, req->beat, req->cmd, req->payload, req->rest, payload);
     
 _done:
     delete req;

@@ -4,7 +4,7 @@
 #ifndef _H_MqttLogStream
 #define _H_MqttLogStream
 
-class MqttLogStream: public Print {
+class MqttLogStream: public ACLog {
   public:
     const char * name() { return "MqttLogStream"; }
     MqttLogStream(const char * prefix = "log", const char * moi = "moi");

@@ -84,7 +84,7 @@ SIG1::acauth_result_t SIG1::verify(ACRequest * req) {
 
     strncpy(req->version, sig, sizeof(req->version));
     strncpy(req->beat, beatString, sizeof(req->beat));
-    req->beatReceived = beat;
+    req->beatExtracted = beat;
     req->cmd[0] = '\0';
     strncpy(req->rest, buff, sizeof(req->rest));
 
@@ -115,7 +115,7 @@ SIG1::acauth_result_t SIG1::secure(ACRequest * req) {
 
 SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
     char beatAsString[ MAX_BEAT ];
-    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, req->beatReceived);
+    snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, req->beatExtracted);
     
     SHA256 sha256;
     sha256.reset();

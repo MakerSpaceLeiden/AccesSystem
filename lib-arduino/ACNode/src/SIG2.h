@@ -17,5 +17,8 @@ public:
     acauth_result_t verify(ACRequest * req);
     acauth_result_t secure(ACRequest * req);
     acauth_result_t cloak(ACRequest * req);
+
+private:
+    char _nonce[B64L(HASH_LENGTH)];
 };
 #endif

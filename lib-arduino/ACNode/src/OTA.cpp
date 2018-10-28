@@ -14,6 +14,8 @@ void OTA::begin() {
 
   ArduinoOTA.onStart([]() {
     Log.println("OTA process started.");
+    Log.stop();
+    Debug.stop();
   });
   ArduinoOTA.onEnd([]() {
     Log.println("OTA process completed. Resetting.");

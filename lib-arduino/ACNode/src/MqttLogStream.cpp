@@ -15,7 +15,7 @@ MqttLogStream::MqttLogStream(const char *prefix, const char * maoi) {
 	(_acnode->logpath && _acnode->logpath[0]) ? _acnode->logpath : "log", _acnode->moi);
   _logbuff[0] = 0; _at = 0;
   
-  Serial.printf("Sending output to logtopic %s\n", _logtopic);
+  Debug.printf("Sending output to logtopic %s\n", _logtopic);
   return;
 }
 
@@ -33,12 +33,16 @@ size_t MqttLogStream::write(uint8_t c) {
     _at = 0;
 
      char buff[256];
+#if 0 // This seems to take seconds. So disbaling for now.
      struct tm timeinfo;
      getLocalTime(&timeinfo);
     char * tstr = asctime(&timeinfo);
     tstr[strlen(tstr)-1] = '\0';
 
      snprintf(buff,sizeof(buff),"%s %s %s", tstr , _acnode->moi, _logbuff);
+#else
+     snprintf(buff,sizeof(buff),"%s %s", _acnode->moi, _logbuff);
+#endif
      _acnode->send(_logtopic, buff, true);
   }
   return 1;

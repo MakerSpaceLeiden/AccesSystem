@@ -6,9 +6,7 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
-#include <ETH.h>
 #include "WiredEthernet.h"
-
 #include <esp32-hal-gpio.h> // digitalWrite and friends L	.
 #else
 #include <ESP8266WiFi.h>
@@ -23,24 +21,37 @@
 
 #include <list>
 #include <vector>
+#include <algorithm>    // std::find
 
 #include <ACBase.h>
 
-#define B64D(base64str, bin, what) { \
+#define B64L(n) ((((4 * n / 3) + 3) & ~3)+1)
+
+#define B64DE(base64str, bin, what, errorOnReturn) { \
 if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
 Debug.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", \
 	sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
-return false; \
+return errorOnReturn; \
 }; \
 decode_base64((unsigned char *)base64str, bin); \
 }
 
+#define B64D(base64str, bin, what) { B64DE(base64str, bin, what, false); }
+
 #define SEP(tok, err, errorOnReturn) \
-char *  tok = strsepspace(&p); \
-if (!tok) { \
-Debug.printf("Malformed/missing " err ": %s]n", p ); \
-return errorOnReturn; \
+	char *  tok = strsepspace(&p); \
+	if (!tok) { \
+		Debug.printf("Malformed/missing " err ": %s\n", p ); \
+		return errorOnReturn; \
+	}; 
+
+#define SEPCPY(tok, err, errorOnReturn) \
+{ \
+	SEP(q, err, errorOnReturn); \
+	assert(sizeof(tok)>4); \
+	strncpy(tok, q, sizeof(tok)); \
 }
+
 extern char * strsepspace(char **p);
 extern const char *machinestateName[];
 
@@ -60,19 +71,36 @@ typedef enum {
     ACNODE_DEBUG
 } acnode_loglevel_t;
 
-class ACLog : public Print {
+class ACLog : public ACBase, public Print { // We should prolly split this in an aACLogger and a logging class
 public:
-    void addPrintStream(const std::shared_ptr<Print> &_handler) {
-        handlers.push_back(_handler);
+    void addPrintStream(const std::shared_ptr<ACLog> &_handler) {
+    	auto it = find(handlers.begin(), handlers.end(), _handler);
+        if ( handlers.end() == it) 
+        	handlers.push_back(_handler);
+    };
+    virtual void begin() {
+        for (auto it = handlers.begin(); it != handlers.end(); ++it) {
+            (*it)->begin();
+        }
+    };
+    virtual void loop() {
+        for (auto it = handlers.begin(); it != handlers.end(); ++it) {
+            (*it)->loop();
+        }
+    };
+    virtual void stop() {
+        for (auto it = handlers.begin(); it != handlers.end(); ++it) {
+            (*it)->stop();
+        }
     };
     size_t write(byte a) {
-        for (auto it = begin (handlers); it != end (handlers); ++it) {
+        for (auto it = handlers.begin(); it != handlers.end(); ++it) {
             (*it)->write(a);
         }
         return Serial.write(a);
     }
 private:
-    std::vector<std::shared_ptr<Print> > handlers;
+    std::vector<std::shared_ptr<ACLog> > handlers;
 };
 
 class ACNode : public ACBase {
@@ -89,6 +117,8 @@ public:
     
     ACNode(const char * ssid, const char * ssid_passwd);
     ACNode(bool wired);
+
+    IPAddress localIP() { if (_wired) return ETH.localIP(); else return WiFi.localIP(); };
     
     // Callbacks.
     typedef std::function<void(acnode_error_t)> THandlerFunction_Error;
@@ -141,7 +171,6 @@ private:
     THandlerFunction_Command _disconnect_command;
     
     WiFiClient _espClient;
-    // EthernetClient _ethClient;
     PubSubClient _client;
     
     void configureMQTT();

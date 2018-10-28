@@ -12,8 +12,8 @@ Beat::acauth_result_t Beat::verify(ACRequest * req)
     //const char * topic, const char * line, const char ** payload);
     char * p = index(req->rest,' ');
     beat_t  b = strtoul(req->rest,NULL,10);
-    size_t bl = req->rest - p;
-    
+    size_t bl = p - req->rest;
+
     if (!p || strlen(req->rest) < 10 || b == 0 || b == ULONG_MAX || bl > 12 || bl < 2) {
         Log.printf("Malformed beat <%s> - ignoring.\n", req->rest);
         return ACSecurityHandler::DECLINE;
@@ -38,6 +38,10 @@ Beat::acauth_result_t Beat::verify(ACRequest * req)
     size_t l = bl;
     if (bl >= sizeof(req->beat))
 	bl = sizeof(req->beat) -1;
+
+    p = req->rest;
+    while(*p == ' ') p++;
+
     strncpy(req->beat,req->rest, l);
     strcpy(req->rest, req->rest + bl);
     req->beatExtracted = b;
@@ -54,8 +58,9 @@ Beat::cmd_result_t Beat::handle_cmd(ACRequest * req) {
 
 Beat::acauth_result_t Beat::secure(ACRequest * req) {
     char tmp[sizeof(req->payload)];
-    
-    snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", beatCounter, req->payload);
+    beat_t bc = beatCounter;
+
+    snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", bc, req->payload);
     strncpy(req->payload, tmp, sizeof(req->payload));
     
     return Beat::PASS;

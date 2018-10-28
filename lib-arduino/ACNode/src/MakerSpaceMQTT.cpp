@@ -113,14 +113,14 @@ void ACNode::reconnectMQTT() {
     _client.subscribe(topic);
     Debug.print("Subscribed to ");
     Debug.println(topic);
-    
+   
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, master);
     _client.subscribe(topic);
     Debug.print("Subscribed to ");
     Debug.println(topic);
-    
+ 
     char buff[MAX_MSG];
-    IPAddress myIp = WiFi.localIP();
+    IPAddress myIp = _acnode->localIP();
     snprintf(buff, sizeof(buff), "announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
 
     ACRequest * req = new ACRequest(topic, buff);
@@ -237,17 +237,18 @@ void ACNode::mqttLoop() {
        for (it =_security_handlers.rbegin();
         it!=_security_handlers.rend() && r != ACSecurityHandler::OK;
         ++it) {
-        Debug.printf("PRE  %s: %s %s\n", (*it)->name(), reqOut->payload, reqOut->rest);
+// Debug.printf("PRE  %s: %s %s\n", (*it)->name(), reqOut->payload, reqOut->rest);
         r = (*it)->secure(reqOut);
         if (r == ACSecurityHandler::FAIL) {
             Log.printf("Adding signature to outbound failed (%s). Aborting.\n", (*it)->name());
             Log.printf("\t%s\n\t%s\n", reqOut->topic, reqOut->payload);
             goto _done_without_send;
         };
-        Debug.printf("POST %s: %s %s\n", (*it)->name(), reqOut->payload, reqOut->rest);
+// Debug.printf("POST %s: %s %s\n", (*it)->name(), reqOut->payload, reqOut->rest);
       }
     }
-    Debug.printf("[%s]%s>>: %s\n", reqOut->topic, rec->raw ? "r" : " ", reqOut->payload);
+    if (!rec->raw) 
+    	Debug.printf("[%s]%s>>: %s\n", reqOut->topic, rec->raw ? "r" : " ", reqOut->payload);
     
     _client.publish(reqOut->topic, reqOut->payload);
 

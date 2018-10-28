@@ -17,10 +17,10 @@ public:
         strncpy(payload, _payload, sizeof(payload));
         strncpy(rest, _payload, sizeof(payload));
     };
-    beat_t beatReceived;
     // raw data as/when received:
     char topic[MAX_MSG];
     char payload[MAX_MSG];
+
     // data as extracted from any payload.
     beat_t beatExtracted;
     char version[32];
@@ -28,7 +28,6 @@ public:
     char cmd[MAX_MSG];
     char rest[MAX_MSG];
     char tag[MAX_MSG];
-    
 };
 
 class ACBase {
@@ -39,6 +38,7 @@ public:
     
     virtual void begin() { return; };
     virtual void loop() { return; };
+    virtual void stop() { return; };
     
     virtual cmd_result_t handle_cmd(ACRequest * req) { return CMD_DECLINE; };
     
