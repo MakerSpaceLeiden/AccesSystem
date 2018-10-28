@@ -39,6 +39,8 @@ class ACNodeBase:
   client = None
   parser = None
   commands = {}
+  connected = False
+  lastConnectAttempt = 0
   forever = 0
   default_pidfile = "/var/run/master.pid"
   looptimeout = 0.2
@@ -169,9 +171,15 @@ class ACNodeBase:
 
   def on_disconnect(self,client,userdata,rc):
     self.logger.critical("Got disconnected: erro {}".format(rc));
-    self.client.reconnect()
+    self.connected = False
+    try: 
+       self.lastConnectAttempt = time.time()
+       self.client.reconnect()
+    except:
+       self.logger.critical("Failed to send reconnect after a disconnect.")
 
   def on_connect(self, client, userdata, flags, rc):
+    self.connected = True
     self.logger.info("(re)Connected to '" + self.cnf.mqtthost + "'")
     if self.cnf.node == self.cnf.master:
       self.subscribe(client,self.cnf.node + "/#" )
@@ -222,8 +230,6 @@ class ACNodeBase:
         'topic': message.topic,
         'payload': None,
         'validated': 0
-
-
     }
     try:
       self.logger.debug("<<<<Reccing @"+message.topic+":\n\t"+message.payload.decode('ASCII'))
@@ -257,7 +263,8 @@ class ACNodeBase:
         self.logger.debug("Handling command '{}' with {}:{}()".format(cmd,self.commands[cmd].__class__.__name__, self.commands[cmd].__name__))
         return self.commands[cmd](msg)
 
-    self.logger.debug("No mapping for {} - deferring <{}> for handling by {}".format(cmd, msg['payload'],self.__class__.__name__))
+    # self.logger.debug("No mapping for {} - deferring <{}> for handling by {}".format(cmd, msg['payload'],self.__class__.__name__))
+    self.logger.critical("Command {} ignored (and also not handled by {})".format(cmd, msg['payload'],self.__class__.__name__))
     return None
 
   # Capture SIGINT for cleanup when the script is aborted
@@ -272,21 +279,18 @@ class ACNodeBase:
       return(e)
 
   def connect(self):
+   self.logger.debug("Setting up the connection to '"+self.cnf.mqtthost+"'")
    try:
       self.client = mqtt.Client()
-      self.client.connect(self.cnf.mqtthost)
+      self.lastConnectAttempt = time.time()
       self.client.on_message = self.on_message
       self.client.on_connect = self.on_connect
       self.client.on_subscribe= self.on_subscribe
       self.client.on_disconnect = self.on_disconnect
+      self.client.connect(self.cnf.mqtthost)
    except:
-      self.logger.critical("MQTT connection setup to '"+self.cnf.mqtthost+"' failed:")
-      if self.cnf.verbose> 1 :
-        raise
+      self.logger.critical("MQTT connection setup to '"+self.cnf.mqtthost+"' failed, will retry")
 
-      sys.exit(1)
-
-   self.logger.debug("Setting up the connection to '"+self.cnf.mqtthost+"'")
 
   def loop(self):
     # We should consider using PAHO its 'External event loop support'
@@ -295,6 +299,13 @@ class ACNodeBase:
     # things like card swipes. While in fact for most use cases we can
     # make the sit-tight 'endless'.
     self.client.loop(timeout=self.looptimeout)
+
+    if not self.connected and time.time() - self.lastConnectAttempt > 10:
+       try:
+          self.lastConnectAttempt = time.time()
+          self.client.reconnect()
+       except:
+          self.logger.critical("Reconnect failed. Will retry.");
 
   def initialize(self):
     self.parseArguments()
