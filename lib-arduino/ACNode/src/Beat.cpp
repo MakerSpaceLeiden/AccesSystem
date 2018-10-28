@@ -6,6 +6,12 @@
 
 #include <ACNode.h>
 
+beat_t beat_absdelta(beat_t a, beat_t b) {
+	if (a > b)
+		return a - b;
+	return b - a;
+};
+
 
 Beat::acauth_result_t Beat::verify(ACRequest * req)
 {
@@ -19,7 +25,7 @@ Beat::acauth_result_t Beat::verify(ACRequest * req)
         return ACSecurityHandler::DECLINE;
     };
     
-    unsigned long delta = llabs((long long) b - (long long)beatCounter);
+    unsigned long delta = beat_absdelta(b, beatCounter);
     
     if ((beatCounter < 3600) || (delta < 120)) {
         beatCounter = b;

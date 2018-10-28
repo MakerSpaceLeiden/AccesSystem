@@ -9,7 +9,7 @@ ACNode * _acnode;
 ACLog Log;
 ACLog Debug;
 ACLog _Trace;
-#define Trace if (0) _Trace
+#define Trace if (1) Debug
 
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
@@ -226,6 +226,7 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
         
         snprintf(buff, sizeof(buff), "ack %s %s %d.%d.%d.%d", master, moi, myIp[0], myIp[1], myIp[2], myIp[3]);
         send(NULL, buff);
+	Debug.println("replied on the pick with an ack.");
         return ACNode::CMD_CLAIMED;
     }
     
@@ -290,6 +291,7 @@ void ACNode::process(const char * topic, const char * payload)
     Trace.printf("Post verify\n\tV=%s\n\tB=%s\n\tC=<%s>\n\tP=<%s>\n\tR=<%s>\n\t=<%s>\n", 
 	req->version, req->beat, req->cmd, req->payload, req->rest, payload);
 
+#if 0
     endOfCmd = index(req->rest, ' ');
     if (endOfCmd) {
         l = endOfCmd - req->rest;
@@ -301,14 +303,18 @@ void ACNode::process(const char * topic, const char * payload)
         strncpy(req->cmd,req->rest, sizeof(req->cmd));
         req->rest[0] = '\0';
     };
-    
+#endif
+    Trace.printf("Submitting command <%s> for handing\n", req->cmd);
+ 
     for (std::list<ACSecurityHandler *>::iterator  it =_security_handlers.begin();
          it!=_security_handlers.end();
          ++it)
     {
         cmd_result_t r = (*it)->handle_cmd(req);
-        if (r == CMD_CLAIMED)
+        if (r == CMD_CLAIMED) {
+	    Trace.printf("handled by sec handler %s\n", (*it)->name());
             goto _done;
+	};
     };
     
     for (std::list<ACBase *>::iterator it = _handlers.begin();
@@ -316,12 +322,15 @@ void ACNode::process(const char * topic, const char * payload)
          ++it)
     {
         cmd_result_t r = (*it)->handle_cmd(req);
-        if (r == CMD_CLAIMED)
+        if (r == CMD_CLAIMED) {
+	    Trace.printf("handled by plain handler %s\n", (*it)->name());
             goto _done;
+	};
     }
     
     // Try my own default things.
     //
+    Trace.printf("Not takers - ACNode does <%s>\n", req->cmd);
     if (handle_cmd(req) == CMD_CLAIMED)
         goto _done;
    

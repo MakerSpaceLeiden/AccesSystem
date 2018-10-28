@@ -485,20 +485,22 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     return ACSecurityHandler::FAIL;
   };
 
+  beat_t delta = beat_absdelta(req->beatExtracted,beatCounter);
   if (nonceOk) {
 	Debug.println("Verified nonce; so any beat ok.");
   }
-  else if (llabs(req->beatExtracted - beatCounter) <  10 ) { 
+  else if (delta < 10) {
 	Debug.println("Beat ok.");
   } 
   else if (strcmp(req->cmd, "announce") == 0) {
-	Debug.printf("beat too far off %lu/%lu - sending nonced welcome <%s>\n",
-		req->beatExtracted, beatCounter,_nonce);
+	Debug.printf("Beat too far off (%lu) - sending nonced welcome <%s>\n",
+		delta,_nonce);
         send_helo((char *)"welcome", _nonce, req->beatExtracted);
         return ACSecurityHandler::FAIL;
   }
    else {
-        Log.println("Beat is too far off - rejecting.");
+        Log.printf("Beat is too far off (%lu) - rejecting.\n", delta);
+	// or should we send a noned welcome to get back on track ?
         return ACSecurityHandler::FAIL;
   };
 
@@ -590,10 +592,11 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
 
 SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
 {
-    if (!strncmp("welcome", req->rest, 0)) {
+    if (!strncmp("welcome", req->cmd, 7)) {
         return CMD_CLAIMED;
     }
-    if (!strncmp("announce", req->rest, 0)) {
+    if (!strncmp("announce", req->cmd, 8)) {
+        send_helo("welcome",_nonce,0);
         return CMD_CLAIMED;
     }
     return CMD_DECLINE;

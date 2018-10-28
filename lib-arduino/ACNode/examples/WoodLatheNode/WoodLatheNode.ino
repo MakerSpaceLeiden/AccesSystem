@@ -22,8 +22,8 @@
 
 #define MAX_IDLE_TIME   (305 * 60 * 1000) // auto power off after 30 minutes of no use.
 
-#define LWIP_DHCP_GET_NTP_SRV 1
-#include "apps/sntp/sntp.h"
+// #define LWIP_DHCP_GET_NTP_SRV 1
+// #include "apps/sntp/sntp.h"
 
 #include <ACNode.h>
 // #include <MSL.h>
@@ -36,8 +36,11 @@
 
 #include <SyslogStream.h>
 #include <MqttLogStream.h>
+#include <TelnetSerialStream.h>
 
 #include "/Users/dirkx/.passwd.h"
+
+#undef WIFI_NETWORK
 
 #ifdef WIFI_NETWORK
 ACNode node = ACNode(WIFI_NETWORK, WIFI_PASSWD);
@@ -45,10 +48,9 @@ ACNode node = ACNode(WIFI_NETWORK, WIFI_PASSWD);
 ACNode node = ACNode(true);
 #endif
 
-OTA ota = OTA("FooBar");
+OTA ota = OTA(OTA_PASSWD);
 SIG2 sig2 = SIG2();
 Beat beat = Beat();
-
 
 typedef enum {
   BOOTING, SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
@@ -151,12 +153,15 @@ void setup() {
 
 #define Strncpy(dst,src) { strncpy(dst,src,sizeof(dst)); }
 
+  Strncpy(_acnode->mqtt_server, "space.makerspaceleiden.nl");
+
+  Strncpy(_acnode->mqtt_topic_prefix, "test");
+  Strncpy(_acnode->logpath, "log");
+
   Strncpy(_acnode->moi, "test-woodlathe");
-  Strncpy(_acnode->mqtt_server, "space.vijn.org");
   Strncpy(_acnode->machine, "test-woodlathe");
   Strncpy(_acnode->master, "test-master");
-  Strncpy(_acnode->logpath, "log");
-  Strncpy(_acnode->mqtt_topic_prefix, "test");
+
 
   aartLed.attach(100, blink);
 
@@ -202,20 +207,46 @@ void setup() {
   // default syslog port and destination (gateway address or broadcast address).
   //
   SyslogStream syslogStream = SyslogStream();
+#ifdef SYSLOG_HOST
+  syslogStream.setDestination(SYSLOG_HOST);
+  syslogStream.setRaw(true);
+#ifdef SYSLOG_PORT
+  syslogStream.setPort(SYSLOG_PORT);
+#endif
+#endif
   // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-  // Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
   // assumes the client connection for MQTT (and network, etc) is up - otherwise silenty fails/buffers.
   //
   MqttLogStream mqttlogStream = MqttLogStream("test", "moi");
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
+#if 0
+  // As the PoE devices have their own grounding - the cannot readily be connected
+  // to with a sericd Peral cable.  This allows for a telnet instead.
+  TelnetSerialStream telnetSerialStream = TelnetSerialStream();
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+#endif
+
   machinestate = BOOTING;
 
-  node.set_debug(true);
-  node.set_debugAlive(true);
+  // node.set_debug(true);
+  // node.set_debugAlive(true);
 
   node.begin();
+  
+  Debug.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  // secrit reset button.
+  pinMode(2, INPUT_PULLUP);
+  if (digitalRead(2) == LOW) {
+    extern void wipe_eeprom();
+    Log.println("Wiped EEPROM");
+    wipe_eeprom();
+  }
 }
 
 void loop() {
@@ -237,22 +268,35 @@ void loop() {
   }
 
   // We do not worry much about button bounce; as it is just an off
-  // we want to detect.
+  // we want to detect. But we'll go to some length to detect a
+  // lengthy anomaly - as to not fill up the logs iwth one report/second.
   //
   if (digitalRead(OFF_BUTTON) == LOW) {
-    if (machinestate == RUNNING) {
-      Log.printf("Machine switched off with button while running (not so nice)");
-    } else if (machinestate == POWERED) {
-      Log.printf("Machine switched off with button (normal)");;
-    } else {
-      Log.printf("Off button pressed (currently in state %s)",
-                 machinestateName[machinestate]);
+    static machinestates_t lastReport = NOTINUSE;
+    static unsigned long lastReportTime = 0;
+    static unsigned long reportDelay = 5000;
+    if (lastReport != machinestate || (millis() - lastReportTime > reportDelay)) {
+      lastReport = machinestate;
+      if (lastReport != machinestate)
+        reportDelay = 5000;
+      else if (reportDelay < 10 * 60 * 1000)
+        reportDelay *= 2;
+      lastReportTime = millis();
+      if (machinestate == RUNNING) {
+        Log.printf("Machine switched off with button while running (not so nice)\n");
+      } else if (machinestate == POWERED) {
+        Log.printf("Machine switched off with button (normal)\n");;
+      } else {
+        Log.printf("Off button pressed (currently in state %s)\n",
+                   machinestateName[machinestate]);
+      }
+
     }
     machinestate = WAITINGFORCARD;
   };
 
   if (laststate != machinestate) {
-    Log.printf("Changing from state %s to state %s)",
+    Log.printf("Changing from state %s to state %s)\n",
                machinestateName[laststate], machinestateName[machinestate]);
     laststate = machinestate;
     laststatechange = millis();
@@ -282,7 +326,7 @@ void loop() {
 
     case POWERED:
       if ((millis() - laststatechange) > MAX_IDLE_TIME) {
-        Log.printf("Machine idle for too long - switching off..");
+        Log.printf("Machine idle for too long - switching off..\n");
         machinestate = WAITINGFORCARD;
       }
       break;

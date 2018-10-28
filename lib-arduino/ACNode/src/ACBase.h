@@ -8,6 +8,7 @@
 
 typedef unsigned long beat_t;
 extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
+extern beat_t beat_absdelta(beat_t a, beat_t b);
 
 class ACRequest {
 public:
