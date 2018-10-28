@@ -106,8 +106,13 @@ class TrustOnFirstContact(Beat.Beat):
      signature = self.cnf.privatekey.sign(payload.encode('ASCII'))
      signature = base64.b64encode(signature).decode('ASCII')
 
+     self.logger.debug(" ** Payload=<{}>".format(payload.encode('ASCII')));
+     self.logger.debug(" ** Signature=<{}>".format(signature.encode('ASCII')));
+     self.logger.debug(" ** Pubkey=<{}>".format(base64.b64encode(self.cnf.publickey.to_bytes())))
+
      payload =  "SIG/2.0 "+signature+" "+payload
-     
+
+
      super().send(dstnode, payload, raw=True)
 
   def extract_validated_payload(self, msg):
@@ -144,9 +149,13 @@ class TrustOnFirstContact(Beat.Beat):
     # without validating the signature.
     #
     seskey = None
+    nonce = None
     if cmd == 'announce' or cmd == 'welcome':
             try:
-                cmd, ip, pubkey, seskey  = clean_payload.split(" ")
+                # if cmd == 'welcome':
+                    cmd, ip, pubkey, seskey, nonce  = clean_payload.split(" ")
+                #else:
+                #    cmd, ip, pubkey, seskey = clean_payload.split(" ")
 
             except Exception as e:
                 self.logger.error("Error parsing announce. Ignored. "+str(e))
@@ -166,7 +175,7 @@ class TrustOnFirstContact(Beat.Beat):
 
             if msg['node'] in self.pubkeys:
                 if self.pubkeys[msg['node']] != publickey:
-                   self.logger.info ("Ignoring (changed) public key of node {}".format(msg['node']))
+                   self.logger.critical("Ignoring (changed) public key of node {}".format(msg['node']))
                    return None
             else:
                  self.logger.debug("Potentially learned a public key of node {} on first contact - checking signature next.".format(msg['node']))
@@ -201,9 +210,12 @@ class TrustOnFirstContact(Beat.Beat):
         else:
         	self.logger.warning("Does NOT match the key recorded for node {}.".format(msg['node']))
 
-    if (cmd == 'announce' or cmd == 'welcome') and seskey:
-        session_key = curve.calculateAgreement(self.session_priv, seskey)
-        self.sharedkey[ msg['node'] ] = hashlib.sha256(session_key).digest()
+    if (cmd == 'announce' or cmd == 'welcome'):
+        if (seskey): 
+            session_key = curve.calculateAgreement(self.session_priv, seskey)
+            self.sharedkey[ msg['node'] ] = hashlib.sha256(session_key).digest()
+            if (nonce):
+                    self.send_tofu('welcome', msg['node'], nonce)
 
         self.logger.debug("(Re)calculated shared secret with node {}.".format(msg['node']))
 
@@ -220,13 +232,13 @@ class TrustOnFirstContact(Beat.Beat):
             self.logger.debug('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
    return msg
 
-  def send_tofu(self, prefix, dstnode):
+  def send_tofu(self, prefix, dstnode, nonce = ""):
     bp = self.cnf.publickey.to_bytes();
     bp = base64.b64encode(bp).decode('ASCII')
-    
     sp = base64.b64encode(self.session_pub).decode('ASCII')
-    
-    return self.send(dstnode, prefix + " " + socket.gethostbyname(socket.gethostname()) + " " + bp + " " + sp)
+    if nonce: nonce = " " + nonce
+
+    return self.send(dstnode, prefix + " " + socket.gethostbyname(socket.gethostname()) + " " + bp + " " + sp + nonce)
 
 
   def session_decrypt(self, msg, cyphertext):
@@ -256,15 +268,10 @@ class TrustOnFirstContact(Beat.Beat):
   def announce(self,dstnode):
     self.send_tofu('announce', dstnode)
 
-  def welcome(self,dstnode):
-    self.send_tofu('welcome', dstnode)
-
   def cmd_welcome(self, msg):
-    # self.tofu(msg)
     pass
 
   def cmd_announce(self,msg):
-    self.welcome(msg['node'])
     return super().cmd_announce(msg)
 
 # Allow this class to auto instanciate if
