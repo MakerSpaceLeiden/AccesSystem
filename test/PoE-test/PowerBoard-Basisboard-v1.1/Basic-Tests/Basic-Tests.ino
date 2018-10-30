@@ -1,5 +1,5 @@
 // https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
-#define AART_LED        (GPIO_NUM_4)
+#define AART_LED        (GPIO_NUM_16)
 #define RELAY           (GPIO_NUM_5)
 #define CURRENT_COIL    (GPIO_NUM_15)
 #define SW2             (GPIO_NUM_2)
@@ -21,9 +21,9 @@ void loop() {
 {
     static unsigned long aartLedLastChange = 0;
     static int aartLedState = 0;
-    if (millis() - aartLedLastChange > 1000) {
+    if (millis() - aartLedLastChange > 100) {
       aartLedState = (aartLedState + 1) & 7;
-      digitalWrite(AART_LED, aartLedState == 0 ? HIGH : LOW);
+      digitalWrite(AART_LED, aartLedState ? HIGH : LOW);
       aartLedLastChange = millis();
     };
   }

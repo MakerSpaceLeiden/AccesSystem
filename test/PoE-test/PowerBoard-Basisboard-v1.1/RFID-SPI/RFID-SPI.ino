@@ -52,7 +52,7 @@ void loop() {
     last = millis();
     Serial.println("scanning.");
 #ifdef RFID_IRQ_PIN
-    // kick off a background scan.
+    // kick off a background scan. again.
     reader.PCD_WriteRegister(reader.FIFODataReg, reader.PICC_CMD_REQA);
     reader.PCD_WriteRegister(reader.CommandReg, reader.PCD_Transceive);
     reader.PCD_WriteRegister(reader.BitFramingReg, 0x87);
@@ -76,7 +76,9 @@ void loop() {
 
   // Dump debug info about the card; PICC_HaltA() is automatically called
   reader.PICC_DumpToSerial(&(reader.uid));
+
 #ifdef RFID_IRQ_PIN
+  // clear the interupt and re-arm the reader.
   reader.PCD_WriteRegister(reader.ComIrqReg, 0x7F);
   reader.PICC_HaltA();
   bNewInt = false;
