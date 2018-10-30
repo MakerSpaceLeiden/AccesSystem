@@ -107,6 +107,15 @@ class ACNode : public ACBase {
 public:
     const char * name() { return "ACNode"; }
 
+    void set_mqtt_host(const char *p);
+    void set_mqtt_port(uint16_t p);
+    void set_mqtt_prefix(const char *p);
+    void set_mqtt_log(const char *p);
+
+    void set_moi(const char *p);
+    void set_machine(const char *p);
+    void set_master(const char *p);
+
     uint16_t mqtt_port;
     char moi[MAX_NAME];
     char mqtt_server[MAX_HOST];
@@ -186,6 +195,8 @@ private:
     void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
+    void pop();
+
     const char * state2str(int state);
     
     // We register a bunch of handlers - rather than calling them

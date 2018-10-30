@@ -12,17 +12,41 @@ ACLog Debug;
 
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
+void ACNode::pop() {
+    strncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
+    mqtt_port = MQTT_DEFAULT_PORT;
+
+    moi[0] = 0;
+    machine[0] = 0;
+
+    strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
+
+    strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
+    strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
+};
+
+void ACNode::set_mqtt_host(const char *p) { strncpy(mqtt_server,p, sizeof(mqtt_server)); };
+void ACNode::set_mqtt_port(uint16_t p)  { mqtt_port = p; };
+void ACNode::set_mqtt_prefix(const char *p)  { strncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix)); };
+void ACNode::set_mqtt_log(const char *p)  { strncpy(logpath,p, sizeof(logpath)); };
+void ACNode::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
+void ACNode::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
+void ACNode::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
+
 ACNode::ACNode(bool wired) :
 _ssid(NULL), _ssid_passwd(NULL), _wired(wired)
 {
     _acnode = this;
+    pop();
 }
 
 ACNode::ACNode(const char * ssid , const char * ssid_passwd ) :
 _ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false)
 {
     _acnode = this;
+    pop();
 }
+
 
 void send(const char * topic, const char * payload) {
     _acnode->send(topic,payload);
@@ -58,7 +82,15 @@ void ACNode::begin() {
         Debug.println("starting up ethernet");
         eth_setup();
     };
-    
+    if (!*machine)  {
+	strncpy(machine, "unset-machine-name", sizeof(moi));
+        if (!*moi) 
+	   strncpy(machine, "unset-node-name", sizeof(moi));
+    };
+   
+    if (!*moi) 
+	strncpy(moi,machine, sizeof(moi));
+ 
 #ifdef CONFIGAP
     configBegin();
     
@@ -171,7 +203,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 		operation = "energize";
 
 	if (target == NULL) 
-		target = _acnode->machine;
+		target = machine;
 
 	char tmp[MAX_MSG];
 	strncpy(tmp, tag, sizeof(tmp));

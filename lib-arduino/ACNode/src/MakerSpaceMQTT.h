@@ -50,6 +50,26 @@
 #define HASH_LENGTH SHA256_BLOCK_SIZE
 #endif
 
+#ifndef MQTT_SERVER
+#define MQTT_SERVER 	 "space.makerspaceleiden.nl"
+#endif
+
+#ifndef MQTT_TOPIC_PREFIX 
+#define MQTT_TOPIC_PREFIX "test"
+#endif
+
+#ifndef MQTT_TOPIC_LOG
+#define MQTT_TOPIC_LOG 	   "log"
+#endif
+
+#ifndef MQTT_TOPIC_MASTER
+#define MQTT_TOPIC_MASTER "master"
+#endif
+
+#ifndef MQTT_DEFAULT_PORT
+#define MQTT_DEFAULT_PORT (1883)
+#endif
+
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 #define MAX_HOST       128
@@ -60,7 +80,4 @@
 #define BEATFORMAT     "%012lu" // hard-coded - it is part of the HMAC */
 #define MAX_BEAT       16
 
-#ifndef MQTT_DEFAULT_PORT
-#define MQTT_DEFAULT_PORT (1883)
-#endif
 

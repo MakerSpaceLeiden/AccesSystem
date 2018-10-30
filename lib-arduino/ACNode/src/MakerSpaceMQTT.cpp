@@ -143,6 +143,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
 void ACNode::configureMQTT()  {
     if (ACNode::moi == NULL || *ACNode::moi == 0)
 	strncpy(moi,"no-mqtt-client-id-set",sizeof(moi));
+
     if (mqtt_port ==0)
 	mqtt_port = MQTT_DEFAULT_PORT;
 

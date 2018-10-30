@@ -14,23 +14,12 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-// https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
-
-#define CURRENT_GPIO    (24)  // Analog in - current
-#define RELAY_GPIO      ( 5)  // output
-#define TRIAC_GPIO      ( 4)  // output
-#define AART_LED        (16)  // superfluous indicator LED.
-#define SW1_BUTTON      (02)
-#define SW2_BUTTON      (39)
-#define OPTO1           (34)
-#define OPTO2           (35)
+// Wiring of Power Node v.1.1
+//
+#include <PowerNodeV11.h>
 
 #define OFF_BUTTON      (SW1_BUTTON)
-
 #define MAX_IDLE_TIME   (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-
-// #define LWIP_DHCP_GET_NTP_SRV 1
-// #include "apps/sntp/sntp.h"
 
 #include <ACNode.h>
 // #include <MSL.h>
@@ -166,17 +155,12 @@ void setup() {
   pinMode(CURRENT_GPIO, INPUT); // analog input.
   pinMode(OFF_BUTTON, INPUT_PULLUP);
 
+  // the default is space.makerspaceleiden.nl, prefix test
+  // node.set_mqtt_host("laptop");
+  // node.set_mqtt_prefix("test-1234");
 
-#define Strncpy(dst,src) { strncpy(dst,src,sizeof(dst)); }
-
-  Strncpy(_acnode->mqtt_server, "space.makerspaceleiden.nl");
-
-  Strncpy(_acnode->mqtt_topic_prefix, "test");
-  Strncpy(_acnode->logpath, "log");
-
-  Strncpy(_acnode->moi, "test-woodlathe");
-  Strncpy(_acnode->machine, "test-woodlathe");
-  Strncpy(_acnode->master, "test-master");
+  node.set_machine("test-woodlathe");
+  node.set_master("test-master");
 
   aartLed.attach(100, blink);
 
@@ -217,6 +201,7 @@ void setup() {
 #endif
   // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
   Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
   // assumes the client connection for MQTT (and network, etc) is up - otherwise silenty fails/buffers.
   //
@@ -254,8 +239,7 @@ void setup() {
   Debug.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 
   // secrit reset button.
-  pinMode(2, INPUT_PULLUP);
-  if (digitalRead(2) == LOW) {
+  if (digitalRead(SW2_BUTTON) == LOW) {
     extern void wipe_eeprom();
     Log.println("Wiped EEPROM");
     wipe_eeprom();
@@ -298,7 +282,7 @@ void loop() {
 
   if (laststate != machinestate) {
     Debug.printf("Changing from state <%s> to state <%s>\n",
-               machinestateName[laststate], machinestateName[machinestate]);
+                 machinestateName[laststate], machinestateName[machinestate]);
     laststate = machinestate;
     laststatechange = millis();
   }
@@ -311,15 +295,6 @@ void loop() {
   if (machinestate >= POWERED) {
     blinkstate = ON;
     digitalWrite(AART_LED, 1);
-  }
-
-  pinMode(39, INPUT);
-  if (digitalRead(39) == HIGH) {
-    static int last = 0;
-    if (millis() - last > 1000) {
-      last  = millis();
-      node.send("SW2 pressed");
-    }
   }
 
   switch (machinestate) {
