@@ -8,8 +8,7 @@
 ACNode * _acnode;
 ACLog Log;
 ACLog Debug;
-ACLog _Trace;
-#define Trace if (1) Debug
+#define Trace if (0) Debug
 
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
@@ -110,9 +109,8 @@ void ACNode::begin() {
     }
     if(_ssid)
         Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
-    
-    Log.print("IP address: ");
-    Log.println(localIP());
+   
+    Log.print(moi); Log.print(" "); Log.println(localIP());
  
     Log.begin();
     Debug.begin(); 
@@ -132,23 +130,64 @@ void ACNode::begin() {
     {
         std::list<ACBase *>::iterator it;
         for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
+   	    Debug.printf("%s.begin()\n", (*it)->name());
             (*it)->begin();
         }
     }
 }
 
-char * ACNode::cloak(char tag[MAX_MSG]  ) {
+char * ACNode::cloak(char * tag) {
     ACRequest q = ACRequest();
     strncpy(q.tag, tag, sizeof(q.tag));
     std::list<ACSecurityHandler *>::iterator it;
     for (it =_security_handlers.begin(); it!=_security_handlers.end(); ++it) {
         int r = (*it)->cloak(&q);
-        if (r != 0)
-            return NULL;
+        switch(r) {
+            case ACSecurityHandler::DECLINE:
+                break;
+            case ACSecurityHandler::PASS:
+                break;
+            case ACSecurityHandler::OK:
+		Debug.printf("%s -> %s cloaked by %s\n", q.tag, tag, (*it)->name());
+    		strncpy(tag, q.tag, MAX_MSG);
+		return tag;
+                break;
+            case ACSecurityHandler::FAIL:
+            default:
+                Log.printf("Erorr during cloaking (%s) - failing.\n", (*it)->name());
+                return NULL;
+                break;
+        };
     }
-    strncpy(tag, q.tag, MAX_MSG);
-    return tag;
+    return NULL;
 }
+
+void ACNode::request_approval(const char * tag, const char * operation, const char * target) { 
+	if (tag == NULL) {
+		Log.println("invalid tag==NULL passed, approval request not sent");
+		return;
+	};
+ 	if (operation == NULL) 
+		operation = "energize";
+
+	if (target == NULL) 
+		target = _acnode->machine;
+
+	char tmp[MAX_MSG];
+	strncpy(tmp, tag, sizeof(tmp));
+	if (!(cloak(tmp))) {
+		Log.println("Coud not cloak the tag, approval request not sent");
+		return;
+	};
+
+	Trace.printf("Requestion approval for %s at node %s on machine %s by tag %s\n", operation, moi, target, tag);
+
+        char buff[MAX_MSG];
+	snprintf(buff,sizeof(buff),"%s %s %s %s", operation, moi, target, tmp);
+
+        _lastSwipe = beatCounter;
+	send(NULL,buff);
+};
 
 void ACNode::loop() {
     {
@@ -229,7 +268,42 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
 	Debug.println("replied on the pick with an ack.");
         return ACNode::CMD_CLAIMED;
     }
-    
+    bool app = !strcasecmp("approved",req->cmd);
+    bool den = !strcasecmp("denied", req->cmd);
+
+    if (app || den) {
+      char tmp[MAX_MSG], *p = tmp;
+      strncpy(tmp, req->rest, sizeof(tmp));
+
+      SEP(action, "No action in approval command", ACNode::CMD_CLAIMED)
+      SEP(machine, "No machine-name in approval command", ACNode::CMD_CLAIMED);
+      SEP(bcstr, "No nonce/beat in approval command", ACNode::CMD_CLAIMED);
+      beat_t bc = strtoul(bcstr, NULL, 10);
+
+      if (beat_absdelta(beatCounter, _lastSwipe) > 60)  {
+          Log.printf("Stale energize/denied command received - ignored.\n");
+          return ACNode::CMD_CLAIMED;
+      };
+
+      if (bc != _lastSwipe) {
+          Log.printf("Out of order energize/denied command received - ignored.\n");
+          return ACNode::CMD_CLAIMED;
+      };
+
+      if (app) {
+         Log.printf("Received OK to power on %s\n", machine);
+         if (_approved_callback) {
+		_approved_callback(machine);
+        	return ACNode::CMD_CLAIMED;
+         };
+     } else {
+         Log.printf("Received a DENID to power on %s\n", machine);
+         if (_denied_callback) {
+		_denied_callback(machine);
+        	return ACNode::CMD_CLAIMED;
+         };
+     }
+    }
 #if 0
     if (!strcmp("outoforder", req->cmd)) {
         machinestate = OUTOFORDER;
@@ -238,15 +312,13 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
     }
 #endif
     return ACNode::CMD_DECLINE;
-    
 }
 
 void ACNode::process(const char * topic, const char * payload)
 {
     size_t length = strlen(payload);
-    size_t l = 0;
-    char * endOfCmd = NULL;
-    
+    char * p;
+   
     Debug.print("["); Debug.print(topic); Debug.print("] <<: ");
     Debug.print((char *)payload);
     Debug.println();
@@ -276,7 +348,8 @@ void ACNode::process(const char * topic, const char * payload)
                 break;
             case ACSecurityHandler::FAIL:
             default:
-                Log.printf("Invalid/unknown payload or signature (%s) - failing.\n", (*it)->name());
+		// rely on the handler to have already done a more meaningful Log. message.
+                Debug.printf("Invalid/unknown payload or signature (%s) - failing.\n", (*it)->name());
                 goto _done;
                 break;
         };
@@ -287,23 +360,18 @@ void ACNode::process(const char * topic, const char * payload)
         Log.println("Unrecognized payload. Ignoring.");
         goto _done;
     }
-    
+
+    // We have a validatd command; so make rest purely the arguments.
+    // not sure if we should do this here - or within each handler.
+    p = index(req->rest,' ');
+    if (p) {
+	while(*p == ' ') p++;
+	strncpy(req->rest, p, sizeof(req->rest));
+    };
+
     Trace.printf("Post verify\n\tV=%s\n\tB=%s\n\tC=<%s>\n\tP=<%s>\n\tR=<%s>\n\t=<%s>\n", 
 	req->version, req->beat, req->cmd, req->payload, req->rest, payload);
 
-#if 0
-    endOfCmd = index(req->rest, ' ');
-    if (endOfCmd) {
-        l = endOfCmd - req->rest;
-        if (l >= sizeof(req->cmd))
-            l = sizeof(req->cmd);
-        strncpy(req->cmd, req->rest, l);
-        strncpy(req->rest, req->rest + l +1, sizeof(req->rest));
-    } else {
-        strncpy(req->cmd,req->rest, sizeof(req->cmd));
-        req->rest[0] = '\0';
-    };
-#endif
     Trace.printf("Submitting command <%s> for handing\n", req->cmd);
  
     for (std::list<ACSecurityHandler *>::iterator  it =_security_handlers.begin();
@@ -317,6 +385,17 @@ void ACNode::process(const char * topic, const char * payload)
 	};
     };
     
+    Trace.printf("Callback: \tV=%s\n\tB=%s\n\tC=<%s>\n\tP=<%s>\n\tR=<%s>\n\tP=<%s>\n\n", 
+	req->version, req->beat, req->cmd, req->payload, req->rest, payload);
+
+    if (_command_callback) {
+       cmd_result_t t = _command_callback(req->cmd, req->rest);
+       if (t == CMD_CLAIMED) {
+	    Trace.printf("handled by callback\n");
+            goto _done;
+       }
+    };
+
     for (std::list<ACBase *>::iterator it = _handlers.begin();
          it != _handlers.end();
          ++it)
@@ -328,16 +407,10 @@ void ACNode::process(const char * topic, const char * payload)
 	};
     }
     
-    // Try my own default things.
-    //
-    Trace.printf("Not takers - ACNode does <%s>\n", req->cmd);
     if (handle_cmd(req) == CMD_CLAIMED)
         goto _done;
-   
-    Log.printf("No handling of %s\n", payload);
-    Trace.printf("Bailing out on \n\tV=%s\n\tB=%s\n\tC=<%s>\n\tP=<%s>\n\tR=<%s>\n\t=<%s>\n", 
-	req->version, req->beat, req->cmd, req->payload, req->rest, payload);
-    
+ 
+    Log.printf("Command %s ignored.\n", req->cmd); 
 _done:
     delete req;
     return;

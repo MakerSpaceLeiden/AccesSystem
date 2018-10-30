@@ -262,7 +262,7 @@ class TrustOnFirstContact(Beat.Beat):
         return pkcs7_unpad(cipher.decrypt(cyphertext).decode())
         
     except Exception as e:
-        self.logger.error("Error in decryption: {}".format(str(e)))
+        self.logger.error("Error in decryption of {}: {}".format(cyphertext, str(e)))
         return None
         
   def announce(self,dstnode):

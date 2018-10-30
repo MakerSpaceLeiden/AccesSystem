@@ -170,7 +170,7 @@ class ACNodeBase:
     return self.send(dstnode, "announce " + socket.gethostbyname(socket.gethostname()));
 
   def on_disconnect(self,client,userdata,rc):
-    self.logger.critical("Got disconnected: erro {}".format(rc));
+    self.logger.critical("Got disconnected: error {}".format(rc));
     self.connected = False
     try: 
        self.lastConnectAttempt = time.time()
@@ -264,7 +264,7 @@ class ACNodeBase:
         return self.commands[cmd](msg)
 
     # self.logger.debug("No mapping for {} - deferring <{}> for handling by {}".format(cmd, msg['payload'],self.__class__.__name__))
-    self.logger.critical("Command {} ignored (and also not handled by {})".format(cmd, msg['payload'],self.__class__.__name__))
+    self.logger.critical("Command {} ignored (and also not handled by {})".format(cmd ,self.__class__.__name__))
     return None
 
   # Capture SIGINT for cleanup when the script is aborted

@@ -127,15 +127,21 @@ public:
     
     typedef std::function<void(void)> THandlerFunction_Connect;
     ACNode& onConnect(THandlerFunction_Connect fn)
-    { _connect_callback = fn; return *this; };
+	    { _connect_callback = fn; return *this; };
     
     typedef std::function<void(void)> THandlerFunction_Disconnect;
     ACNode& onDisconnect(THandlerFunction_Disconnect fn)
-    { _disconnect_callback = fn; return *this; };
+	    { _disconnect_callback = fn; return *this; };
     
-    typedef std::function<void(const char *cmd, const char * rest)> THandlerFunction_Command;
+    typedef std::function<cmd_result_t(const char *cmd, const char * rest)> THandlerFunction_Command;
     ACNode& onValidatedCmd(THandlerFunction_Command fn)
-    { _disconnect_command = fn; return *this; };
+	    { _command_callback = fn; return *this; };
+
+    typedef std::function<void(const char *msg)> THandlerFunction_SimpleCallback;
+    ACNode& onApproval(THandlerFunction_SimpleCallback fn)
+	    { _approved_callback = fn; return *this; };
+    ACNode& onDenied(THandlerFunction_SimpleCallback fn)
+	    { _denied_callback = fn; return *this; };
     
     void loop();
     void begin();
@@ -143,9 +149,10 @@ public:
     
     void addHandler(ACBase *handler);
     void addSecurityHandler(ACSecurityHandler *handler);
-    
-    char * cloak(char tag[MAX_MSG]);
-    
+   
+    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL);
+
+    char * cloak(char *tag);
     
     void set_debugAlive(bool debug);
     bool isConnected(); // ethernet/wifi is up with valid IP.
@@ -155,6 +162,7 @@ public:
     // singleton. Once that it solved it should really
     // become private again.
     //
+    void send( const char * payload) { send(NULL, payload, false); };
     void send(const char * topic, const char * payload, bool raw = false);
     
     // This function should be private - but we're calling
@@ -168,8 +176,10 @@ private:
     THandlerFunction_Error _error_callback;
     THandlerFunction_Connect _connect_callback;
     THandlerFunction_Disconnect _disconnect_callback;
-    THandlerFunction_Command _disconnect_command;
-    
+    THandlerFunction_SimpleCallback _approved_callback, _denied_callback;
+    THandlerFunction_Command _command_callback;
+
+    beat_t _lastSwipe;    
     WiFiClient _espClient;
     PubSubClient _client;
     

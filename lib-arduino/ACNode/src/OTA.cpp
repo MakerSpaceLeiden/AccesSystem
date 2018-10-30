@@ -21,7 +21,12 @@ void OTA::begin() {
     Log.println("OTA process completed. Resetting.");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u\n", (progress / (total / 100)));
+    static int lp = 0;
+    int p = (int)(10. * progress / total + 0.5);
+    if (p != lp) {
+	lp = p;
+        Serial.printf("Progress: %u\n", (progress / (total / 100)));
+    };
   });
   ArduinoOTA.onError([](ota_error_t error) {
     Log.printf("Error[%u]: ", error);
@@ -36,13 +41,8 @@ void OTA::begin() {
     };
   });
   
-#ifdef  ESP32_PRE_CP
-  ArduinoOTA.begin(TCPIP_ADAPTER_IF_ETH);
-  Log.println("OTA Enabled on the wired Ethernet interface");
-#else
   ArduinoOTA.begin();
-  Log.println("OTA Enabled");
-#endif
+  Debug.println("OTA Enabled");
 }
 
 void OTA::loop() {

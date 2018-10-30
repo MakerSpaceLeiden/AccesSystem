@@ -9,6 +9,12 @@ bool eth_connected () {
 void WiFiEvent(WiFiEvent_t event)
 {
   switch (event) {
+    case SYSTEM_EVENT_WIFI_READY:
+      Log.println("Wifi ready");
+      break;
+    case SYSTEM_EVENT_STA_START:
+      Log.println("Wifi Started");
+      break;
     case SYSTEM_EVENT_ETH_START:
       Log.println("ETH Started");
       //set eth hostname here

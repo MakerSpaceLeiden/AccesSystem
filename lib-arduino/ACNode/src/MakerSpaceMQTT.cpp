@@ -5,17 +5,6 @@
 #endif
 
 
-char mqtt_server[34] = "space.vijn.org";
-uint16_t mqtt_port = MQTT_DEFAULT_PORT;
-
-// MQTT topics are constructed from <prefix> / <dest> / <sender>
-//
-char mqtt_topic_prefix[MAX_TOPIC] = "test";
-char machine[MAX_NAME] = "fan";
-char master[MAX_NAME] = "master";    // Destination for commands
-char logpath[MAX_NAME] = "log";       // Destination for human readable text/logging info.
-
-
 // We're having a bit of an issue with publishing within/near the reconnect and mqtt callback. So we
 // queue the message up - to have them send in the runloop; much later. We also do the signing that
 // late - as this also seeems to occasionally hit some (stackdepth?) limit.
@@ -97,7 +86,7 @@ const char * ACNode::state2str(int state) {
 }
 
 void ACNode::reconnectMQTT() {
-    Debug.printf("Attempting MQTT connection of <%s> to %s:%d (MQTT State : %s)\n",
+    Log.printf("Conecting <%s> to %s:%d (MQTT State : %s)\n",
 		ACNode::moi, mqtt_server, mqtt_port, 
 		state2str(_client.state()));
     
@@ -119,6 +108,7 @@ void ACNode::reconnectMQTT() {
     Debug.print("Subscribed to ");
     Debug.println(topic);
  
+#if 0
     char buff[MAX_MSG];
     IPAddress myIp = _acnode->localIP();
     snprintf(buff, sizeof(buff), "announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
@@ -145,6 +135,7 @@ void ACNode::reconnectMQTT() {
         }
     }
     send(topic, buff);
+#endif
 }
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
@@ -163,10 +154,12 @@ char * strsepspace(char **p) {
     char *q = *p;
     if (p == NULL || *p == NULL)
 	return NULL;
+    //while(**p == ' ') (*p)++;
     while (**p && **p != ' ') {
         (*p)++;
     };
     if (**p && **p == ' ') {
+	// while(**p == ' ') (*p)++;
         **p = 0;
         (*p)++;
         return q;

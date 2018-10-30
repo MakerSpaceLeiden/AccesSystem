@@ -45,11 +45,11 @@ Beat::acauth_result_t Beat::verify(ACRequest * req)
     if (bl >= sizeof(req->beat))
 	bl = sizeof(req->beat) -1;
 
-    p = req->rest;
+    p = req->rest + bl;
     while(*p == ' ') p++;
 
     strncpy(req->beat,req->rest, l);
-    strcpy(req->rest, req->rest + bl);
+    strncpy(req->rest, p, sizeof(req->rest));
     req->beatExtracted = b;
     
     return ACSecurityHandler::OK;

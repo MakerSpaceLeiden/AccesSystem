@@ -14,13 +14,20 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
+// https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
 
 #define CURRENT_GPIO    (24)  // Analog in - current
-#define RELAY_GPIO       (5)  // output
-#define OFF_BUTTON       (4)
+#define RELAY_GPIO      ( 5)  // output
+#define TRIAC_GPIO      ( 4)  // output
 #define AART_LED        (16)  // superfluous indicator LED.
+#define SW1_BUTTON      (02)
+#define SW2_BUTTON      (39)
+#define OPTO1           (34)
+#define OPTO2           (35)
 
-#define MAX_IDLE_TIME   (305 * 60 * 1000) // auto power off after 30 minutes of no use.
+#define OFF_BUTTON      (SW1_BUTTON)
+
+#define MAX_IDLE_TIME   (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 
 // #define LWIP_DHCP_GET_NTP_SRV 1
 // #include "apps/sntp/sntp.h"
@@ -32,7 +39,12 @@
 
 #include <Beat.h>
 #include <OTA.h>
-#include <RFID.h>
+
+#ifdef RFID_I2C
+#include <RFID-i2c.h> // i2c version
+#else
+#include <RFID.h>   // SPI version
+#endif
 
 #include <SyslogStream.h>
 #include <MqttLogStream.h>
@@ -51,6 +63,8 @@ ACNode node = ACNode(true);
 OTA ota = OTA(OTA_PASSWD);
 SIG2 sig2 = SIG2();
 Beat beat = Beat();
+RFID reader = RFID();
+
 
 typedef enum {
   BOOTING, SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
@@ -72,7 +86,7 @@ const char *machinestateName[NOTINUSE] = {
 };
 
 unsigned long laststatechange = 0;
-static machinestates_t laststate = OUTOFORDER;
+static machinestates_t laststate = BOOTING;
 machinestates_t machinestate = BOOTING;
 
 #define SLOW_PERIOD (300)
@@ -81,6 +95,7 @@ typedef enum { NONE, SLOW, HEARTBEAT, FAST, ON } blinkpattern_t;
 blinkpattern_t blinkstate = FAST;
 Ticker aartLed;
 
+beat_t lastSwipe;
 
 #ifdef  ESP32
 // The ESP32 does not yet have automatic PWN when its GPIOs are
@@ -151,6 +166,7 @@ void setup() {
   pinMode(CURRENT_GPIO, INPUT); // analog input.
   pinMode(OFF_BUTTON, INPUT_PULLUP);
 
+
 #define Strncpy(dst,src) { strncpy(dst,src,sizeof(dst)); }
 
   Strncpy(_acnode->mqtt_server, "space.makerspaceleiden.nl");
@@ -162,42 +178,27 @@ void setup() {
   Strncpy(_acnode->machine, "test-woodlathe");
   Strncpy(_acnode->master, "test-master");
 
-
   aartLed.attach(100, blink);
 
   node.onConnect([]() {
-    Log.println("Connected");
     machinestate = WAITINGFORCARD;
   });
   node.onDisconnect([]() {
-    Log.println("Disconnected");
     machinestate = NOCONN;
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
     machinestate = WAITINGFORCARD;
   });
-
-  node.onValidatedCmd([](const char *cmd, const char *restl) {
-    if (!strcasecmp("energize", cmd)) {
-      machinestate = POWERED;
-    }
-    else if (!strcasecmp("denied", cmd)) {
-      machinestate = REJECTED;
-    } else {
-      Log.printf("Unhandled command <%s> -- ignored.", cmd);
-    }
+  node.onApproval([](const char * machine) {
+    machinestate = POWERED;
   });
+  node.onDenied([](const char * machine) {
+    machinestate = REJECTED;
+  });
+
+
   node.addHandler(&ota);
-
-#ifdef RFID_SELECT_PIN
-  RFID reader(RFID_SELECT_PIN, RFID_RESET_PIN);
-  reader.onSwipe([](const char * tag) {
-    Log.printf("Card <%s> wiped - being checked.\n", tag);
-    machinestate = CHECKINGCARD;
-  });
-  node.addHandler(reader);
-#endif
 
   // SIG1 sig1 = SIG1();
   // node.addSecurityHandler(SIG1());
@@ -237,9 +238,21 @@ void setup() {
   // node.set_debug(true);
   // node.set_debugAlive(true);
 
+#ifdef RFID_SELECT_PIN
+  reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
+    machinestate = CHECKINGCARD;
+
+    // We'r declining so that the core library handle sending
+    // an approval request, keep state, and so on.
+    //
+    return ACBase::CMD_DECLINE;
+  });
+  node.addHandler(&reader);
+#endif
+
   node.begin();
-  
   Debug.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+
   // secrit reset button.
   pinMode(2, INPUT_PULLUP);
   if (digitalRead(2) == LOW) {
@@ -271,32 +284,20 @@ void loop() {
   // we want to detect. But we'll go to some length to detect a
   // lengthy anomaly - as to not fill up the logs iwth one report/second.
   //
-  if (digitalRead(OFF_BUTTON) == LOW) {
-    static machinestates_t lastReport = NOTINUSE;
-    static unsigned long lastReportTime = 0;
-    static unsigned long reportDelay = 5000;
-    if (lastReport != machinestate || (millis() - lastReportTime > reportDelay)) {
-      lastReport = machinestate;
-      if (lastReport != machinestate)
-        reportDelay = 5000;
-      else if (reportDelay < 10 * 60 * 1000)
-        reportDelay *= 2;
-      lastReportTime = millis();
-      if (machinestate == RUNNING) {
-        Log.printf("Machine switched off with button while running (not so nice)\n");
-      } else if (machinestate == POWERED) {
-        Log.printf("Machine switched off with button (normal)\n");;
-      } else {
-        Log.printf("Off button pressed (currently in state %s)\n",
-                   machinestateName[machinestate]);
-      }
-
+  if (digitalRead(OFF_BUTTON) == LOW && machinestate >= POWERED) {
+    if (machinestate == RUNNING) {
+      Log.printf("Machine switched off with button while running (bad!)\n");
+    } else if (machinestate == POWERED) {
+      Log.printf("Machine switched completely off with button.\n");;
+    } else {
+      Log.printf("Off button pressed (currently in state %s)\n",
+                 machinestateName[machinestate]);
     }
     machinestate = WAITINGFORCARD;
   };
 
   if (laststate != machinestate) {
-    Log.printf("Changing from state %s to state %s)\n",
+    Debug.printf("Changing from state <%s> to state <%s>\n",
                machinestateName[laststate], machinestateName[machinestate]);
     laststate = machinestate;
     laststatechange = millis();
@@ -310,6 +311,15 @@ void loop() {
   if (machinestate >= POWERED) {
     blinkstate = ON;
     digitalWrite(AART_LED, 1);
+  }
+
+  pinMode(39, INPUT);
+  if (digitalRead(39) == HIGH) {
+    static int last = 0;
+    if (millis() - last > 1000) {
+      last  = millis();
+      node.send("SW2 pressed");
+    }
   }
 
   switch (machinestate) {
@@ -326,7 +336,7 @@ void loop() {
 
     case POWERED:
       if ((millis() - laststatechange) > MAX_IDLE_TIME) {
-        Log.printf("Machine idle for too long - switching off..\n");
+        Log.printf("Machine idle for too long - switching off.\n");
         machinestate = WAITINGFORCARD;
       }
       break;

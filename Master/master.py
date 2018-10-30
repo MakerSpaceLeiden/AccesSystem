@@ -139,7 +139,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
          self.logger.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, target_machine, target_node);
          acl = 'denied'
    
-    self.send(target_node, acl + ' ' + cmd + ' ' +  target_machine + ' ' + theirbeat)
+    self.send(target_node, acl + ' ' + cmd + ' ' +  target_machine + ' ' + msg['theirbeat'])
 
   # XXX: at some point we could break this out and get nice, per node, logfiles.
   #

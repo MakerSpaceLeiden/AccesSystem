@@ -168,7 +168,7 @@ int setup_curve25519() {
     Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
   }
 
-  Log.println("Generating Curve25519 session keypair");
+  Debug.println("Generating Curve25519 session keypair");
 
   resetWatchdog();
   Curve25519::dh1(node_publicsession, node_privatesession);
@@ -220,7 +220,7 @@ void SIG2::loop() {
     if (init_done == 2 && _acnode->isUp()) {
         init_done = 3;
 	send_helo("announce", _nonce,0);
-        Log.println("Announcing - we're up and mqtt connected");
+        Debug.println("SIG/2 ready, connected to mqtt and aAnnouncing.");
     };
 }
 
@@ -298,7 +298,7 @@ const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxle
   Serial.print("Cypher="); Serial.println((char *)output_b64);
 #endif
 
-  snprintf(tag_encoded, sizeof(maxlen), "%s.%s", iv_b64, output_b64);
+  snprintf(tag_encoded, maxlen, "%s.%s", iv_b64, output_b64);
   return tag_encoded;
 }
 
@@ -458,7 +458,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
         Log.println("Sender has changed its public signing key(s) - ignoring.");
         return ACSecurityHandler::FAIL;
       }
-      Log.println("Recognize the Ed25519 signature of the master on message from earlier TOFU.");
+      Debug.println("Recognize the Ed25519 signature of the master on message from earlier TOFU.");
       signkey = eeprom.master_publicsignkey;
     } else {
       Debug.println("Unknown Ed25519 signature on message - giving the benefit of the doubt.");
@@ -489,7 +489,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   if (nonceOk) {
 	Debug.println("Verified nonce; so any beat ok.");
   }
-  else if (delta < 10) {
+  else if (delta < 120) {
 	Debug.println("Beat ok.");
   } 
   else if (strcmp(req->cmd, "announce") == 0) {
@@ -499,7 +499,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
         return ACSecurityHandler::FAIL;
   }
    else {
-        Log.printf("Beat is too far off (%lu) - rejecting.\n", delta);
+        Log.printf("Beat is too far off (%lu) - rejecting without a nonce\n", delta);
 	// or should we send a noned welcome to get back on track ?
         return ACSecurityHandler::FAIL;
   };
