@@ -10,7 +10,7 @@
 #   define trng() esp_random() /* XXX we ought to check if Wifi/BT is up - as that is required for secure numbers. */
 #   define resetWatchdog() { /* not implemented  -- there is a void esp_int_wdt_init() -- but we've not found the reset. */ }
 
-#   include <ESP32Ticker.h>  // https://github.com/bertmelis/Ticker-esp32.git
+// #   include <ESP32Ticker.h>  // https://github.com/bertmelis/Ticker-esp32.git
 
 #   ifdef WIRED_ETHERNET
       extern void eth_setup();
@@ -23,8 +23,9 @@
 #   include <ESP8266WebServer.h>
 #   include <FS.h>
 #   define resetWatchdog() { ESP.wdtFeed(); }
-#   include <Ticker.h>
 #endif
+
+#include <Ticker.h>
 
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/

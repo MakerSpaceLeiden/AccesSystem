@@ -18,126 +18,69 @@
 //
 #include <PowerNodeV11.h>
 
+#define MACHINE "test-woodlate"
 #define OFF_BUTTON      (SW1_BUTTON)
 #define MAX_IDLE_TIME   (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 
+
 #include <ACNode.h>
-// #include <MSL.h>
-// #include <SIG1.h>
-#include <SIG2.h>
-
-#include <Beat.h>
-#include <OTA.h>
-
-#ifdef RFID_I2C
-#include <RFID-i2c.h> // i2c version
-#else
 #include <RFID.h>   // SPI version
-#endif
 
-#include <SyslogStream.h>
-#include <MqttLogStream.h>
-#include <TelnetSerialStream.h>
-
-#include "/Users/dirkx/.passwd.h"
-
-#undef WIFI_NETWORK
-
-#ifdef WIFI_NETWORK
-ACNode node = ACNode(WIFI_NETWORK, WIFI_PASSWD);
-#else
-ACNode node = ACNode(true);
-#endif
-
-OTA ota = OTA(OTA_PASSWD);
-SIG2 sig2 = SIG2();
-Beat beat = Beat();
+// ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
+// ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
+// ACNode node = ACNode(MACHINE, true); // wired network (default).
+//
+ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
+
+// we should move this inside ACNode.
+OTA ota = OTA(OTA_PASSWD);
+// MSL msl = MSL();    // protocol doors (private LAN)
+// SIG1 sig1 = SIG1(); // protocol machines 20015 (HMAC)
+SIG2 sig2 = SIG2();
+Beat beat = Beat();     // Required by SIG1 and SIG2
+
+LED aartLed = LED();    // defaults to the aartLed - otherwise specify GPIO.
+
+#include <ACNode.h>
+#include <RFID.h>   // SPI version
 
 
 typedef enum {
-  BOOTING, SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
-  WAITINGFORCARD,             // waiting for card.
+  BOOTING, OUTOFORDER,      // device not functional.
+  REBOOT,                   // forcefull reboot
+  TRANSIENTERROR,           // hopefully goes away level error
+  NOCONN,                   // sort of fairly hopless (though we can cache RFIDs!)
+  WAITINGFORCARD,           // waiting for card.
   CHECKINGCARD,
   REJECTED,
-  POWERED,                    // this is where we engage the relay.
-  RUNNING,
-  NOTINUSE
+  POWERED,                  // this is where we engage the relay.
+  RUNNING,                  // this is when we detect a current.
 } machinestates_t;
 
-const char *machinestateName[NOTINUSE] = {
-  "Booting", "Software Error", "Out of order", "No network",
-  "Waiting for card",
-  "Checking card",
-  "Rejecting noise/card",
-  "Powered - but idle",
-  "Running"
+#define NEVER (0)
+struct {
+  const char * label;                   // name of this state
+  LED::led_state_t ledState;            // flashing pattern for the aartLED
+  time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
+  machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
+} state[RUNNING + 1] =
+{
+  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT },
+  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT },
+  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT },
+  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
+  { "No network",           LED::LED_FLASH,         NEVER     , NOCONN },           // should we reboot at some point ?
+  { "Waiting for card",     LED::LED_IDLE,          NEVER     , WAITINGFORCARD },
+  { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD },
+  { "Rejecting noise/card", LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
+  { "Powered - but idle",   LED::LED_ON,            NEVER     , WAITINGFORCARD },   // we leave poweroff idle to the code below.
+  { "Running",              LED::LED_ON,            NEVER     , WAITINGFORCARD },
 };
 
 unsigned long laststatechange = 0;
 static machinestates_t laststate = BOOTING;
 machinestates_t machinestate = BOOTING;
-
-#define SLOW_PERIOD (300)
-#define FAST_PERIOD (1000)
-typedef enum { NONE, SLOW, HEARTBEAT, FAST, ON } blinkpattern_t;
-blinkpattern_t blinkstate = FAST;
-Ticker aartLed;
-
-beat_t lastSwipe;
-
-#ifdef  ESP32
-// The ESP32 does not yet have automatic PWN when its GPIOs are
-// given an analogeWrite(). So we have fake that for now - until
-// we can ifdef this out at some Espressif SDK version #.
-//
-#define LEDC_TIMER_13_BIT  (13)
-#define LEDC_BASE_FREQ     (5000)
-#define LEDC_CHANNEL_0  (0)
-
-void analogWrite(uint8_t gpio, float value) {
-  static int channel = -1;
-  if (channel == -1) {
-    channel = 0;
-    // Setup timer and attach timer to a led pin
-    ledcSetup(LEDC_CHANNEL_0, LEDC_BASE_FREQ, LEDC_TIMER_13_BIT);
-    ledcAttachPin(gpio, LEDC_CHANNEL_0);
-  }
-
-  // calculate duty, 8191 from 2 ^ 13 - 1
-  uint32_t duty = ((1 << LEDC_TIMER_13_BIT) - 1) * value;
-
-  // write duty to LEDC
-  ledcWrite(channel, duty);
-}
-#endif
-
-void blink() {
-  switch (blinkstate) {
-    case NONE:
-      digitalWrite(AART_LED, 0);
-      break;
-    case SLOW:
-      digitalWrite(AART_LED, (((int)((millis() / SLOW_PERIOD))) & 1));
-      break;
-    case HEARTBEAT:
-      {
-        int ramp = ((int)((millis() / SLOW_PERIOD))) % 30;
-        if (ramp > 15)
-          ramp = 30 - ramp;
-        analogWrite(AART_LED,  (ramp / 15.));
-      };
-      break;
-    case ON:
-      digitalWrite(AART_LED, 1);
-      break;
-    case FAST: // fall throguh to default
-    default:
-      digitalWrite(AART_LED, (((int)((millis() / FAST_PERIOD))) & 1 ));
-      break;
-  }
-};
-
 
 void setup() {
   Serial.begin(115200);
@@ -149,20 +92,16 @@ void setup() {
   pinMode(RELAY_GPIO, OUTPUT);
   digitalWrite(RELAY_GPIO, 0);
 
-  pinMode(AART_LED, OUTPUT);
-  digitalWrite(AART_LED, 0);
-
   pinMode(CURRENT_GPIO, INPUT); // analog input.
   pinMode(OFF_BUTTON, INPUT_PULLUP);
 
   // the default is space.makerspaceleiden.nl, prefix test
-  // node.set_mqtt_host("laptop");
+  // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
 
-  node.set_machine("test-woodlathe");
+  // specify this when using your own `master'.
+  //
   node.set_master("test-master");
-
-  aartLed.attach(100, blink);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
@@ -172,7 +111,7 @@ void setup() {
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
-    machinestate = WAITINGFORCARD;
+    machinestate = TRANSIENTERROR;
   });
   node.onApproval([](const char * machine) {
     machinestate = POWERED;
@@ -181,11 +120,10 @@ void setup() {
     machinestate = REJECTED;
   });
 
-
   node.addHandler(&ota);
 
-  // SIG1 sig1 = SIG1();
-  // node.addSecurityHandler(SIG1());
+  // node.addSecurityHandler(&msl);
+  // node.addSecurityHandler(&sig1);
   node.addSecurityHandler(&sig2);
   node.addSecurityHandler(&beat);
 
@@ -199,6 +137,7 @@ void setup() {
   syslogStream.setPort(SYSLOG_PORT);
 #endif
 #endif
+
   // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
   Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
   Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
@@ -218,12 +157,9 @@ void setup() {
   Debug.addPrintStream(t);
 #endif
 
-  machinestate = BOOTING;
-
   // node.set_debug(true);
   // node.set_debugAlive(true);
 
-#ifdef RFID_SELECT_PIN
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
     machinestate = CHECKINGCARD;
 
@@ -233,7 +169,6 @@ void setup() {
     return ACBase::CMD_DECLINE;
   });
   node.addHandler(&reader);
-#endif
 
   node.begin();
   Debug.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
@@ -248,12 +183,11 @@ void setup() {
 
 void loop() {
   node.loop();
-  blink();
 
   if (analogRead(CURRENT_GPIO) > 512) {
     if (machinestate < POWERED) {
       Log.printf("Error -- device in state '%s' but current detected!",
-                 machinestateName[machinestate]);
+                 state[machinestate].label);
     }
     if (machinestate == POWERED) {
       machinestate = RUNNING;
@@ -275,14 +209,21 @@ void loop() {
       Log.printf("Machine switched completely off with button.\n");;
     } else {
       Log.printf("Off button pressed (currently in state %s)\n",
-                 machinestateName[machinestate]);
+                 state[machinestate].label);
     }
     machinestate = WAITINGFORCARD;
   };
 
+  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
+      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
+    machinestate = state[machinestate].failStateOnTimeout;
+    Debug.printf("Time-out; transition from %s to %s\n",
+                 state[laststatechange].label, state[machinestate].label);
+  };
+
   if (laststate != machinestate) {
-    Debug.printf("Changing from state <%s> to state <%s>\n",
-                 machinestateName[laststate], machinestateName[machinestate]);
+    Debug.printf("Changed from state <%s> to state <%s>\n",
+                 state[laststate].label, state[machinestate].label);
     laststate = machinestate;
     laststatechange = millis();
   }
@@ -292,21 +233,28 @@ void loop() {
   else
     digitalWrite(RELAY_GPIO, 1);
 
-  if (machinestate >= POWERED) {
-    blinkstate = ON;
-    digitalWrite(AART_LED, 1);
-  }
+  aartLed.set(state[machinestate].ledState);
 
   switch (machinestate) {
     case WAITINGFORCARD:
-      blinkstate = HEARTBEAT;
+      break;
+
+    case REBOOT:
+      {
+        static int warn_counter = 0;
+        static unsigned long last = 0;
+        if (millis() - last > 1000) {
+          Log.println("Forced reboot.");
+          Serial.println("Forced reboot");
+          last = millis();
+          warn_counter ++;
+        };
+        if (warn_counter > 5)
+          ESP.restart();
+      }
       break;
 
     case CHECKINGCARD:
-      digitalWrite(AART_LED, ((millis() % 500) < 100) ? 1 : 0);
-      blinkstate = SLOW;
-      if ((millis() - laststatechange) > 5000)
-        machinestate = REJECTED;
       break;
 
     case POWERED:
@@ -320,26 +268,14 @@ void loop() {
       break;
 
     case REJECTED:
-      blinkstate = FAST;
-      if ((millis() - laststatechange) > 1000)
-        machinestate = WAITINGFORCARD;
+      break;
+
+    case TRANSIENTERROR:
       break;
 
     case NOCONN:
-      blinkstate = FAST;
-
-      if ((millis() - laststatechange) > 120 * 1000) {
-        Log.printf("Connection to SSID:%s lost for 120 seconds now -- Rebooting...\n", WiFi.SSID().c_str());
-        delay(500);
-        ESP.restart();
-      }
-      break;
-
     case BOOTING:
     case OUTOFORDER:
-    case SWERROR:
-    case NOTINUSE:
-      blinkstate = FAST;
       break;
   };
 }

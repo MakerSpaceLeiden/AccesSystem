@@ -1,9 +1,7 @@
 #include <ACNode.h>
-#include "LEDs.h"
+#include "LED.h"
 
-const char *ledstateName[ NEVERSET ] = { "off", "flash", "slow", "fast", "on" };
-
-void flipPin(unsigned char pin) {
+void flipPin(int pin) {
   static unsigned int tock = 0;
   if (pin & 128) {
     digitalWrite(pin & 127, !(tock & 31));
@@ -13,39 +11,43 @@ void flipPin(unsigned char pin) {
   tock++;
 }
 
-void LED::LED(const byte pin) {
-	_pin = pin;
+LED::LED(const byte pin) : _pin(pin) {
 	pinMode(_pin, OUTPUT);
   	_ticker = Ticker();
-	setLed(LED_FAST);
+	_lastState = NEVERSET;
+	set(LED_FAST);
 }
 
-void LED::setLED(led_state_t state, unsigned char pin) {
-  switch ((LEDstate) state) {
+void LED::set(led_state_t state) {
+  if (_lastState == state)
+     return;
+  _lastState = state;
+  switch(state) {
     case LED_OFF:
       _ticker.detach();
-      digitalWrite(pin, 0);
+      digitalWrite(_pin, 0);
       break;
     case LED_ON:
       _ticker.detach();
-      digitalWrite(pin, 1);
+      digitalWrite(_pin, 1);
       break;
     case LED_FLASH:
-      _ticker.attach_ms(100, &flipPin,  128 | pin); // no need to detach - code will disarm and re-use existing timer.
+      _ticker.attach_ms(100, &flipPin,  (int) 128 | _pin); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_IDLE:
     case LED_SLOW:
-      digitalWrite(pin, 1);
-      _ticker.attach_ms(500, &flipPin, pin); // no need to detach - code will disarm and re-use existing timer.
+      digitalWrite(_pin, 1);
+      _ticker.attach_ms(500, &flipPin, (int) _pin); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_PENDING:
     case LED_FAST:
-      _ticker.attach_ms(100, &flipPin, pin); // no need to detach - code will disarm and re-use existing timer.
+      _ticker.attach_ms(100, &flipPin, (int) _pin); // no need to detach - code will disarm and re-use existing timer.
       break;
+    case LED_ERROR:
     case NEVERSET: // include this here - though it should enver happen. 50 hz flash
-      _ticker.attach_ms(20, &flipPin, pin); // no need to detach - code will disarm and re-use existing timer.
+    default:
+      _ticker.attach_ms(20, &flipPin, (int) _pin); // no need to detach - code will disarm and re-use existing timer.
       break;
-    // we have no default - as to get a compiler warning on missing entry.
   }
 }
 

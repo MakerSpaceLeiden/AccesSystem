@@ -12,7 +12,6 @@
 #include <ESP8266WiFi.h>
 #endif
 #include <PubSubClient.h>        // https://github.com/knolleary/
-
 #include <SPI.h>
 
 #include <base64.hpp>
@@ -23,37 +22,11 @@
 #include <vector>
 #include <algorithm>    // std::find
 
+#include <common-utils.h>
 #include <ACBase.h>
-
-#define B64L(n) ((((4 * n / 3) + 3) & ~3)+1)
-
-#define B64DE(base64str, bin, what, errorOnReturn) { \
-if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
-Debug.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", \
-	sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
-return errorOnReturn; \
-}; \
-decode_base64((unsigned char *)base64str, bin); \
-}
-
-#define B64D(base64str, bin, what) { B64DE(base64str, bin, what, false); }
-
-#define SEP(tok, err, errorOnReturn) \
-	char *  tok = strsepspace(&p); \
-	if (!tok) { \
-		Debug.printf("Malformed/missing " err ": %s\n", p ); \
-		return errorOnReturn; \
-	}; 
-
-#define SEPCPY(tok, err, errorOnReturn) \
-{ \
-	SEP(q, err, errorOnReturn); \
-	assert(sizeof(tok)>4); \
-	strncpy(tok, q, sizeof(tok)); \
-}
+#include <LED.h>
 
 extern char * strsepspace(char **p);
-extern const char *machinestateName[];
 
 // typedef unsigned long beat_t;
 // extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
@@ -105,6 +78,9 @@ private:
 
 class ACNode : public ACBase {
 public:
+    ACNode(const char * machine, const char * ssid, const char * ssid_passwd);
+    ACNode(const char * machine, bool wired = true);
+
     const char * name() { return "ACNode"; }
 
     void set_mqtt_host(const char *p);
@@ -124,9 +100,6 @@ public:
     char logpath[MAX_NAME];
     char mqtt_topic_prefix[MAX_NAME];
     
-    ACNode(const char * ssid, const char * ssid_passwd);
-    ACNode(bool wired);
-
     IPAddress localIP() { if (_wired) return ETH.localIP(); else return WiFi.localIP(); };
     
     // Callbacks.
@@ -224,5 +197,17 @@ extern ACLog Debug;
 extern void send(const char * topic, const char * payload);
 
 extern const char ACNODE_CAPS[];
+
+#include <MSL.h>
+#include <SIG1.h>
+#include <SIG2.h>
+
+#include <Beat.h>
+#include <OTA.h>
+
+#include <SyslogStream.h>
+#include <MqttLogStream.h>
+#include <TelnetSerialStream.h>
+
 
 #endif

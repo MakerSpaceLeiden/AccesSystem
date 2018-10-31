@@ -20,7 +20,6 @@ void ACNode::pop() {
     machine[0] = 0;
 
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
-
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
     strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
 };
@@ -33,20 +32,21 @@ void ACNode::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
 void ACNode::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
 void ACNode::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
 
-ACNode::ACNode(bool wired) :
-_ssid(NULL), _ssid_passwd(NULL), _wired(wired)
+ACNode::ACNode(const char * m, bool wired) : 
+	_ssid(NULL), _ssid_passwd(NULL), _wired(wired)
 {
     _acnode = this;
+    strncpy(machine,m, sizeof(machine));
     pop();
 }
 
-ACNode::ACNode(const char * ssid , const char * ssid_passwd ) :
-_ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false)
+ACNode::ACNode(const char *m, const char * ssid , const char * ssid_passwd ) :
+   	_ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false)
 {
     _acnode = this;
+    strncpy(machine,m, sizeof(machine));
     pop();
 }
-
 
 void send(const char * topic, const char * payload) {
     _acnode->send(topic,payload);
