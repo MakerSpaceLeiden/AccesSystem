@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <limits.h>
 
-#include <ACNode.h>
+#include <ACNode-private.h>
 
 beat_t beat_absdelta(beat_t a, beat_t b) {
 	if (a > b)
@@ -86,8 +86,8 @@ void Beat::loop() {
     //
     if (millis() - last_loop >= 1000) {
         unsigned long secs = (millis() - last_loop + 499) / 1000;
+        last_loop += secs * 1000;
         beatCounter += secs;
-        last_loop = millis();
     }
 
     if (_debug_alive) {
