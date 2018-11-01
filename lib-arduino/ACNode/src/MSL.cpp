@@ -14,4 +14,3 @@ ACSecurityHandler::acauth_result_t MSL::verify(ACRequest *req) {
 
 	return ACSecurityHandler::OK;
 };
-

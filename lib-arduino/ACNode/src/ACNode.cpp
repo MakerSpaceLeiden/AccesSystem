@@ -168,16 +168,6 @@ void ACNode::begin() {
     if (_debug)
         debugListFS("/");
 
-    // Note that this will also run the security and ohter handlers; see
-    // addSecurityHandler().
-    //
-    {
-        std::list<ACBase *>::iterator it;
-        for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
-   	    Debug.printf("%s.begin()\n", (*it)->name());
-            (*it)->begin();
-        }
-    }
     switch(_proto) {
     case MSL:
 #ifdef PROTO_MSL
@@ -202,6 +192,16 @@ void ACNode::begin() {
   if (_security_handlers.size() == 0) 
 	Log.println("*** WARNING -- no protocols defined AT ALL. This is prolly not what you want.\n");
 
+    // Note that this will also run the security and ohter handlers; see
+    // addSecurityHandler().
+    //
+    {
+        std::list<ACBase *>::iterator it;
+        for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
+   	    Debug.printf("%s.begin()\n", (*it)->name());
+            (*it)->begin();
+        }
+    }
   // secrit reset button that resets TOFU or the shared
   // secret.
   if (digitalRead(SW2_BUTTON) == LOW) {
