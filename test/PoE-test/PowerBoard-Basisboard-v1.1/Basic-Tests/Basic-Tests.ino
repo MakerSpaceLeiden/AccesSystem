@@ -1,10 +1,10 @@
 // https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
 //
-#define AART_LED        (GPIO_NUM_16)
-#define RELAY           (GPIO_NUM_5)
-#define CURRENT_COIL    (GPIO_NUM_36)
-#define SW1             (GPIO_NUM_2)
-#define SW2             (GPIO_NUM_39)
+#define AART_LED        (GPIO_NUM_16) // ok
+#define RELAY           (GPIO_NUM_5)  // ok
+#define CURRENT_COIL    (GPIO_NUM_36) // ok
+#define SW1             (GPIO_NUM_2)  // ok
+#define SW2             (GPIO_NUM_39) 
 #define OPTO1           (GPIO_NUM_34)
 #define OPTO2           (GPIO_NUM_35)
 
