@@ -87,7 +87,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     if not target_node:
        return
 
-    if msg[ 'hdr' ] == 'SIG/2.0':
+    if 'hdr' in msg and msg[ 'hdr' ] == 'SIG/2.0':
       tag = self.session_decrypt(msg, tag_encoded)
 
       if not tag in self.userdb:

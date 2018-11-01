@@ -99,8 +99,8 @@ class Beat(ACNodeBase.ACNodeBase):
     
     if msg['node'] == self.cnf.master and self.beatsseen < 5 and self.cnf.follower:
        if not msg['delta'] < self.cnf.leeway:
-         self.logger.warning("Adjusting beat in startup window (no leeway limit), delta={} seconds".format(delta))
-         self.beatoff -= delta
+         self.logger.warning("Adjusting beat in startup window (no leeway limit), delta={} seconds".format(msg['delta']))
+         self.beatoff -= msg['delta']
     
     return super().cmd_announce(msg)
 
