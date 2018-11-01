@@ -564,7 +564,7 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
     char msg[MAX_MSG];
    
     acauth_result_t r = Beat::secure(req);
-    if (r != OK)
+    if (r == FAIL || r == OK)
 	return r;
  
     if (!sig2_active())
@@ -572,7 +572,8 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   
     if (!sig2_sign(msg, sizeof(msg), req->payload))
         return FAIL;
-    
+
+    strncpy(req->version, "SIG/2.0", sizeof(req->version));
     strncpy(req->payload, msg, sizeof(req->payload));
     
     return OK;

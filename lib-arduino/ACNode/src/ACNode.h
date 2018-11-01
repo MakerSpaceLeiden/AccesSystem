@@ -7,7 +7,6 @@
 #include <SIG1.h>
 #include <SIG2.h>
 
-#include <Beat.h> // propably should make this the mother of SIG1 and 2; and just super() up.
 #include <OTA.h>
 
 #include <SyslogStream.h>

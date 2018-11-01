@@ -98,7 +98,7 @@ SIG1::acauth_result_t SIG1::secure(ACRequest * req) {
     char msg[MAX_MSG];
    
     acauth_result_t r = Beat::secure(req);
-    if (r != OK)
+    if (r == OK || r == FAIL)
 	return r;
  
     // Bit sucky - but since we're retiring SIG1 - fine for now.

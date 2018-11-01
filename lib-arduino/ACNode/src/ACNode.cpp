@@ -1,5 +1,4 @@
-#include <ACBase.h>
-#include <ACNode-private.h>
+#include <ACNode.h>
 #include "ConfigPortal.h"
 
 // Sort of a fake singleton to overcome callback
@@ -10,15 +9,15 @@ ACLog Log;
 ACLog Debug;
 #define Trace if (0) Debug
 
-#ifdef PROTO_MSL
+#ifdef HAS_MSL
 MSL msl = MSL();    // protocol doors (private LAN)
 #endif
 
-#ifdef PROTO_SIG1
+#ifdef HAS_SIG1
 SIG1 sig1 = SIG1(); // protocol machines 20015 (HMAC)
 #endif
 
-#ifdef PROTO_SIG2
+#ifdef HAS_SIG2
 SIG2 sig2 = SIG2();
 #endif
 
@@ -37,7 +36,6 @@ void ACNode::pop() {
     mqtt_port = MQTT_DEFAULT_PORT;
 
     moi[0] = 0;
-    machine[0] = 0;
 
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
@@ -94,11 +92,8 @@ void ACNode::begin() {
         Debug.println("starting up ethernet");
         eth_setup();
     };
-    if (!*machine)  {
+    if (!*machine)  
 	strncpy(machine, "unset-machine-name", sizeof(moi));
-        if (!*moi) 
-	   strncpy(machine, "unset-node-name", sizeof(moi));
-    };
    
     if (!*moi) 
 	strncpy(moi,machine, sizeof(moi));
@@ -169,23 +164,22 @@ void ACNode::begin() {
         debugListFS("/");
 
     switch(_proto) {
-    case MSL:
-#ifdef PROTO_MSL
+    case PROTO_MSL:
+#ifdef HAS_MSL
        addSecurityHandler(&msl);
 #endif
 	break;
-    case SIG1:
-#ifdef PROTO_SIG1
-       addSecurityHandler(&sig1);
+    case PROTO_SIG1:
+#ifdef HAS_SIG1
+       	addSecurityHandler(&sig1);
 	break;
 #endif
-   case SIG2:
-#ifdef PROTO_SIG2
-	ash = &sig2;
-       addSecurityHandler(&sig2);
+   case PROTO_SIG2:
+#ifdef HAS_SIG2
+       	addSecurityHandler(&sig2);
 	break;
 #endif
-   case NONE:
+   case PROTO_NONE:
         // Lets hope they are added `higher up'.
         break;
   };

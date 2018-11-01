@@ -44,11 +44,11 @@ typedef enum {
     ACNODE_DEBUG
 } acnode_loglevel_t;
 
-// #define PROTO_MSL
-// #define PROTO_SIG1
-#define PROTO_SIG2
+// #define HAS_MSL
+// #define HAS_SIG1
+#define HAS_SIG2
 
-typedef enum { SIG2, SIG1, MSL, NONE } acnode_proto_t;
+typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
 
 class ACLog : public ACBase, public Print { // We should prolly split this in an aACLogger and a logging class
 public:
@@ -84,8 +84,8 @@ private:
 
 class ACNode : public ACBase {
 public:
-    ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = SIG2);
-    ACNode(const char * machine, bool wired = true, acnode_proto_t proto = SIG2);
+    ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
+    ACNode(const char * machine, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
 
     const char * name() { return "ACNode"; }
 

@@ -93,6 +93,7 @@ void ACNode::reconnectMQTT() {
     if (!_client.connect(ACNode::moi)) {
         Log.print("Reconnect failed : ");
         Log.println(state2str(_client.state()));
+	return;
     }
     
     Debug.println("(re)connected ");
@@ -107,8 +108,7 @@ void ACNode::reconnectMQTT() {
     _client.subscribe(topic);
     Debug.print("Subscribed to ");
     Debug.println(topic);
- 
-#if 0
+
     char buff[MAX_MSG];
     IPAddress myIp = _acnode->localIP();
     snprintf(buff, sizeof(buff), "announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
@@ -135,7 +135,6 @@ void ACNode::reconnectMQTT() {
         }
     }
     send(topic, buff);
-#endif
 }
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);

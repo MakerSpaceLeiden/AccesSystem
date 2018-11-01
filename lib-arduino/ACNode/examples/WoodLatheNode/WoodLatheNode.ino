@@ -10,7 +10,8 @@
 
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   WITHOUT WARRANTIES OR CONDITIONS OF
+   ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
 */
@@ -20,7 +21,7 @@
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
 
-#define MACHINE             "test-woodlate"
+#define MACHINE             "test-woodlathe"
 #define OFF_BUTTON          (SW1_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 #define CURRENT_THRESHHOLD  (400) // 10% of the ADC scale.
@@ -129,6 +130,7 @@ void setup() {
     //
     return ACBase::CMD_DECLINE;
   });
+  reader.set_debug(true);
   node.addHandler(&reader);
   // default syslog port and destination (gateway address or broadcast address).
   //
