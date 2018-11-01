@@ -1,17 +1,15 @@
-#include <Beat.h>
-
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
 
 #include <ACNode-private.h>
+#include <Beat.h>
 
 beat_t beat_absdelta(beat_t a, beat_t b) {
 	if (a > b)
 		return a - b;
 	return b - a;
 };
-
 
 Beat::acauth_result_t Beat::verify(ACRequest * req)
 {
@@ -22,7 +20,7 @@ Beat::acauth_result_t Beat::verify(ACRequest * req)
 
     if (!p || strlen(req->rest) < 10 || b == 0 || b == ULONG_MAX || bl > 12 || bl < 2) {
         Log.printf("Malformed beat <%s> - ignoring.\n", req->rest);
-        return ACSecurityHandler::DECLINE;
+        return DECLINE;
     };
     
     unsigned long delta = beat_absdelta(b, beatCounter);
@@ -36,7 +34,7 @@ Beat::acauth_result_t Beat::verify(ACRequest * req)
         }
     } else {
         Log.printf("Good message -- but beats ignored as they are too far off (%lu seconds)\n",delta);
-        return ACSecurityHandler::FAIL;
+        return FAIL;
     };
 
     // Strip off, and accept the beat.
@@ -52,14 +50,14 @@ Beat::acauth_result_t Beat::verify(ACRequest * req)
     strncpy(req->rest, p, sizeof(req->rest));
     req->beatExtracted = b;
     
-    return ACSecurityHandler::OK;
+    return OK;
 };
 
 Beat::cmd_result_t Beat::handle_cmd(ACRequest * req) {
     if (!strcmp(req->cmd,"beat"))
-        return Beat::CMD_CLAIMED;
+        return CMD_CLAIMED;
 
-    return Beat::CMD_DECLINE;
+    return CMD_DECLINE;
 }
 
 Beat::acauth_result_t Beat::secure(ACRequest * req) {
@@ -69,7 +67,7 @@ Beat::acauth_result_t Beat::secure(ACRequest * req) {
     snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", bc, req->payload);
     strncpy(req->payload, tmp, sizeof(req->payload));
     
-    return Beat::PASS;
+    return PASS;
 };
 
 void Beat::begin() {
@@ -96,7 +94,6 @@ void Beat::loop() {
             last_beat = millis();
         }
     }
-
     return;
 }
 

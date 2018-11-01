@@ -22,12 +22,7 @@ SIG1 sig1 = SIG1(); // protocol machines 20015 (HMAC)
 SIG2 sig2 = SIG2();
 #endif
 
-#if defined(PROTO_SIG1) || defined(PROTO_SIG2)
-Beat beat = Beat();     // Required by SIG1 and SIG2
-#endif
-
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
-
 
 void ACNode::set_mqtt_host(const char *p) { strncpy(mqtt_server,p, sizeof(mqtt_server)); };
 void ACNode::set_mqtt_port(uint16_t p)  { mqtt_port = p; };
@@ -192,14 +187,12 @@ void ACNode::begin() {
     case SIG1:
 #ifdef PROTO_SIG1
        addSecurityHandler(&sig1);
-       addSecurityHandler(&beat);
 	break;
 #endif
    case SIG2:
 #ifdef PROTO_SIG2
 	ash = &sig2;
        addSecurityHandler(&sig2);
-       addSecurityHandler(&beat);
 	break;
 #endif
    case NONE:

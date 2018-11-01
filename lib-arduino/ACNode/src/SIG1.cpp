@@ -36,7 +36,6 @@ static const char * hmacAsHex(const char *sessionkey,
 }
 
 
-
 // Return
 //	PASS	ignored - not my cup of tea.
 //	FAIL	failed to authenticate - reject it.
@@ -91,13 +90,17 @@ SIG1::acauth_result_t SIG1::verify(ACRequest * req) {
     // Leave checking of the beat to the next module in line.
     // so it is a pass, rather than an OK.
     //
-    return ACSecurityHandler::PASS;
+    return Beat::verify(req);
 }
 
 SIG1::acauth_result_t SIG1::secure(ACRequest * req) {
     char beatAsString[ MAX_BEAT ];
     char msg[MAX_MSG];
-    
+   
+    acauth_result_t r = Beat::secure(req);
+    if (r != OK)
+	return r;
+ 
     // Bit sucky - but since we're retiring SIG1 - fine for now.
     //
     char * p = index(req->payload,' ');
@@ -110,7 +113,7 @@ SIG1::acauth_result_t SIG1::secure(ACRequest * req) {
     snprintf(msg, sizeof(msg), "%s %s %s", req->version, sig, req->payload);
     
     strncpy(req->payload, msg, sizeof(req->payload));
-    return ACSecurityHandler::OK;
+    return OK;
 };
 
 SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
@@ -139,7 +142,7 @@ SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
     
     strncpy(req->tag, tag_encoded, sizeof(req->tag));
     
-    return ACSecurityHandler::OK;
+    return OK;
 };
 
 

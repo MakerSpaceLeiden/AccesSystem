@@ -2,8 +2,9 @@
 #define _H_SIG1
 
 #include "ACBase.h"
+#include "Beat.h"
 
-class SIG1 : public ACSecurityHandler {
+class SIG1 : public Beat {
 public:
     const char * name() { return "SIG1"; }
     

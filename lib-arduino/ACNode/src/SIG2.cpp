@@ -193,10 +193,12 @@ int setup_curve25519() {
 void SIG2::begin() {
     Serial.println("Started init_curve()");
     init_curve();
-    
+    Beat::begin();
 }
 
 void SIG2::loop() {
+    Beat::loop();
+
     if (!_acnode->isConnected())
         return;
     
@@ -223,10 +225,6 @@ void SIG2::loop() {
         Debug.println("SIG/2 ready, connected to mqtt and aAnnouncing.");
     };
 }
-
-
-bool verify_beat(const char * beat);
-
 
 bool sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
   const char * vs = "2.0";
@@ -557,23 +555,27 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
 
     // Debug.printf("==> Final %s\n", req->rest);
     
-    return ACSecurityHandler::PASS;
+    return  Beat::verify(req);
 };
 
 SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
     Serial.println("SIG2::secure");
     
     char msg[MAX_MSG];
-    
+   
+    acauth_result_t r = Beat::secure(req);
+    if (r != OK)
+	return r;
+ 
     if (!sig2_active())
-        return SIG2::FAIL;
+        return FAIL;
   
     if (!sig2_sign(msg, sizeof(msg), req->payload))
-        return SIG2::FAIL;
+        return FAIL;
     
     strncpy(req->payload, msg, sizeof(req->payload));
     
-    return SIG2::OK;
+    return OK;
 };
 
 SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
@@ -583,11 +585,11 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
         return ACSecurityHandler::FAIL;
 
     if (sig2_encrypt(req->tag, tag_encoded, sizeof(tag_encoded)) == NULL)
-        return SIG2::FAIL;
+        return FAIL;
     
     strncpy(req->tag, tag_encoded, sizeof(req->tag));
 
-    return SIG2::OK;
+    return OK;
 };
 
 SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
@@ -599,7 +601,7 @@ SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
         send_helo("welcome",_nonce,0);
         return CMD_CLAIMED;
     }
-    return CMD_DECLINE;
+    return Beat::handle_cmd(req);
 }
 
 SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
@@ -610,6 +612,4 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
 	// not enough data yet to actually do an helo.
 	return FAIL;
 }
-
-
 
