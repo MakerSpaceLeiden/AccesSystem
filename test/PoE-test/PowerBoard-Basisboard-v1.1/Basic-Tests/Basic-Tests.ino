@@ -2,15 +2,15 @@
 //
 #define AART_LED        (GPIO_NUM_16)
 #define RELAY           (GPIO_NUM_5)
-#define CURRENT_COIL    (GPIO_NUM_15)
+#define CURRENT_COIL    (GPIO_NUM_36)
 #define SW1             (GPIO_NUM_2)
 #define SW2             (GPIO_NUM_39)
 #define OPTO1           (GPIO_NUM_34)
-#define OPTO12          (GPIO_NUM_35)
+#define OPTO2           (GPIO_NUM_35)
 
 void setup() {
 
-  Serial.begin(9600);
+  Serial.begin(115200);
   delay(250);
   Serial.print("\n\n\n\nBooting ");
   Serial.println(__FILE__);
@@ -53,9 +53,15 @@ void loop() {
 
 #ifdef CURRENT_COIL
   {
+    unsigned int x = analogRead(CURRENT_COIL);
+    static double avg = x, savg = 0, savg2 = 0;
+    avg = (5000 * avg + x)/5001;
+    savg = (savg * 299 + (avg - x))/300;
+    savg2 = (savg2 * 299 + savg*savg)/300;
+    
     static unsigned long lastCurrentMeasure = 0;
     if (millis() - lastCurrentMeasure > 1000) {
-      Serial.printf("Current %f\n", analogRead(CURRENT_COIL)/1024.);
+      Serial.printf("Current %f -> %f\n",avg/1024., (savg2 - savg*savg)/1024.);
       lastCurrentMeasure = millis();
     };
   }

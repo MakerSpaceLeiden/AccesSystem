@@ -1,4 +1,4 @@
-#include <ACNode.h>
+#include <ACNode-private.h>
 #include "SIG1.h"
 
 // Note - none of below HMAC utility functions is re-entrant/t-safe; they all rely

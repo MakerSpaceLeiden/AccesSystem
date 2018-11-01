@@ -17,11 +17,14 @@
 // Wiring of Power Node v.1.1
 //
 #include <PowerNodeV11.h>
+#include <ACNode.h>
+#include <RFID.h>   // SPI version
 
-#define MACHINE "test-woodlate"
-#define OFF_BUTTON      (SW1_BUTTON)
-#define MAX_IDLE_TIME   (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-
+#define MACHINE             "test-woodlate"
+#define OFF_BUTTON          (SW1_BUTTON)
+#define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
+#define CURRENT_THRESHHOLD  (400) // 10% of the ADC scale.
+//#define OTA_PASSWD          "SomethingSecrit"
 
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
@@ -29,21 +32,20 @@
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-//
+//cd P
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
 
-// we should move this inside ACNode.
+#ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
-// MSL msl = MSL();    // protocol doors (private LAN)
-// SIG1 sig1 = SIG1(); // protocol machines 20015 (HMAC)
-SIG2 sig2 = SIG2();
-Beat beat = Beat();     // Required by SIG1 and SIG2
+#endif
 
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify GPIO.
+LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-#include <ACNode.h>
-#include <RFID.h>   // SPI version
+// Various logging options (in addition to Serial).
+SyslogStream syslogStream = SyslogStream();
+MqttLogStream mqttlogStream = MqttLogStream();
+// TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 
 typedef enum {
@@ -119,47 +121,6 @@ void setup() {
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
   });
-
-  node.addHandler(&ota);
-
-  // node.addSecurityHandler(&msl);
-  // node.addSecurityHandler(&sig1);
-  node.addSecurityHandler(&sig2);
-  node.addSecurityHandler(&beat);
-
-  // default syslog port and destination (gateway address or broadcast address).
-  //
-  SyslogStream syslogStream = SyslogStream();
-#ifdef SYSLOG_HOST
-  syslogStream.setDestination(SYSLOG_HOST);
-  syslogStream.setRaw(true);
-#ifdef SYSLOG_PORT
-  syslogStream.setPort(SYSLOG_PORT);
-#endif
-#endif
-
-  // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-
-  // assumes the client connection for MQTT (and network, etc) is up - otherwise silenty fails/buffers.
-  //
-  MqttLogStream mqttlogStream = MqttLogStream("test", "moi");
-  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
-#if 0
-  // As the PoE devices have their own grounding - the cannot readily be connected
-  // to with a sericd Peral cable.  This allows for a telnet instead.
-  TelnetSerialStream telnetSerialStream = TelnetSerialStream();
-  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-
-  Log.addPrintStream(t);
-  Debug.addPrintStream(t);
-#endif
-
-  // node.set_debug(true);
-  // node.set_debugAlive(true);
-
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
     machinestate = CHECKINGCARD;
 
@@ -169,22 +130,44 @@ void setup() {
     return ACBase::CMD_DECLINE;
   });
   node.addHandler(&reader);
+  // default syslog port and destination (gateway address or broadcast address).
+  //
+#ifdef SYSLOG_HOST
+  syslogStream.setDestination(SYSLOG_HOST);
+  syslogStream.setRaw(true);
+#ifdef SYSLOG_PORT
+  syslogStream.setPort(SYSLOG_PORT);
+#endif
+#endif
 
+  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+
+  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+
+#if 0
+  // As the PoE devices have their own grounding - the cannot readily be connected
+  // to with a sericd Peral cable.  This allows for a telnet instead.
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+#endif
+
+#ifdef OTA_PASSWD
+  node.addHandler(&ota);
+#endif
+
+  // node.set_debug(true);
+  // node.set_debugAlive(true);
   node.begin();
   Debug.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
-
-  // secrit reset button.
-  if (digitalRead(SW2_BUTTON) == LOW) {
-    extern void wipe_eeprom();
-    Log.println("Wiped EEPROM");
-    wipe_eeprom();
-  }
 }
 
 void loop() {
   node.loop();
 
-  if (analogRead(CURRENT_GPIO) > 512) {
+  if (analogRead(CURRENT_GPIO) > CURRENT_THRESHHOLD) {
     if (machinestate < POWERED) {
       Log.printf("Error -- device in state '%s' but current detected!",
                  state[machinestate].label);

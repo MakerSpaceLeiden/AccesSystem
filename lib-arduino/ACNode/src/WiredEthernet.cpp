@@ -1,4 +1,4 @@
-#include <ACNode.h>
+#include <ACNode-private.h>
 
 static bool _connected = false;
 

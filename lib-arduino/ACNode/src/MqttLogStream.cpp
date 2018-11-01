@@ -5,18 +5,20 @@
 // make the various destinations classes in their own right you can 'add' to the T.
 //
 //
-#include <ACNode.h>
+#include <ACNode-private.h>
 #include <MqttLogStream.h>
 
 #include "time.h"
 
-MqttLogStream::MqttLogStream(const char *prefix, const char * maoi) {
-  snprintf(_logtopic, sizeof(_logtopic), "%s/%s/%s", prefix, 
-	(_acnode->logpath && _acnode->logpath[0]) ? _acnode->logpath : "log", _acnode->moi);
+MqttLogStream::MqttLogStream() {
   _logbuff[0] = 0; _at = 0;
-  
-  Debug.printf("Sending output to logtopic %s\n", _logtopic);
   return;
+}
+
+void MqttLogStream::begin() {
+  snprintf(_logtopic, sizeof(_logtopic), "%s/%s/%s",
+	_acnode->mqtt_topic_prefix, _acnode->logpath, _acnode->moi);
+  Debug.printf("Sending output to logtopic %s\n", _logtopic);
 }
 
 size_t MqttLogStream::write(uint8_t c) {

@@ -1,4 +1,4 @@
-#include <ACNode.h>
+#include <ACNode-private.h>
 #include "SIG2.h"
 #include "MakerSpaceMQTT.h" // needed for MAX_MSG
 #include <Arduino.h> // min() macro

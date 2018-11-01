@@ -5,7 +5,7 @@
 // make the various destinations classes in their own right you can 'add' to the T.
 //
 //
-#include <ACNode.h>
+#include <ACNode-private.h>
 #include "SyslogStream.h"
 
 size_t SyslogStream::write(uint8_t c) {

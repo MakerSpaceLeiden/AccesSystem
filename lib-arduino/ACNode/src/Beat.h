@@ -2,7 +2,7 @@
 #define _H_BEAT
 
 #include <ACBase.h>
-#include <ACNode.h>
+#include <ACNode-private.h>
 
 class Beat : public ACSecurityHandler {
 public:

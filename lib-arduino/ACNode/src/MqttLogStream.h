@@ -7,7 +7,8 @@
 class MqttLogStream: public ACLog {
   public:
     const char * name() { return "MqttLogStream"; }
-    MqttLogStream(const char * prefix = "log", const char * moi = "moi");
+    MqttLogStream();
+    void begin();
     virtual size_t write(uint8_t c); 
   private:
     char _logbuff[256], _logtopic[256];

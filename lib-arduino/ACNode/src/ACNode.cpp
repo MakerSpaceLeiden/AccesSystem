@@ -1,5 +1,5 @@
 #include <ACBase.h>
-#include <ACNode.h>
+#include <ACNode-private.h>
 #include "ConfigPortal.h"
 
 // Sort of a fake singleton to overcome callback
@@ -10,7 +10,32 @@ ACLog Log;
 ACLog Debug;
 #define Trace if (0) Debug
 
+#ifdef PROTO_MSL
+MSL msl = MSL();    // protocol doors (private LAN)
+#endif
+
+#ifdef PROTO_SIG1
+SIG1 sig1 = SIG1(); // protocol machines 20015 (HMAC)
+#endif
+
+#ifdef PROTO_SIG2
+SIG2 sig2 = SIG2();
+#endif
+
+#if defined(PROTO_SIG1) || defined(PROTO_SIG2)
+Beat beat = Beat();     // Required by SIG1 and SIG2
+#endif
+
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
+
+
+void ACNode::set_mqtt_host(const char *p) { strncpy(mqtt_server,p, sizeof(mqtt_server)); };
+void ACNode::set_mqtt_port(uint16_t p)  { mqtt_port = p; };
+void ACNode::set_mqtt_prefix(const char *p)  { strncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix)); };
+void ACNode::set_mqtt_log(const char *p)  { strncpy(logpath,p, sizeof(logpath)); };
+void ACNode::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
+void ACNode::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
+void ACNode::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
 
 void ACNode::pop() {
     strncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
@@ -24,24 +49,16 @@ void ACNode::pop() {
     strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
 };
 
-void ACNode::set_mqtt_host(const char *p) { strncpy(mqtt_server,p, sizeof(mqtt_server)); };
-void ACNode::set_mqtt_port(uint16_t p)  { mqtt_port = p; };
-void ACNode::set_mqtt_prefix(const char *p)  { strncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix)); };
-void ACNode::set_mqtt_log(const char *p)  { strncpy(logpath,p, sizeof(logpath)); };
-void ACNode::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
-void ACNode::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
-void ACNode::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
-
-ACNode::ACNode(const char * m, bool wired) : 
-	_ssid(NULL), _ssid_passwd(NULL), _wired(wired)
+ACNode::ACNode(const char * m, bool wired, acnode_proto_t proto) : 
+	_ssid(NULL), _ssid_passwd(NULL), _wired(wired), _proto(proto)
 {
     _acnode = this;
     strncpy(machine,m, sizeof(machine));
     pop();
 }
 
-ACNode::ACNode(const char *m, const char * ssid , const char * ssid_passwd ) :
-   	_ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false)
+ACNode::ACNode(const char *m, const char * ssid , const char * ssid_passwd, acnode_proto_t proto ) :
+   	_ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false), _proto(proto)
 {
     _acnode = this;
     strncpy(machine,m, sizeof(machine));
@@ -166,6 +183,39 @@ void ACNode::begin() {
             (*it)->begin();
         }
     }
+    switch(_proto) {
+    case MSL:
+#ifdef PROTO_MSL
+       addSecurityHandler(&msl);
+#endif
+	break;
+    case SIG1:
+#ifdef PROTO_SIG1
+       addSecurityHandler(&sig1);
+       addSecurityHandler(&beat);
+	break;
+#endif
+   case SIG2:
+#ifdef PROTO_SIG2
+	ash = &sig2;
+       addSecurityHandler(&sig2);
+       addSecurityHandler(&beat);
+	break;
+#endif
+   case NONE:
+        // Lets hope they are added `higher up'.
+        break;
+  };
+  if (_security_handlers.size() == 0) 
+	Log.println("*** WARNING -- no protocols defined AT ALL. This is prolly not what you want.\n");
+
+  // secrit reset button that resets TOFU or the shared
+  // secret.
+  if (digitalRead(SW2_BUTTON) == LOW) {
+    extern void wipe_eeprom();
+    Log.println("Wiped EEPROM with crypto stuff");
+    wipe_eeprom();
+  }
 }
 
 char * ACNode::cloak(char * tag) {

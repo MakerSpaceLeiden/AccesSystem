@@ -1,5 +1,5 @@
 #pragma once
-#include <ACNode.h>
+#include <ACNode-private.h>
 
 // Be sure to define these prior to any inclusion
 // of ETH.h or anything that may include ETH.h - as

@@ -1,4 +1,4 @@
-#include <ACNode.h>
+#include <ACNode-private.h>
 #include <OTA.h>
 
 OTA::OTA(const char * password) : _ota_password(password) {};

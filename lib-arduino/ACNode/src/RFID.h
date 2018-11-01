@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <functional>
 
-#include <ACNode.h>
+#include <ACNode-private.h>
 #include <ACBase.h>
 #include <MFRC522.h>
 
