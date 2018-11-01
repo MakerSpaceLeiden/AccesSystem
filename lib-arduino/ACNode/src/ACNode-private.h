@@ -44,6 +44,10 @@ typedef enum {
     ACNODE_DEBUG
 } acnode_loglevel_t;
 
+// #define PROTO_MSL
+// #define PROTO_SIG1
+#define PROTO_SIG2
+
 typedef enum { SIG2, SIG1, MSL, NONE } acnode_proto_t;
 
 class ACLog : public ACBase, public Print { // We should prolly split this in an aACLogger and a logging class
@@ -211,6 +215,5 @@ extern const char ACNODE_CAPS[];
 #include <SyslogStream.h>
 #include <MqttLogStream.h>
 #include <TelnetSerialStream.h>
-
 
 #endif
