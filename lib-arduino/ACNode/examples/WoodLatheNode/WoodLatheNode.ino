@@ -123,8 +123,11 @@ void setup() {
     machinestate = REJECTED;
   });
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
-    machinestate = CHECKINGCARD;
-
+    // avoid swithing off a machine unless we have to.
+    //
+    if (machinestate < POWERED)
+      machinestate = CHECKINGCARD;
+ 
     // We'r declining so that the core library handle sending
     // an approval request, keep state, and so on.
     //
