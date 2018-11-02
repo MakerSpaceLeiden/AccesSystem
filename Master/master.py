@@ -26,8 +26,9 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     self.commands[ 'open' ] = self.cmd_approve
     self.commands[ 'energize' ] = self.cmd_approve
     self.commands[ 'lastused' ] = self.cmd_lastused
+    # self.commands[ 'beat' ] = self.cmd_beat
 
-    self.commands[ 'event' ] = self.cmd_event
+    # self.commands[ 'event' ] = self.cmd_event
 
   def parseArguments(self):
     self.parser.add('--secrets', action='append',
@@ -146,6 +147,14 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
   def cmd_event(self,msg):
      cmd, info = msg['payload'].split(' ',1)
      self.logger.info("Node {} Event: {}".format(msg['node'],info))
+
+  def cmd_beatOFF(self,msg):
+    if 'theirbeat' in msg and msg['theirbeat'] < 600:
+       self.logger.info("Spotted a node that has been started very recently - sending it an announce.")
+       self.announce(msg['node']) 
+       return
+
+    return super().cmd_beat(msg);
 
 
 master = Master()

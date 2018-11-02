@@ -184,7 +184,7 @@ void ACNode::begin() {
         break;
   };
   if (_security_handlers.size() == 0) 
-	Log.println("*** WARNING -- no protocols defined AT ALL. This is prolly not what you want.\n");
+	Log.println("*** WARNING -- no protocols defined AT ALL. This is prolly not what you want.");
 
     // Note that this will also run the security and ohter handlers; see
     // addSecurityHandler().
@@ -198,7 +198,7 @@ void ACNode::begin() {
     }
   // secrit reset button that resets TOFU or the shared
   // secret.
-  if (digitalRead(SW2_BUTTON) == LOW) {
+  if (digitalRead(SW1_BUTTON) == LOW) {
     extern void wipe_eeprom();
     Log.println("Wiped EEPROM with crypto stuff");
     wipe_eeprom();
@@ -217,7 +217,7 @@ char * ACNode::cloak(char * tag) {
             case ACSecurityHandler::PASS:
                 break;
             case ACSecurityHandler::OK:
-		Debug.printf("%s -> %s cloaked by %s\n", q.tag, tag, (*it)->name());
+		Debug.printf("%s -> %s cloaked by %s\n", tag, q.tag, (*it)->name());
     		strncpy(tag, q.tag, MAX_MSG);
 		return tag;
                 break;
@@ -249,7 +249,8 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 		return;
 	};
 
-	Trace.printf("Requestion approval for %s at node %s on machine %s by tag %s\n", operation, moi, target, tag);
+	Debug.printf("Requesting approval for %s at node %s on machine %s by tag %s\n", 
+		operation ? operation : "<null>", moi ? moi: "<null>", operation ? operation : "<null>", tag ? tag : "<null>");
 
         char buff[MAX_MSG];
 	snprintf(buff,sizeof(buff),"%s %s %s %s", operation, moi, target, tmp);
@@ -481,6 +482,7 @@ void ACNode::process(const char * topic, const char * payload)
  
     Log.printf("Command %s ignored.\n", req->cmd); 
 _done:
+    Log.println("exit from process()");
     delete req;
     return;
 }

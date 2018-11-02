@@ -76,10 +76,6 @@ extern int setup_curve25519();
 // Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
 // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
 
-extern bool sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign);
-extern const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxlen);
-
-extern void send_helo(const char * helo, const char * nonce, beat_t t);
 
 eeprom_t eeprom;
 
@@ -219,137 +215,24 @@ void SIG2::loop() {
         init_done = 2;
         Debug.println("Full init. Ready for crypto");
     };
-    if (init_done == 2 && _acnode->isUp()) {
+    if (init_done == 2 && _acnode->isUp() && sig2_active()) {
         init_done = 3;
-	send_helo("announce", _nonce,0);
-        Debug.println("SIG/2 ready, connected to mqtt and aAnnouncing.");
-    };
-}
-
-bool sig2_sign(char msg[MAX_MSG], size_t maxlen, const char * tosign) {
-  const char * vs = "2.0";
-  uint8_t signature[ED59919_SIGLEN];
-
-  resetWatchdog();
-  Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, tosign, strlen(tosign));
-
-  char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
-  encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
-
-Serial.println("==== sign - start");
-Serial.println(tosign);
-Serial.println(sigb64);
-char b64[ED59919_SIGLEN * 2];
-    encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
-Serial.println(b64);
-Serial.println("==== sign - end");
-
-  snprintf(msg, MAX_MSG, "SIG/%s %s %s", vs, sigb64, tosign);
-
-  return true;
-}
-
-
-const char * sig2_encrypt(const char * lasttag, char * tag_encoded, size_t maxlen) {
-  CBC<AES256> cipher;
-
-  uint8_t iv[16];
-  RNG.rand(iv, sizeof(iv));
-
-  if (!cipher.setKey(sessionkey, cipher.keySize())) {
-    Log.println("FAIL setKey");
-    return NULL;
-  }
-
-  if (!cipher.setIV(iv, cipher.ivSize())) {
-    Log.println("FAIL setIV");
-    return NULL;
-  }
-
-  // PKCS#7 padding - as traditionally used with AES.
-  // https://www.ietf.org/rfc/rfc2315.txt
-  // -- section 10.3, page 21 Note 2.
-  //
-  size_t len = strlen(lasttag);
-  int pad = 16 - (len % 16); // cipher.blockSize();
-  if (pad == 0) pad = 16; //cipher.blockSize();
-
-  size_t paddedlen = len + pad;
-  uint8_t input[ paddedlen ], output[ paddedlen ], output_b64[ paddedlen * 4 / 3 + 4  ], iv_b64[ 32 ];
-  strcpy((char *)input, lasttag);
-
-  for (int i = 0; i < pad; i++)
-    input[len + i] = pad;
-
-  cipher.encrypt(output, (uint8_t *)input, paddedlen);
-  encode_base64(iv, sizeof(iv), iv_b64);
-  encode_base64(output, paddedlen, output_b64);
-
+        Debug.println("SIG/2 ready, connected to mqtt, have private key and am announcing..");
+        _acnode->send_helo();
 #if 0
-  unsigned char key_b64[128];  encode_base64(sessionkey, sizeof(sessionkey), key_b64);
-  Serial.print("Plain len="); Serial.println(strlen(lasttag));
-  Serial.print("Paddd len="); Serial.println(paddedlen);
-  Serial.print("Key Size="); Serial.println(cipher.keySize());
-  Serial.print("IV Size="); Serial.println(cipher.ivSize());
-  Serial.print("IV="); Serial.println((char *)iv_b64);
-  Serial.print("Key="); Serial.println((char *)key_b64);
-  Serial.print("Cypher="); Serial.println((char *)output_b64);
+	char msg[MAX_MSG];
+	char *p= _send_helo("announce", _nonce,0,msg);
+	if (p) 
+		send(NULL,p);
 #endif
-
-  snprintf(tag_encoded, maxlen, "%s.%s", iv_b64, output_b64);
-  return tag_encoded;
-}
-
-void send_helo(const char * helo, const char * nonce, beat_t beat) {
-  char buff[MAX_MSG];
-
-  if (!sig2_active()) 
-	return;
-
-  IPAddress myIp = _acnode->localIP();
-  snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", helo, myIp[0], myIp[1], myIp[2], myIp[3]);
-
-  char b64[128];
- 
-  // Add ED25519 signing/non-repudiation key
-  strncat(buff, " ", sizeof(buff));
-  encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
-  strncat(buff, b64, sizeof(buff));
-
-  // Add Curve25519 session/confidentiality key
-  strncat(buff, " ", sizeof(buff));
-  encode_base64((unsigned char *)(node_publicsession), sizeof(node_publicsession), (unsigned char *)b64);
-  strncat(buff, b64, sizeof(buff));
-
-  // Add a nonce - so we can time-point the reply.
-  uint8_t nonce_raw[ HASH_LENGTH ];
-  RNG.rand(nonce_raw, sizeof(nonce_raw));
-  SHA256 sha256;
-  sha256.reset();
-  sha256.update(node_publicsign, sizeof(node_publicsign));
-  sha256.update(node_publicsession, sizeof(node_publicsession));
-  sha256.update(nonce_raw, sizeof(nonce_raw));
-  sha256.finalize(nonce_raw, sizeof(nonce_raw));
-
-  // We know that this fits - see header of SIG2.h
-  encode_base64(nonce_raw, sizeof(nonce_raw),  (unsigned char *)nonce);
-
-  strncat(buff, " ", sizeof(buff));
-  strncat(buff, nonce, sizeof(buff));
-
-  if (beat) {
-    char tmp[MAX_MSG], msg[MAX_MSG];
-    snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", beat, buff);
-    if (!sig2_sign(msg, sizeof(msg), tmp)) {
-	Log.println("Failt to sign special");
-        return;
     };
-    _acnode->send(NULL, msg, true);
-    Debug.printf("Sending a prepac <%s>\n", msg);
-    return;
-  };
-  send(NULL, buff);
 }
+
+// Note - we're not siging the topic.
+//
+
+
+
 
 ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     size_t len = strlen(req->payload);
@@ -366,15 +249,20 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     };
     
     strncpy(buff,req->payload,sizeof(buff));
-    
     char * p = buff;
-    SEPCPY(req->version, "SIG2Verify failed - no version", ACSecurityHandler::FAIL);
+
+    Debug.printf("===  * <%s>\n", buff);
+
+    SEP(version, "SIG2Verify failed - no version", ACSecurityHandler::FAIL);
+    strncpy(req->version, version, sizeof(req->version));
+
     SEP(signature64, "SIG2Verify failed - no signature64", ACSecurityHandler::FAIL);
 
     while(p && *p == ' ') p++;
     strncpy(req->rest, p, sizeof(req->rest));
 
-    SEPCPY(req->beat, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
+    SEP(beat, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
+    strncpy(req->beat, beat, sizeof(req->beat));
     
     // Annoyingly - not all implementations of base64 are careful
     // with the final = and == and trailing \0.
@@ -406,8 +294,6 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
 
   char master_publicsignkey_b64[B64L(CURVE259919_KEYLEN )];
   char master_publicencryptkey_b64[B64L(CURVE259919_KEYLEN)];
-
-  Serial.printf("SIG2_verify <%s>\n", req->rest);
 
   uint8_t signature[ED59919_SIGLEN];
   B64DE(signature64, signature, "Ed25519 signature", ACSecurityHandler::FAIL);
@@ -444,6 +330,10 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     B64DE(master_publicsignkey_b64, pubsign_tmp, "Ed25519 public key", ACSecurityHandler::FAIL);
     B64DE(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key", ACSecurityHandler::FAIL);
 
+    if (!bcmp(pubsign_tmp,node_publicsign,sizeof(node_publicsign))) {
+	Debug.println("Ignoring - am hearing myself.");
+	return ACSecurityHandler::OK;
+    };
     if (strcmp(req->cmd, "welcome") == 0) {
         SEP(nonce, "Nonce extraction", ACSecurityHandler::FAIL);
 
@@ -493,7 +383,13 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   else if (strcmp(req->cmd, "announce") == 0) {
 	Debug.printf("Beat too far off (%lu) - sending nonced welcome <%s>\n",
 		delta,_nonce);
-        send_helo((char *)"welcome", _nonce, req->beatExtracted);
+#if 0
+	char buff[MAX_MSG];
+        char * msg = _send_helo((char *)"welcome", _nonce, req->beatExtracted, buff);
+	if (msg) send(NULL,msg);
+#else
+	_acnode->send_helo();
+#endif
         return ACSecurityHandler::FAIL;
   }
    else {
@@ -570,12 +466,28 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
     if (!sig2_active())
         return FAIL;
   
-    if (!sig2_sign(msg, sizeof(msg), req->payload))
-        return FAIL;
+    uint8_t signature[ED59919_SIGLEN];
+
+    resetWatchdog();
+    Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, req->payload, strlen(req->payload));
+
+    char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
+    encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
+
+#if 0
+Serial.println("==== sign - start");
+Serial.println(req->payload);
+Serial.println(sigb64);
+char b64[ED59919_SIGLEN * 2];
+encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
+Serial.println(b64);
+Serial.println("==== sign - end");
+#endif
 
     strncpy(req->version, "SIG/2.0", sizeof(req->version));
+    snprintf(msg, MAX_MSG, "%s %s %s", req->version, sigb64, req->payload);
+
     strncpy(req->payload, msg, sizeof(req->payload));
-    
     return OK;
 };
 
@@ -585,8 +497,52 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
     if (!sig2_active())
         return ACSecurityHandler::FAIL;
 
-    if (sig2_encrypt(req->tag, tag_encoded, sizeof(tag_encoded)) == NULL)
-        return FAIL;
+  CBC<AES256> cipher;
+
+  uint8_t iv[16];
+  RNG.rand(iv, sizeof(iv));
+
+  if (!cipher.setKey(sessionkey, cipher.keySize())) {
+    Log.println("FAIL setKey");
+    return FAIL;
+  }
+
+  if (!cipher.setIV(iv, cipher.ivSize())) {
+    Log.println("FAIL setIV");
+    return FAIL;
+  }
+
+  // PKCS#7 padding - as traditionally used with AES.
+  // https://www.ietf.org/rfc/rfc2315.txt
+  // -- section 10.3, page 21 Note 2.
+  //
+  size_t len = strlen(req->tag);
+  int pad = 16 - (len % 16); // cipher.blockSize();
+  if (pad == 0) pad = 16; //cipher.blockSize();
+
+  size_t paddedlen = len + pad;
+  uint8_t input[ paddedlen ], output[ paddedlen ], output_b64[ paddedlen * 4 / 3 + 4  ], iv_b64[ 32 ];
+  strcpy((char *)input, req->tag);
+
+  for (int i = 0; i < pad; i++)
+    input[len + i] = pad;
+
+  cipher.encrypt(output, (uint8_t *)input, paddedlen);
+  encode_base64(iv, sizeof(iv), iv_b64);
+  encode_base64(output, paddedlen, output_b64);
+
+#if 0
+  unsigned char key_b64[128];  encode_base64(sessionkey, sizeof(sessionkey), key_b64);
+  Serial.print("Plain len="); Serial.println(strlen(lasttag));
+  Serial.print("Paddd len="); Serial.println(paddedlen);
+  Serial.print("Key Size="); Serial.println(cipher.keySize());
+  Serial.print("IV Size="); Serial.println(cipher.ivSize());
+  Serial.print("IV="); Serial.println((char *)iv_b64);
+  Serial.print("Key="); Serial.println((char *)key_b64);
+  Serial.print("Cypher="); Serial.println((char *)output_b64);
+#endif
+
+  snprintf(tag_encoded, sizeof(tag_encoded), "%s.%s", iv_b64, output_b64);
     
     strncpy(req->tag, tag_encoded, sizeof(req->tag));
 
@@ -599,18 +555,66 @@ SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
         return CMD_CLAIMED;
     }
     if (!strncmp("announce", req->cmd, 8)) {
-        send_helo("welcome",_nonce,0);
+	Debug.println("Sending from handlecmd in SIG2");
+#if 0
+	char buff[MAX_MSG];
+        char * msg = _send_helo("welcome",_nonce,0,buff);
+	if (msg) {
+		send(NULL,msg);
+        	return CMD_CLAIMED;
+	};
+#endif
+	/// I think we can drop this one.
+	_acnode->send_helo();
         return CMD_CLAIMED;
     }
     return Beat::handle_cmd(req);
 }
 
 SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
-    	if (sig2_active() && init_done > 2) {
-        	send_helo("announce",_nonce,0);
-	        return PASS; // DECLINE, FAIL, PASS, OK 
-	};
-	// not enough data yet to actually do an helo.
+  char buff[MAX_MSG];
+  if (!sig2_active()) {
+	Debug.printf("Not sending %s from _send_helo() - not yet active.\n", req->payload);
 	return FAIL;
+  };
+
+  IPAddress myIp = _acnode->localIP();
+  snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", req->payload, myIp[0], myIp[1], myIp[2], myIp[3]);
+
+  char b64[128];
+ 
+  // Add ED25519 signing/non-repudiation key
+  //
+  strncat(buff, " ", sizeof(buff));
+  encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
+  strncat(buff, b64, sizeof(buff));
+
+  // Add Curve25519 session/confidentiality key
+  //
+  strncat(buff, " ", sizeof(buff));
+  encode_base64((unsigned char *)(node_publicsession), sizeof(node_publicsession), (unsigned char *)b64);
+  strncat(buff, b64, sizeof(buff));
+
+  // Add a nonce - so we can time-point the reply.
+  //
+  uint8_t nonce_raw[ HASH_LENGTH ];
+  RNG.rand(nonce_raw, sizeof(nonce_raw));
+  SHA256 sha256;
+  sha256.reset();
+  sha256.update(node_publicsign, sizeof(node_publicsign));
+  sha256.update(node_publicsession, sizeof(node_publicsession));
+  sha256.update(nonce_raw, sizeof(nonce_raw));
+  sha256.finalize(nonce_raw, sizeof(nonce_raw));
+
+  // We know that this fits - see header of SIG2.h
+  //
+  encode_base64(nonce_raw, sizeof(nonce_raw),  (unsigned char *)_nonce);
+
+  // Append the noce.
+  strncat(buff, " ", sizeof(buff));
+  strncat(buff, _nonce, sizeof(buff));
+
+  strncpy(req->payload, buff, sizeof(req->payload));
+  return OK;
 }
 

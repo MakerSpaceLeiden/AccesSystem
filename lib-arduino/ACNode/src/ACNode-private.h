@@ -111,7 +111,7 @@ public:
     // Callbacks.
     typedef std::function<void(acnode_error_t)> THandlerFunction_Error;
     ACNode& onError(THandlerFunction_Error fn)
-    { _error_callback = fn; return *this; };
+    	    { _error_callback = fn; return *this; };
     
     typedef std::function<void(void)> THandlerFunction_Connect;
     ACNode& onConnect(THandlerFunction_Connect fn)
@@ -146,20 +146,21 @@ public:
     bool isConnected(); // ethernet/wifi is up with valid IP.
     bool isUp(); // MQTT et.al also running.
     
+    void send_helo(char * tokenOrNull = NULL);
+
     // Public - so it can be called from our fake
     // singleton. Once that it solved it should really
     // become private again.
     //
-    void send( const char * payload) { send(NULL, payload, false); };
+    void send(const char * payload) { send(NULL, payload, false); };
     void send(const char * topic, const char * payload, bool raw = false);
-    
+
     // This function should be private - but we're calling
     // it from a C callback in the mqtt subsystem.
     //
     void process(const char * topic, const char * payload);
     
 private:
-    
     bool _debug_alive;
     THandlerFunction_Error _error_callback;
     THandlerFunction_Connect _connect_callback;

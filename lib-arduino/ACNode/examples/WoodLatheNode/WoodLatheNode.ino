@@ -142,10 +142,10 @@ void setup() {
 #endif
 #endif
 
-  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+    Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+    
+    Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+    Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
 #if 0
   // As the PoE devices have their own grounding - the cannot readily be connected
@@ -168,19 +168,19 @@ void setup() {
 
 void loop() {
   node.loop();
-
+  
   if (analogRead(CURRENT_GPIO) > CURRENT_THRESHHOLD) {
     if (machinestate < POWERED) {
-      Log.printf("Error -- device in state '%s' but current detected!",
+      Log.printf("Error -- device in state '%s' but current detected!\n",
                  state[machinestate].label);
     }
     if (machinestate == POWERED) {
       machinestate = RUNNING;
-      Log.printf("Machine running.");
+      Log.printf("Machine running.\n");
     }
   } else if (machinestate == RUNNING) {
     machinestate = POWERED;
-    Log.printf("Machine halted.");
+    Log.printf("Machine halted.\n");
   }
 
   // We do not worry much about button bounce; as it is just an off
@@ -203,7 +203,7 @@ void loop() {
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
     machinestate = state[machinestate].failStateOnTimeout;
     Debug.printf("Time-out; transition from %s to %s\n",
-                 state[laststatechange].label, state[machinestate].label);
+                 state[laststate].label, state[machinestate].label);
   };
 
   if (laststate != machinestate) {

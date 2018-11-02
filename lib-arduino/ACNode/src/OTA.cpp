@@ -14,18 +14,19 @@ void OTA::begin() {
 
   ArduinoOTA.onStart([]() {
     Log.println("OTA process started.");
+    Serial.printf("Progress: 0");
     Log.stop();
     Debug.stop();
   });
   ArduinoOTA.onEnd([]() {
-    Log.println("OTA process completed. Resetting.");
+    Log.println("..100% Done\nOTA process completed. Resetting.");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     static int lp = 0;
     int p = (int)(10. * progress / total + 0.5);
     if (p != lp) {
 	lp = p;
-        Serial.printf("Progress: %u\n", (progress / (total / 100)));
+        Serial.printf("..%u%%", (progress / (total / 100)));
     };
   });
   ArduinoOTA.onError([](ota_error_t error) {

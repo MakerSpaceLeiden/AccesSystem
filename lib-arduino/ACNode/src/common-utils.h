@@ -17,15 +17,7 @@ decode_base64((unsigned char *)base64str, bin); \
 #define SEP(tok, err, errorOnReturn) \
         char *  tok = strsepspace(&p); \
         if (!tok) { \
-                Debug.printf("Malformed/missing " err ": %s\n", p ); \
+                Debug.printf("Malformed/missing " err ": %s\n", p ? p : "<NULL>" ); \
                 return errorOnReturn; \
         }; 
-
-#define SEPCPY(tok, err, errorOnReturn) \
-{ \
-        SEP(q, err, errorOnReturn); \
-        assert(sizeof(tok)>4); \
-        strncpy(tok, q, sizeof(tok)); \
-}
-
 #endif

@@ -145,4 +145,12 @@ SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
     return OK;
 };
 
+SIG1::acauth_result_t SIG1::helo(ACRequest * req) {
+	IPAddress myIp = _acnode->localIP();
+    	snprintf(req->payload, sizeof(req->payload), 
+		"announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
+
+	return OK;
+}
+
 

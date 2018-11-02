@@ -21,12 +21,14 @@ publish_rec_t *publish_queue = NULL;
 
 void ACNode::send(const char * topic, const char * payload, bool _raw) {
     char _topic[MAX_TOPIC];
-    
+
     if (topic == NULL) {
         snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, ACNode::moi);
         topic = _topic;
-    }
-    
+    };
+
+    Serial.printf("send('%s','%s',%d)\n", topic ? topic : "<null>", payload ? payload : "<null>" , _raw);
+
     publish_rec_t * rec = (publish_rec_t *)malloc(sizeof(publish_rec_t));
     if (rec) {
         rec->topic = strdup(topic);
@@ -36,7 +38,7 @@ void ACNode::send(const char * topic, const char * payload, bool _raw) {
     }
     
     if (!rec || !(rec->topic) || !(rec->payload)) {
-        Debug.println("Out of memory");
+        Serial.println("Out of memory");
 #ifdef DEBUG
         // Throw a core dump for debugging/GDBSTUB_H purposes.
         *((int*)0) = 0;
@@ -47,8 +49,14 @@ void ACNode::send(const char * topic, const char * payload, bool _raw) {
     // us to add things to the queue while in something works on it.
     //
     publish_rec_t ** p = &publish_queue;
-    while (*p) p = &(*p)->nxt;
+    int i = 0;
+    while (*p) {
+	p = &(*p)->nxt;
+	i++;
+    };
     *p = rec;
+
+    Serial.printf("Queued at # %d\n",i);
 }
 
 
@@ -109,11 +117,16 @@ void ACNode::reconnectMQTT() {
     Debug.print("Subscribed to ");
     Debug.println(topic);
 
-    char buff[MAX_MSG];
-    IPAddress myIp = _acnode->localIP();
-    snprintf(buff, sizeof(buff), "announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
+    send_helo();
+}
 
-    ACRequest * req = new ACRequest(topic, buff);
+void ACNode::send_helo(char * token) {
+    char topic[MAX_TOPIC];
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, ACNode::moi, master);
+
+    ACRequest * req = new ACRequest(topic, token ? token : "announce");
+
+    bool canBeSent = false;
 
     ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
     for (std::list<ACSecurityHandler *>::iterator it =_security_handlers.begin();
@@ -126,6 +139,7 @@ void ACNode::reconnectMQTT() {
                 break;
             case ACSecurityHandler::PASS:
             case ACSecurityHandler::OK:
+		canBeSent = true;
                 break;
             case ACSecurityHandler::FAIL:
             default:
@@ -133,8 +147,15 @@ void ACNode::reconnectMQTT() {
                 return;
                 break;
         }
+	Debug.printf("**** called %s -> %s (%d)\n", (*it)->name(), req->payload, r);
     }
-    send(topic, buff);
+    // at least someone should have touched it.
+    if (canBeSent) {
+	    Debug.printf("Send from reconnect: %s\n", req->payload);
+	    send(NULL, req->payload);
+    } else {
+	    Debug.printf("No helo yet sent; not enough stack up.\n");
+    }
 }
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
@@ -209,6 +230,8 @@ void ACNode::mqttLoop() {
     // here quickly.
     //
     publish_rec_t * rec = publish_queue;
+
+    Serial.printf("Picking from queu: <%s>\n", rec->payload);
     
     ACRequest * reqOut = new ACRequest();
     if (!reqOut) {
@@ -251,6 +274,5 @@ _done_without_send:
     free(rec->topic);
     free(rec->payload);
     free(rec);
-    
 }
 

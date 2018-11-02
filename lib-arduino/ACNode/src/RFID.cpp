@@ -1,4 +1,5 @@
 #include <RFID.h>
+// https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf
 
 volatile bool cardScannedIrqSeen = false;
 static void readCard() { cardScannedIrqSeen = true; }
@@ -42,11 +43,11 @@ void RFID::loop() {
     if (true == _irqMode) {
      if (false == cardScannedIrqSeen) {
 	static unsigned long kick = 0;
-	if (millis() - kick > 10*1000) {
+	if (millis() - kick > 1000) {
 		kick = millis();
     		_mfrc522->PCD_WriteRegister(_mfrc522->FIFODataReg, _mfrc522->PICC_CMD_REQA);
 		_mfrc522->PCD_WriteRegister(_mfrc522->CommandReg, _mfrc522->PCD_Transceive);
-		_mfrc522->PCD_WriteRegister(_mfrc522->BitFramingReg, 0x87);	
+		_mfrc522->PCD_WriteRegister(_mfrc522->BitFramingReg, 0x87); // start data transmission, last byte bits, 9.3.1.14
 	};
         return;
       };

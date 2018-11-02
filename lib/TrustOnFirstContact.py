@@ -9,6 +9,8 @@ import socket
 import traceback
 import hashlib
 import linecache
+import linecache
+
 
 import axolotl_curve25519 as curve
 import ed25519 as ed25519
@@ -166,12 +168,18 @@ class TrustOnFirstContact(Beat.Beat):
                     self.logger.error("Ignoring malformed signing public key of node {}".format(msg['node']))
                     return None
 
+            if publickey == self.cnf.publickey.to_bytes():
+                    self.logger.debug("Ignoring the message - as it is my own (pubkey).")
+
             publickey = ed25519.VerifyingKey(pubkey, encoding="base64")
             
             seskey = base64.b64decode(seskey)
             if len(seskey) != 32:
                     self.logger.error("Ignoring malformed session public key of node {}".format(msg['node']))
                     return None
+
+            if msg['client'] == self.cnf.node:
+                    self.logger.debug("Ignoring the message - as it is my own (name).")
 
             if msg['node'] in self.pubkeys:
                 if self.pubkeys[msg['node']] != publickey:

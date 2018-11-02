@@ -225,14 +225,15 @@ class ACNodeBase:
     self.logger.debug("Unversioned payload (ignored): ".format(payload))
     return None
 
-  def on_message(self,client, userdata, message):
+  def on_message(self, client, userdata, message):
     msg = {
+	'client' : client,
         'topic': message.topic,
         'payload': None,
         'validated': 0
     }
     try:
-      self.logger.debug("<<<<Reccing @"+message.topic+":\n\t"+message.payload.decode('ASCII'))
+      self.logger.debug("<<<<Reccing from "+client+": "+message.topic+":\n\t"+message.payload.decode('ASCII'))
     except:
       pass
 

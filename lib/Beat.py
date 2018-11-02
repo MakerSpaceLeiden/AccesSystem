@@ -13,6 +13,8 @@ import daemon
 import setproctitle
 import socket
 import traceback
+import linecache
+
 
 import configargparse
 
@@ -74,6 +76,11 @@ class Beat(ACNodeBase.ACNodeBase):
     if delta > self.cnf.leeway:
         if payload.find('announce') != 0:
           self.logger.critical("Beats are {} seconds off (max leeway is {} seconds). ignoring message.".format(delta,self.cnf.leeway))
+          if beat < 10 * 24* 3600:
+              # XXX rate limit me.
+              self.logger.notice("Node in early startup spotted, sending it an announce.")
+              self.announce(msg['node'])
+
           return None
         else:
           self.logger.info("Allowing beats to be {} seconds off on an announce msg.".format(delta,self.cnf.leeway))
@@ -127,7 +134,7 @@ class Beat(ACNodeBase.ACNodeBase):
          self.cmd_announce(msg)
          return
 
-       self.logger.critical("Delta too far to adjust; ignoring".format(msg['delta']))
+       self.logger.critical("Delta too far to adjust; ignoring.")
        return
 
     return None

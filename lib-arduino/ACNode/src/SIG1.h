@@ -11,9 +11,10 @@ public:
     char passwd[MAX_NAME] = "";
 
     acauth_result_t verify(ACRequest * req);
-
     acauth_result_t secure(ACRequest * req);
     acauth_result_t cloak(ACRequest * req);
+    acauth_result_t helo(ACRequest * req);
+
 } ;
 
 #endif
