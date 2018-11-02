@@ -29,14 +29,14 @@
 
 typedef struct __attribute__ ((packed)) {
 #define EEPROM_VERSION (0x0103)
-    uint16_t version;
-    uint8_t flags;
-    uint8_t spare;
-    
-    // Ed25519 key (Curve25519 key in Edwards y space)
-    uint8_t node_privatesign[CURVE259919_KEYLEN];
-    uint8_t master_publicsignkey[CURVE259919_KEYLEN];
-    
+  uint16_t version;
+  uint8_t flags;
+  uint8_t spare;
+
+  // Ed25519 key (Curve25519 key in Edwards y space)
+  uint8_t node_privatesign[CURVE259919_KEYLEN];
+  uint8_t master_publicsignkey[CURVE259919_KEYLEN];
+
 } eeprom_t;
 
 extern eeprom_t eeprom;
@@ -62,20 +62,18 @@ extern uint8_t sessionkey[CURVE259919_SESSIONLEN];
 #define RNG_EEPROM_ADDRESS (sizeof(eeprom)+4)
 
 extern bool sig2_active();
+
 extern void kickoff_RNG();
-extern void maintain_rng();
+
 extern void load_eeprom();
 extern void save_eeprom();
 extern void wipe_eeprom();
-extern void init_curve();
-extern int setup_curve25519();
 
 // Option 1 (caninical) - a (correctly) signed message with a known key.
 // Option 2 - a (correctly) signed message with an unknwon key and still pre-TOFU
 //            we need to check against the key passed rather than the one we know.
 // Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
 // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
-
 
 eeprom_t eeprom;
 
@@ -145,7 +143,10 @@ void wipe_eeprom() {
   save_eeprom();
 }
 
-void init_curve() {
+// Ideally called from the runloop - i.e. late once we have at least a modicum of
+// entropy from wifi/etc.
+//
+void SIG2::begin() {
   EEPROM.begin(1024);
   load_eeprom();
 
@@ -154,143 +155,116 @@ void init_curve() {
     wipe_eeprom();
   }
   Serial.println("Got a valid eeprom.");
-}
-// Ideally called from the runloop - i.e. late once we have at least a modicum of
-// entropy from wifi/etc.
-//
-int setup_curve25519() {
-  if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
-    resetWatchdog();
-    Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
-  }
 
-  Debug.println("Generating Curve25519 session keypair");
-
-  resetWatchdog();
-  Curve25519::dh1(node_publicsession, node_privatesession);
-  bzero(sessionkey, sizeof(sessionkey));
-
-  if (eeprom.flags & CRYPTO_HAS_MASTER_TOFU) {
-    Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);
-    return 0;
-  }
-
-  resetWatchdog();
-  Ed25519::generatePrivateKey(eeprom.node_privatesign);
-  resetWatchdog();
-  Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
-
-  eeprom.flags |= CRYPTO_HAS_PRIVATE_KEYS;
-
-  save_eeprom();
-  return 0;
-}
-
-void SIG2::begin() {
-    Serial.println("Started init_curve()");
-    init_curve();
-    Beat::begin();
+  Beat::begin();
 }
 
 void SIG2::loop() {
-    Beat::loop();
+  RNG.loop();
+  Beat::loop();
 
-    if (!_acnode->isConnected())
-        return;
-    
-    if (init_done == 0) {
-        kickoff_RNG();
-        init_done = 1;
-    };
-    RNG.loop();
-    
-    if (RNG.available(1024 * 4))
-        return;
-    
+  if (init_done == 0) {
+    kickoff_RNG();
+    init_done = 1;
+    return;
+  };
+
+  if (RNG.available(1024 * 4))
+    return;
+
+  if (!_acnode->isConnected())
+    return;
+
+  if (init_done > 3)
+    return;
+  
+  for(int i = 0; i < 32; i++) {
     uint32_t seed = trng();
     RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
-    
-    if (init_done == 1) {
-        setup_curve25519();
-        init_done = 2;
-        Debug.println("Full init. Ready for crypto");
-    };
-    if (init_done == 2 && _acnode->isUp() && sig2_active()) {
-        init_done = 3;
-        Debug.println("SIG/2 ready, connected to mqtt, have private key and am announcing..");
-        _acnode->send_helo();
-#if 0
-	char msg[MAX_MSG];
-	char *p= _send_helo("announce", _nonce,0,msg);
-	if (p) 
-		send(NULL,p);
-#endif
-    };
+  };
+
+  if (init_done == 1) {
+    Debug.println("Generating Curve25519 session keypair");
+    resetWatchdog();
+    Curve25519::dh1(node_publicsession, node_privatesession);
+    bzero(sessionkey, sizeof(sessionkey));
+
+    if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
+      Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);
+    } else {
+      resetWatchdog();
+      Ed25519::generatePrivateKey(eeprom.node_privatesign);
+
+      eeprom.flags |= CRYPTO_HAS_PRIVATE_KEYS;
+
+      save_eeprom();
+      Debug.printf("EEPROM Version %04x contains all new private key for TOFU\n", eeprom.version);
+    }
+
+    resetWatchdog();
+    Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
+
+    init_done = 2;
+    Debug.println("Full init. Ready for crypto");
+    return;
+  };
+  if (init_done == 2 && _acnode->isUp() && sig2_active()) {
+    init_done = 3;
+    Log.println("SIG/2 ready, connected to mqtt, have private key and am announcing.");
+    _acnode->send_helo();
+   return;
+  };
 }
 
 // Note - we're not siging the topic.
 //
-
-
-
-
 ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
-    size_t len = strlen(req->payload);
-    char buff[MAX_MSG];
+  size_t len = strlen(req->payload);
+  char buff[MAX_MSG];
 
-    // We only accept things starting with SIG/2*<space>hex<space>
-    if (len <72|| strncmp(req->payload, "SIG/2.", 6) != 0) {
-        return ACSecurityHandler::DECLINE;
-    };
-    
-    if (len > sizeof(buff)-1) {
-        Debug.println("Failing SIG/2 sigature - far too long");
-        return FAIL;
-    };
-    
-    strncpy(buff,req->payload,sizeof(buff));
-    char * p = buff;
+  // We only accept things starting with SIG/2*<space>hex<space>
+  if (len < 72 || strncmp(req->payload, "SIG/2.", 6) != 0) 
+    return ACSecurityHandler::DECLINE;
 
-    Debug.printf("===  * <%s>\n", buff);
+  if (len > sizeof(buff) - 1) {
+    Debug.println("Failing SIG/2 sigature - far too long");
+    return FAIL;
+  };
 
-    SEP(version, "SIG2Verify failed - no version", ACSecurityHandler::FAIL);
-    strncpy(req->version, version, sizeof(req->version));
+  strncpy(buff, req->payload, sizeof(buff));
+  char * p = buff;
 
-    SEP(signature64, "SIG2Verify failed - no signature64", ACSecurityHandler::FAIL);
+  SEP(version, "SIG2Verify failed - no version", ACSecurityHandler::FAIL);
+  strncpy(req->version, version, sizeof(req->version));
 
-    while(p && *p == ' ') p++;
-    strncpy(req->rest, p, sizeof(req->rest));
+  SEP(signature64, "SIG2Verify failed - no signature64", ACSecurityHandler::FAIL);
 
-    SEP(beat, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
-    strncpy(req->beat, beat, sizeof(req->beat));
-    
-    // Annoyingly - not all implementations of base64 are careful
-    // with the final = and == and trailing \0.
-    //
-    if (abs(strlen(signature64)-B64L(ED59919_SIGLEN)) > 3) {
-        Debug.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",
-		strlen(signature64),B64L(ED59919_SIGLEN));
-        return ACSecurityHandler::FAIL;
-    };
-    
-    req->beatExtracted = strtoul(req->beat, NULL, 10);
-    if (req->beatExtracted== 0) {
-        Debug.println("Failing SIG/2 sigature - beat parsing failed");
-        return ACSecurityHandler::FAIL;
-    };
-   
-#if 0 
-    if (!sig2_verify(beatString, signature64, p)) {
-        Debug.println("Failing SIG/2 sigature - invalid signature");
-        return ACSecurityHandler::FAIL;
-    };
-#endif
+  while (p && *p == ' ') p++;
+  strncpy(req->rest, p, sizeof(req->rest));
 
-    // Option 1 (caninical) - a (correctly) signed message with a known key.
-    // Option 2 - a (correctly) signed message with an unknwon key and still pre-TOFU
-    //            we need to check against the key passed rather than the one we know.
-    // Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
-    // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
+  SEP(beat, "SIG1Verify failed - no beat", ACSecurityHandler::FAIL);
+  strncpy(req->beat, beat, sizeof(req->beat));
+
+  // Annoyingly - not all implementations of base64 are careful
+  // with the final = and == and trailing \0.
+  //
+  if (abs(strlen(signature64) - B64L(ED59919_SIGLEN)) > 3) {
+    Debug.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",
+                 strlen(signature64), B64L(ED59919_SIGLEN));
+    return ACSecurityHandler::FAIL;
+  };
+
+  req->beatExtracted = strtoul(req->beat, NULL, 10);
+  if (req->beatExtracted == 0) {
+    Debug.println("Failing SIG/2 sigature - beat parsing failed");
+    return ACSecurityHandler::FAIL;
+  };
+
+  // Option 1 (caninical) - a (correctly) signed message with a known key.
+  // Option 2 - a (correctly) signed message with an unknwon key and still pre-TOFU
+  //            we need to check against the key passed rather than the one we know.
+  // Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
+  // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
 
   char master_publicsignkey_b64[B64L(CURVE259919_KEYLEN )];
   char master_publicencryptkey_b64[B64L(CURVE259919_KEYLEN)];
@@ -315,31 +289,31 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   strncpy(req->cmd, p, cmd_len);
 
   p = q;
-  while(p && *p == ' ') p++;
- 
+  while (p && *p == ' ') p++;
+
   if (strcmp(req->cmd, "welcome") == 0  || strcmp(req->cmd, "announce") == 0) {
     newsession = true;
 
     SEP(host_ip, "IP address", ACSecurityHandler::FAIL);
-// Debug.printf(" ** host_ip=%s\n", host_ip);
+    // Debug.printf(" ** host_ip=%s\n", host_ip);
     SEP(master_publicsignkey_b64, "B64 public signing key", ACSecurityHandler::FAIL);
-// Debug.printf(" ** master_publicsignkey_b64=%s\n", master_publicsignkey_b64);
+    // Debug.printf(" ** master_publicsignkey_b64=%s\n", master_publicsignkey_b64);
     SEP(master_publicencryptkey_b64, "B64 public encryption key", ACSecurityHandler::FAIL);
-// Debug.printf(" ** master_publicencryptkey_b64=%s\n", master_publicencryptkey_b64);
+    // Debug.printf(" ** master_publicencryptkey_b64=%s\n", master_publicencryptkey_b64);
 
     B64DE(master_publicsignkey_b64, pubsign_tmp, "Ed25519 public key", ACSecurityHandler::FAIL);
     B64DE(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key", ACSecurityHandler::FAIL);
 
-    if (!bcmp(pubsign_tmp,node_publicsign,sizeof(node_publicsign))) {
-	Debug.println("Ignoring - am hearing myself.");
-	return ACSecurityHandler::OK;
+    if (!bcmp(pubsign_tmp, node_publicsign, sizeof(node_publicsign))) {
+      Debug.println("Ignoring - am hearing myself.");
+      return ACSecurityHandler::OK;
     };
     if (strcmp(req->cmd, "welcome") == 0) {
-        SEP(nonce, "Nonce extraction", ACSecurityHandler::FAIL);
+      SEP(nonce, "Nonce extraction", ACSecurityHandler::FAIL);
 
-	Debug.printf("Nonce %s = %s\n", _nonce, nonce);
-	if (!strcmp(_nonce,nonce))
-		nonceOk = true;
+      Debug.printf("Nonce %s = %s\n", _nonce, nonce);
+      if (!strcmp(_nonce, nonce))
+        nonceOk = true;
     };
     if (tofu) {
       if (memcmp(eeprom.master_publicsignkey, pubsign_tmp, sizeof(eeprom.master_publicsignkey))) {
@@ -360,7 +334,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   if (signkey == NULL && tofu) {
     Debug.println("Using existing master keys to verify.");
     signkey = eeprom.master_publicsignkey;
-  } 
+  }
   else if (signkey == NULL) {
     Log.println("Cannot (yet) validate signature - ignoring while waiting for welcome/announce");
     return ACSecurityHandler::FAIL;
@@ -373,29 +347,24 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     return ACSecurityHandler::FAIL;
   };
 
-  beat_t delta = beat_absdelta(req->beatExtracted,beatCounter);
+  beat_t delta = beat_absdelta(req->beatExtracted, beatCounter);
   if (nonceOk) {
-	Debug.println("Verified nonce; so any beat ok.");
+    Debug.println("Verified nonce; so any beat ok.");
   }
   else if (delta < 120) {
-	Debug.println("Beat ok.");
-  } 
-  else if (strcmp(req->cmd, "announce") == 0) {
-	Debug.printf("Beat too far off (%lu) - sending nonced welcome <%s>\n",
-		delta,_nonce);
-#if 0
-	char buff[MAX_MSG];
-        char * msg = _send_helo((char *)"welcome", _nonce, req->beatExtracted, buff);
-	if (msg) send(NULL,msg);
-#else
-	_acnode->send_helo();
-#endif
-        return ACSecurityHandler::FAIL;
+    Debug.println("Beat ok.");
   }
-   else {
-        Log.printf("Beat is too far off (%lu) - rejecting without a nonce\n", delta);
-	// or should we send a noned welcome to get back on track ?
-        return ACSecurityHandler::FAIL;
+  else if (strcmp(req->cmd, "announce") == 0) {
+    Debug.printf("Beat too far off (%lu) - sending nonced welcome <%s>\n",
+                 delta, _nonce);
+
+    _acnode->send_helo();
+    return ACSecurityHandler::FAIL;
+  }
+  else {
+    Log.printf("Beat is too far off (%lu) - rejecting without a nonce\n", delta);
+    // or should we send a noned welcome to get back on track ?
+    return ACSecurityHandler::FAIL;
   };
 
   if (!tofu && nonceOk) {
@@ -404,7 +373,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
 
     eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
     save_eeprom();
-  } 
+  }
   else {
     Debug.println("Trust based on data from presistent store.");
   };
@@ -440,62 +409,52 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     Serial.print("HASHed session key: "); Serial.println((char *)key_b64);
 #endif
 
-    encode_base64(pubsign_tmp,sizeof(pubsign_tmp),(unsigned char *)master_publicsignkey_b64);
-    encode_base64(pubencr_tmp,sizeof(pubencr_tmp),(unsigned char *)master_publicencryptkey_b64);
+    encode_base64(pubsign_tmp, sizeof(pubsign_tmp), (unsigned char *)master_publicsignkey_b64);
+    encode_base64(pubencr_tmp, sizeof(pubencr_tmp), (unsigned char *)master_publicencryptkey_b64);
 
-    Log.printf("(Re)calculated session key - slaved to master public signkey %s and masterpublic encrypt key %s\n", 
-	master_publicsignkey_b64, master_publicencryptkey_b64);
+    Log.printf("(Re)calculated session key - slaved to master public signkey %s and masterpublic encrypt key %s\n",
+               master_publicsignkey_b64, master_publicencryptkey_b64);
 
     eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
   };
 
-    // Debug.printf("==> Final %s\n", req->rest);
-    
-    return  Beat::verify(req);
+  // Debug.printf("==> Final %s\n", req->rest);
+
+  return  Beat::verify(req);
 };
 
 SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
-    Serial.println("SIG2::secure");
-    
-    char msg[MAX_MSG];
-   
-    acauth_result_t r = Beat::secure(req);
-    if (r == FAIL || r == OK)
-	return r;
- 
-    if (!sig2_active())
-        return FAIL;
-  
-    uint8_t signature[ED59919_SIGLEN];
+  Serial.println("SIG2::secure");
 
-    resetWatchdog();
-    Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, req->payload, strlen(req->payload));
+  char msg[MAX_MSG];
 
-    char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
-    encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
+  acauth_result_t r = Beat::secure(req);
+  if (r == FAIL || r == OK)
+    return r;
 
-#if 0
-Serial.println("==== sign - start");
-Serial.println(req->payload);
-Serial.println(sigb64);
-char b64[ED59919_SIGLEN * 2];
-encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
-Serial.println(b64);
-Serial.println("==== sign - end");
-#endif
+  if (!sig2_active())
+    return FAIL;
 
-    strncpy(req->version, "SIG/2.0", sizeof(req->version));
-    snprintf(msg, MAX_MSG, "%s %s %s", req->version, sigb64, req->payload);
+  uint8_t signature[ED59919_SIGLEN];
 
-    strncpy(req->payload, msg, sizeof(req->payload));
-    return OK;
+  resetWatchdog();
+  Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, req->payload, strlen(req->payload));
+
+  char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
+  encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
+
+  strncpy(req->version, "SIG/2.0", sizeof(req->version));
+  snprintf(msg, MAX_MSG, "%s %s %s", req->version, sigb64, req->payload);
+
+  strncpy(req->payload, msg, sizeof(req->payload));
+  return OK;
 };
 
 SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
-    char tag_encoded[MAX_MSG];
+  char tag_encoded[MAX_MSG];
 
-    if (!sig2_active())
-        return ACSecurityHandler::FAIL;
+  if (!sig2_active())
+    return ACSecurityHandler::FAIL;
 
   CBC<AES256> cipher;
 
@@ -543,46 +502,39 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
 #endif
 
   snprintf(tag_encoded, sizeof(tag_encoded), "%s.%s", iv_b64, output_b64);
-    
-    strncpy(req->tag, tag_encoded, sizeof(req->tag));
 
-    return OK;
+  strncpy(req->tag, tag_encoded, sizeof(req->tag));
+
+  return OK;
 };
 
 SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
 {
-    if (!strncmp("welcome", req->cmd, 7)) {
-        return CMD_CLAIMED;
-    }
-    if (!strncmp("announce", req->cmd, 8)) {
-	Debug.println("Sending from handlecmd in SIG2");
-#if 0
-	char buff[MAX_MSG];
-        char * msg = _send_helo("welcome",_nonce,0,buff);
-	if (msg) {
-		send(NULL,msg);
-        	return CMD_CLAIMED;
-	};
-#endif
-	/// I think we can drop this one.
-	_acnode->send_helo();
-        return CMD_CLAIMED;
-    }
-    return Beat::handle_cmd(req);
+  if (!strncmp("welcome", req->cmd, 7)) {
+    return CMD_CLAIMED;
+  }
+  if (!strncmp("announce", req->cmd, 8)) {
+    Debug.println("Sending from handlecmd in SIG2");
+
+    /// I think we can drop this one.
+    _acnode->send_helo();
+    return CMD_CLAIMED;
+  }
+  return Beat::handle_cmd(req);
 }
 
 SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
   char buff[MAX_MSG];
   if (!sig2_active()) {
-	Debug.printf("Not sending %s from _send_helo() - not yet active.\n", req->payload);
-	return FAIL;
+    Debug.printf("Not sending %s from _send_helo() - not yet active.\n", req->payload);
+    return FAIL;
   };
 
   IPAddress myIp = _acnode->localIP();
   snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", req->payload, myIp[0], myIp[1], myIp[2], myIp[3]);
 
   char b64[128];
- 
+
   // Add ED25519 signing/non-repudiation key
   //
   strncat(buff, " ", sizeof(buff));

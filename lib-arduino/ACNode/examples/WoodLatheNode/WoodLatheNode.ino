@@ -201,6 +201,7 @@ void loop() {
 
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
+        laststate = machinestate;
     machinestate = state[machinestate].failStateOnTimeout;
     Debug.printf("Time-out; transition from %s to %s\n",
                  state[laststate].label, state[machinestate].label);

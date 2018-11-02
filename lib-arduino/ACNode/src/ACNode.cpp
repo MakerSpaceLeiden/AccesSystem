@@ -482,7 +482,6 @@ void ACNode::process(const char * topic, const char * payload)
  
     Log.printf("Command %s ignored.\n", req->cmd); 
 _done:
-    Log.println("exit from process()");
     delete req;
     return;
 }
