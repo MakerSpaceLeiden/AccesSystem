@@ -12,7 +12,7 @@ RFID::RFID(const byte sspin , const byte rstpin , const byte irqpin , const byte
   else
      SPI.begin(spiclk, spimiso, spimosi);
 
-  _mfrc522 = new MFRC522(sspin, rstpin);
+  _mfrc522 = new MFRC522_SPI(sspin, rstpin);
   assert(_mfrc522);
   
   if (irqpin != 255)  {

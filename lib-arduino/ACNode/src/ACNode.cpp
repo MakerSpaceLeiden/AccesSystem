@@ -1,5 +1,6 @@
 #include <ACNode.h>
 #include "ConfigPortal.h"
+#include <Cache.h>
 
 // Sort of a fake singleton to overcome callback
 // limits in MQTT callback and elsewhere.
@@ -89,7 +90,6 @@ void ACNode::begin() {
 #endif
     
     if (_wired) {
-        Debug.println("starting up ethernet");
         eth_setup();
     };
     if (!*machine)  
@@ -116,7 +116,6 @@ void ACNode::begin() {
 #endif
     
     if (_wired) {
-        Debug.println("starting up ethernet ");
         WiFi.mode(WIFI_STA);
     } else
     if (_ssid) {
@@ -159,7 +158,8 @@ void ACNode::begin() {
     
     configBegin();
     configureMQTT();
-    
+  
+ 
     if (_debug)
         debugListFS("/");
 
@@ -202,7 +202,13 @@ void ACNode::begin() {
     extern void wipe_eeprom();
     Log.println("Wiped EEPROM with crypto stuff");
     wipe_eeprom();
-  }
+
+    Log.println("Wiped Cache");
+    prepareCache(true);  
+  } else {
+    Debug.println("Prepared the Cache");
+    prepareCache(false);  
+  };
 }
 
 char * ACNode::cloak(char * tag) {
@@ -242,6 +248,11 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	if (target == NULL) 
 		target = machine;
 
+        strncpy(_lasttag, tag, sizeof(_lasttag));
+	if (_approved_callback && checkCache(_lasttag)) {
+                _approved_callback(machine);
+	};
+
 	char tmp[MAX_MSG];
 	strncpy(tmp, tag, sizeof(tmp));
 	if (!(cloak(tmp))) {
@@ -263,7 +274,7 @@ void ACNode::loop() {
     {
 	static unsigned long lastReport = 0, lastCntr = 0, Cntr = 0;
 	Cntr++;
-	if (millis() - lastReport > 10000) {
+	if (millis() - lastReport > 30 * 1000) {
 		float rate =  1000. * (Cntr - lastCntr)/(millis() - lastReport) + 0.05;
 		if (rate > 10)
 			Debug.printf("Loop rate: %.1f #/second\n", rate);
@@ -359,6 +370,8 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
           Log.printf("Out of order energize/denied command received - ignored.\n");
           return ACNode::CMD_CLAIMED;
       };
+
+      setCache(_lasttag, app, (unsigned long) beatCounter);
 
       if (app) {
          Log.printf("Received OK to power on %s\n", machine);

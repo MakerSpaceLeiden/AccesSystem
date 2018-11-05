@@ -77,7 +77,7 @@
 #define MAX_NAME       24
 #define MAX_TOPIC      64
 #define MAX_MSG        (MQTT_MAX_PACKET_SIZE - 32)
-#define MAX_TAG_LEN    10/* Based on the MFRC522 header */
+#define MAX_TAG_LEN    10 /* 10 taken from the MFRC522 header */
 #define BEATFORMAT     "%012lu" // hard-coded - it is part of the HMAC */
 #define MAX_BEAT       16
 

@@ -51,7 +51,7 @@ class RFID : public ACBase {
   
   private:
     bool _irqMode = false;
-    MFRC522 * _mfrc522 = NULL;
+    MFRC522_SPI * _mfrc522 = NULL;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
 
     char lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */

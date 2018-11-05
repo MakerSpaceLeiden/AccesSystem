@@ -50,7 +50,9 @@ typedef enum {
 
 typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
 
-class ACLog : public ACBase, public Print { // We should prolly split this in an aACLogger and a logging class
+// We should prolly split this in an aACLogger and a logging class
+class ACLog : public ACBase, public Print 
+{
 public:
     void addPrintStream(const std::shared_ptr<ACLog> &_handler) {
     	auto it = find(handlers.begin(), handlers.end(), _handler);
@@ -191,6 +193,7 @@ protected:
     const char * _ssid_passwd;
     bool _wired;
     acnode_proto_t _proto;
+    char _lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
 };
 
 // Unfortunately - MQTT callbacks cannot yet pass

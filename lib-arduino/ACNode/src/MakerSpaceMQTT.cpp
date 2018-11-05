@@ -27,7 +27,7 @@ void ACNode::send(const char * topic, const char * payload, bool _raw) {
         topic = _topic;
     };
 
-    Serial.printf("send('%s','%s',%d)\n", topic ? topic : "<null>", payload ? payload : "<null>" , _raw);
+//    Serial.printf("send('%s','%s',%d)\n", topic ? topic : "<null>", payload ? payload : "<null>" , _raw);
 
     publish_rec_t * rec = (publish_rec_t *)malloc(sizeof(publish_rec_t));
     if (rec) {
@@ -56,7 +56,7 @@ void ACNode::send(const char * topic, const char * payload, bool _raw) {
     };
     *p = rec;
 
-    Serial.printf("Queued at # %d\n",i);
+//    Serial.printf("Queued at # %d\n",i);
 }
 
 
