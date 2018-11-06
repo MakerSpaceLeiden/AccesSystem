@@ -100,7 +100,7 @@ void loop() {
      static unsigned last = 0; 
      if (millis() - last > 1000) {
       last = millis();
-      Serial.printf("OPTO 1: %d\n", analogRead(OPTO2));
+      Serial.printf("OPTO 2: %d\n", analogRead(OPTO2));
      }     
   }
 #endif
