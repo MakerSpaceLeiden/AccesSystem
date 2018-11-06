@@ -17,7 +17,7 @@ static String uid2path(const char * tag) {
 }
 
 void prepareCache(bool wipe) {
-  Serial.println("Formatted.");
+  Serial.println("Cache preparing.");
   if (!SPIFFS.begin()) {
     Serial.println("SPIFFS mount after formatting failed.");
     return;

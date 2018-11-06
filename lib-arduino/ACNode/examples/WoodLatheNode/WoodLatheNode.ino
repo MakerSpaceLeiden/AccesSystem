@@ -20,12 +20,15 @@
 #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
+#include <CurrentTransformer.h>
 
 #define MACHINE             "test-woodlathe"
-#define OFF_BUTTON          (SW1_BUTTON)
+#define OFF_BUTTON          (SW2_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 #define CURRENT_THRESHHOLD  (400) // 10% of the ADC scale.
 //#define OTA_PASSWD          "SomethingSecrit"
+
+CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
 
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
@@ -127,12 +130,29 @@ void setup() {
     //
     if (machinestate < POWERED)
       machinestate = CHECKINGCARD;
- 
+
     // We'r declining so that the core library handle sending
     // an approval request, keep state, and so on.
     //
     return ACBase::CMD_DECLINE;
   });
+
+  currentSensor.onCurrentOn([](void) {
+    if (machinestate != RUNNING)
+      machinestate = RUNNING;
+    if (machinestate < POWERED) {
+      static unsigned long last = 0;
+      if (millis() - last > 1000)
+        Log.println("Very strange - current observed while we are 'off'. Should not happen.");
+    }
+  });
+
+  currentSensor.onCurrentOff([](void) {
+    // We let the auto-power off on timeout do its work.
+    if (machinestate > POWERED)
+      machinestate = POWERED;
+  });
+
   reader.set_debug(true);
   node.addHandler(&reader);
   // default syslog port and destination (gateway address or broadcast address).
@@ -145,10 +165,10 @@ void setup() {
 #endif
 #endif
 
-    Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-    
-    Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-    Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+
+  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
 #if 0
   // As the PoE devices have their own grounding - the cannot readily be connected
@@ -171,7 +191,7 @@ void setup() {
 
 void loop() {
   node.loop();
-  
+
   if (analogRead(CURRENT_GPIO) > CURRENT_THRESHHOLD) {
     if (machinestate < POWERED) {
       Log.printf("Error -- device in state '%s' but current detected!\n",
@@ -204,7 +224,7 @@ void loop() {
 
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
-        laststate = machinestate;
+    laststate = machinestate;
     machinestate = state[machinestate].failStateOnTimeout;
     Debug.printf("Time-out; transition from %s to %s\n",
                  state[laststate].label, state[machinestate].label);

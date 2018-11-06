@@ -231,7 +231,7 @@ void ACNode::mqttLoop() {
     //
     publish_rec_t * rec = publish_queue;
 
-    Serial.printf("Picking from queu: <%s>\n", rec->payload);
+//    Serial.printf("Picking from queu: <%s>\n", rec->payload);
     
     ACRequest * reqOut = new ACRequest();
     if (!reqOut) {
