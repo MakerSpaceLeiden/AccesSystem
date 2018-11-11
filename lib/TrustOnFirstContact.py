@@ -10,6 +10,7 @@ import traceback
 import hashlib
 import linecache
 import linecache
+import datetime
 
 
 import axolotl_curve25519 as curve
@@ -96,7 +97,8 @@ class TrustOnFirstContact(Beat.Beat):
          sys.exit(1);
 
     if self.cnf.trustdb:
-       self.load_pkdb()
+       if not self.load_pkdb():
+          sys.exit(1);
 
     self.cnf.publickey = self.cnf.privatekey.get_verifying_key()
     self.pubkeys[ self.cnf.node ] = self.cnf.publickey
@@ -124,39 +126,40 @@ class TrustOnFirstContact(Beat.Beat):
   def load_pkdb(self):
     i = 0
     try:
-      for line in open(self.cnf.trustdb,'rt'):
+      #with open(self.cnf.trustdb,'rt') as f:
+      # for line in f:
+      for line in  open(self.cnf.trustdb,'rt'):
          i = i + 1
-         l=line.strip()
-         if l.startswith("#"):
+         l = line.strip()
+         if l.startswith("#") or len(l) == 0:
            continue
 
-         (node,bs64pubkey) = line.split;
-         self.pubkeys[ node ] = base64.b64decode(bs64pubkey)
+         (node,bs64pubkey) = line.split();
+         self.pubkeys[ node ] = ed25519.VerifyingKey(bs64pubkey, encoding="base64")
+      self.logger.info("Read {} TOFU keys from {}.".format(len(self.pubkeys), self.cnf.trustdb))
       return True
     except FileNotFoundError:
       self.logger.critical("Could not find trustdb file {} (did you create it with 'touch'".
             format(self.cnf.trustdb))
-    except:
-      self.logger.critical("Could not read line {} in trustdb  file {}".
-            format(i,self.cnf.trustdb))
+    except Exception as e:
+      self.logger.critical("Could not read line {} in trustdb  file {}: {}".
+            format(i,self.cnf.trustdb,str(e)))
     return False
 
   def save_pkdb(self):
-    if not self.cnf.trustdb in vars():
-        return False
-
     try:
-      tmpname = self.cnf.trustdb + '.new.' + os.getpid()
+      tmpname = self.cnf.trustdb + '.new.' + str(os.getpid())
       f = open(tmpname,'xt')
       f.write("# Written {}\n\n".format(datetime.datetime.now()))
       for node in self.pubkeys:
-         f.write("{} {}\n".format(node, base64.b64encode(self.pubkeys[ node ])));
+         f.write("{} {}\n".format(node, base64.b64encode(self.pubkeys[ node ].to_bytes()).decode('ASCII')));
       f.close();
       os.rename(tmpname, self.cnf.trustdb)
       return True 
     except Exception as e:
       self.logger.critical("Could not write trustdb file {}: {}".
             format(self.cnf.trustdb,str(e)))
+      sys.exit(1)
     return False
 
   def extract_validated_payload(self, msg):
