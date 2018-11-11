@@ -45,7 +45,9 @@ size_t MqttLogStream::write(uint8_t c) {
 #else
      snprintf(buff,sizeof(buff),"%s %s", _acnode->moi, _logbuff);
 #endif
-     _acnode->send(_logtopic, buff, true);
+     if (_acnode->isUp())
+	     _acnode->send(_logtopic, buff, true);
+     // else silently drop logging data when the bus is down.
   }
   return 1;
 }

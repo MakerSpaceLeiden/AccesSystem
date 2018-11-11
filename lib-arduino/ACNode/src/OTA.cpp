@@ -14,7 +14,7 @@ void OTA::begin() {
 
   ArduinoOTA.onStart([]() {
     Log.println("OTA process started.");
-    Serial.printf("Progress: 0");
+    Serial.print("Progress: 0%");
     Log.stop();
     Debug.stop();
   });

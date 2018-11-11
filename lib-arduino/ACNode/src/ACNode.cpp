@@ -198,15 +198,13 @@ void ACNode::begin() {
     }
   // secrit reset button that resets TOFU or the shared
   // secret.
-  if (digitalRead(SW1_BUTTON) == LOW) {
+  if (digitalRead(SW2_BUTTON) == LOW) {
     extern void wipe_eeprom();
     Log.println("Wiped EEPROM with crypto stuff");
     wipe_eeprom();
 
-    Log.println("Wiped Cache");
     prepareCache(true);  
   } else {
-    Debug.println("Prepared the Cache");
     prepareCache(false);  
   };
 }

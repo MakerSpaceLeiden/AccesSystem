@@ -20,7 +20,9 @@
 #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
-#include <CurrentTransformer.h>
+
+#include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
+#include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
 
 #define MACHINE             "test-woodlathe"
 #define OFF_BUTTON          (SW2_BUTTON)
@@ -45,6 +47,10 @@ OTA ota = OTA(OTA_PASSWD);
 #endif
 
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
+
+ButtonDebounce button1(SW1_BUTTON, 50 /* mSeconds */);
+ButtonDebounce button2(SW2_BUTTON, 50 /* mSeconds */);
+
 
 // Various logging options (in addition to Serial).
 SyslogStream syslogStream = SyslogStream();
@@ -99,7 +105,9 @@ void setup() {
   digitalWrite(RELAY_GPIO, 0);
 
   pinMode(CURRENT_GPIO, INPUT); // analog input.
-  pinMode(OFF_BUTTON, INPUT_PULLUP);
+  pinMode(SW1_BUTTON, INPUT_PULLUP);
+  pinMode(SW2_BUTTON, INPUT_PULLUP);
+
 
   // the default is space.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
@@ -153,6 +161,13 @@ void setup() {
       machinestate = POWERED;
   });
 
+  button1.setCallback([](int state) {
+    Debug.printf("Button 1 changed to %d\n", state);
+  });
+  button2.setCallback([](int state) {
+    Debug.printf("Button 2 changed to %d\n", state);
+  });
+
   reader.set_debug(true);
   node.addHandler(&reader);
   // default syslog port and destination (gateway address or broadcast address).
@@ -165,9 +180,11 @@ void setup() {
 #endif
 #endif
 
+  // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
   Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+
+  // We only sent the very low level debugging to syslog.
   Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
 #if 0
@@ -191,6 +208,8 @@ void setup() {
 
 void loop() {
   node.loop();
+  button1.update();
+  button2.update();
 
   if (analogRead(CURRENT_GPIO) > CURRENT_THRESHHOLD) {
     if (machinestate < POWERED) {
@@ -205,22 +224,6 @@ void loop() {
     machinestate = POWERED;
     Log.printf("Machine halted.\n");
   }
-
-  // We do not worry much about button bounce; as it is just an off
-  // we want to detect. But we'll go to some length to detect a
-  // lengthy anomaly - as to not fill up the logs iwth one report/second.
-  //
-  if (digitalRead(OFF_BUTTON) == LOW && machinestate >= POWERED) {
-    if (machinestate == RUNNING) {
-      Log.printf("Machine switched off with button while running (bad!)\n");
-    } else if (machinestate == POWERED) {
-      Log.printf("Machine switched completely off with button.\n");;
-    } else {
-      Log.printf("Off button pressed (currently in state %s)\n",
-                 state[machinestate].label);
-    }
-    machinestate = WAITINGFORCARD;
-  };
 
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
@@ -237,6 +240,18 @@ void loop() {
     laststatechange = millis();
   }
 
+  if (button2.state() == LOW && machinestate >= POWERED) {
+    if (machinestate == RUNNING) {
+      Log.printf("Machine switched off with button while running (bad!)\n");
+    } else if (machinestate == POWERED) {
+      Log.printf("Machine switched OFF with the off-button.\n");;
+    } else {
+      Log.printf("Off button pressed (currently in state %s). Weird.\n",
+                 state[machinestate].label);
+    }
+    machinestate = WAITINGFORCARD;
+  }
+
   if (laststate < POWERED)
     digitalWrite(RELAY_GPIO, 0);
   else
@@ -244,6 +259,14 @@ void loop() {
 
   aartLed.set(state[machinestate].ledState);
 
+  {
+    static unsigned long last = millis();
+    if (millis() - last > 1000) {
+      Debug.printf("SW1: %d SW2: %d Current %f\n",
+                   digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON), currentSensor.sd());
+      last = millis();
+    }
+  }
   switch (machinestate) {
     case WAITINGFORCARD:
       break;
