@@ -29,10 +29,23 @@ class TrustOnFirstContact(Beat.Beat):
   sharedkey = {}
   pubkeys = {}
   
-  
   def __init__(self):
     super().__init__()
     self.commands[ 'welcome' ] = self.cmd_welcome
+
+  def parseArguments(self):
+    self.parser.add('--privatekey','-K',
+         help='Private Curve25519 key (Default: unset, auto generated')
+    self.parser.add('--privatekeyfile','-f',
+         help='Private Curve25519 key file (Default: unset, auto generated')
+    self.parser.add('--newprivatekey','-N',action='count',
+         help='Generate a new private key, save to privatekeyfile if defined')
+    self.parser.add('--tofconly','-F',action='count',
+         help='Force trust-on-first-use mode (default: off)')
+    self.parser.add('--trustdb','-S',
+         help='Persistent trustdatabase (default: none)')
+
+    super().parseArguments()
 
   def setup(self):
     super().setup()
@@ -82,24 +95,15 @@ class TrustOnFirstContact(Beat.Beat):
          self.logger.critical("No private key - cannot do TOFC . Aborting.")
          sys.exit(1);
 
+    if self.cnf.trustdb:
+       self.load_pkdb()
+
     self.cnf.publickey = self.cnf.privatekey.get_verifying_key()
     self.pubkeys[ self.cnf.node ] = self.cnf.publickey
 
     self.session_priv = curve.generatePrivateKey(Random.new().read(32));
     self.session_pub =  curve.generatePublicKey(self.session_priv);
     
-  def parseArguments(self):
-    self.parser.add('--privatekey','-K',
-         help='Private Curve25519 key (Default: unset, auto generated')
-    self.parser.add('--privatekeyfile','-f',
-         help='Private Curve25519 key file (Default: unset, auto generated')
-    self.parser.add('--newprivatekey','-N',action='count',
-         help='Generate a new private key, safe to privatekeyfile if defined')
-    self.parser.add('--tofconly','-F',action='count',
-         help='Force trust-on-first-use mode (default: off)')
-
-    super().parseArguments()
-
   def send(self, dstnode, payload):
      if not self.cnf.privatekey:
         return super().send(dstnode, payload)
@@ -116,6 +120,44 @@ class TrustOnFirstContact(Beat.Beat):
 
 
      super().send(dstnode, payload, raw=True)
+
+  def load_pkdb(self):
+    i = 0
+    try:
+      for line in open(self.cnf.trustdb,'rt'):
+         i = i + 1
+         l=line.strip()
+         if l.startswith("#"):
+           continue
+
+         (node,bs64pubkey) = line.split;
+         self.pubkeys[ node ] = base64.b64decode(bs64pubkey)
+      return True
+    except FileNotFoundError:
+      self.logger.critical("Could not find trustdb file {} (did you create it with 'touch'".
+            format(self.cnf.trustdb))
+    except:
+      self.logger.critical("Could not read line {} in trustdb  file {}".
+            format(i,self.cnf.trustdb))
+    return False
+
+  def save_pkdb(self):
+    if not self.cnf.trustdb in vars():
+        return False
+
+    try:
+      tmpname = self.cnf.trustdb + '.new.' + os.getpid()
+      f = open(tmpname,'xt')
+      f.write("# Written {}\n\n".format(datetime.datetime.now()))
+      for node in self.pubkeys:
+         f.write("{} {}\n".format(node, base64.b64encode(self.pubkeys[ node ])));
+      f.close();
+      os.rename(tmpname, self.cnf.trustdb)
+      return True 
+    except Exception as e:
+      self.logger.critical("Could not write trustdb file {}: {}".
+            format(self.cnf.trustdb,str(e)))
+    return False
 
   def extract_validated_payload(self, msg):
    try:
@@ -211,6 +253,7 @@ class TrustOnFirstContact(Beat.Beat):
 
     if not msg['node'] in self.pubkeys:
         self.pubkeys[ msg['node'] ] = publickey
+        self.save_pkdb()  
         self.logger.info("Learned a public key of node {} on first contact.".format(msg['node']))
     else:
         if (self.pubkeys[ msg['node'] ] == publickey):
