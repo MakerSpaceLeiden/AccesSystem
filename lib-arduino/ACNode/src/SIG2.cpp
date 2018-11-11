@@ -169,8 +169,14 @@ void SIG2::loop() {
     return;
   };
 
-  if (RNG.available(1024 * 4))
+  if (!RNG.available(1024 * 4)) {
+    unsigned long str = millis();
+    for(int i = 0; i < 32  && millis() - str < 200; i++) {
+       uint32_t seed = trng();
+       RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
+    };
     return;
+  };
 
   if (!_acnode->isConnected())
     return;
@@ -178,10 +184,6 @@ void SIG2::loop() {
   if (init_done > 3)
     return;
   
-  for(int i = 0; i < 32; i++) {
-    uint32_t seed = trng();
-    RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
-  };
 
   if (init_done == 1) {
     Debug.println("Generating Curve25519 session keypair");

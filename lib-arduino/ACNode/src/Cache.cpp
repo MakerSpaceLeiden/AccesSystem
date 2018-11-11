@@ -17,31 +17,31 @@ static String uid2path(const char * tag) {
 }
 
 void prepareCache(bool wipe) {
-  Serial.println("Cache preparing.");
+  Serial.println(wipe ? "Resetting cache" : "Cache preparing.");
   if (!SPIFFS.begin()) {
     Serial.println("SPIFFS mount after formatting failed.");
     return;
   };
 
-  for (int i = 0; i < 255; i++) {
+  if (wipe) for (int i = 0; i < 255; i++) {
     String dirName = CACHE_DIR_PREFIX + String(i,HEX);
-    SPIFFS.mkdir(dirName);
-	
-    if (!wipe)
-	continue;
+    if (!SPIFFS.exists(dirName)) 
+    	SPIFFS.mkdir(dirName);
 
-    File dir = SPIFFS.open(dirName);
-    File file = dir.openNextFile();
-    while(file) {
-	String path = dirName + "/" + file.name();
-
-	file.close();
+      File dir = SPIFFS.open(dirName);
+      File file = dir.openNextFile();
+      while(file) {
+  	String path = dirName + "/" + file.name();
+  
+  	file.close();
         SPIFFS.remove(path);
 
 	file = file.openNextFile();
-    };
-    dir.close();
+      };
+      dir.close();
   };
+
+  Serial.println("Cache ready.");
 };
 
 void setCache(const char * tag, bool ok, unsigned long beatCounter) {
