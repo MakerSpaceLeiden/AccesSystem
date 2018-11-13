@@ -19,7 +19,8 @@ void OTA::begin() {
     Debug.stop();
   });
   ArduinoOTA.onEnd([]() {
-    Log.println("..100% Done\nOTA process completed. Resetting.");
+    Serial.println("..100% Done");
+    Log.println("OTA process completed. Resetting.");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     static int lp = 0;

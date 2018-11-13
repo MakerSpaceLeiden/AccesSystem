@@ -48,8 +48,8 @@ OTA ota = OTA(OTA_PASSWD);
 
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-ButtonDebounce button1(SW1_BUTTON, 50 /* mSeconds */);
-ButtonDebounce button2(SW2_BUTTON, 50 /* mSeconds */);
+ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
+ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
 
 
 // Various logging options (in addition to Serial).
@@ -261,10 +261,19 @@ void loop() {
 
   {
     static unsigned long last = millis();
+    static unsigned long sw1, sw2, tock;
+    sw1  += digitalRead(SW1_BUTTON);
+    sw2  += digitalRead(SW1_BUTTON);
+    tock ++;
     if (millis() - last > 1000) {
-      Debug.printf("SW1: %d SW2: %d Current %f\n",
-                   digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON), currentSensor.sd());
-      last = millis();
+      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Current %f\n",
+                   digitalRead(SW1_BUTTON), 
+                   abs(tock-sw1),
+                   digitalRead(SW2_BUTTON), 
+                   abs(tock-sw2),
+                   digitalRead(RELAY_GPIO),
+                   currentSensor.sd());
+      last = millis(); sw1=sw2=tock=0;
     }
   }
   switch (machinestate) {
