@@ -34,7 +34,7 @@ size_t MqttLogStream::write(uint8_t c) {
     _logbuff[_at] = 0;
     _at = 0;
 
-     char buff[256];
+     char buff[sizeof(_logbuff)];
 #if 0 // This seems to take seconds. So disbaling for now.
      struct tm timeinfo;
      getLocalTime(&timeinfo);

@@ -11,7 +11,7 @@ class MqttLogStream: public ACLog {
     void begin();
     virtual size_t write(uint8_t c); 
   private:
-    char _logbuff[256], _logtopic[256];
+    char _logbuff[MAX_MSG], _logtopic[MAX_MSG];
     size_t _at;
   protected:
 };

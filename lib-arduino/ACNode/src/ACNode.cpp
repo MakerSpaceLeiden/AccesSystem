@@ -265,22 +265,49 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	snprintf(buff,sizeof(buff),"%s %s %s %s", operation, moi, target, tmp);
 
         _lastSwipe = beatCounter;
+        _reqs++;
 	send(NULL,buff);
 };
 
 void ACNode::loop() {
     {
-	static unsigned long lastReport = 0, lastCntr = 0, Cntr = 0;
+	static unsigned long last = 0, lastCntr = 0, Cntr = 0;
 	Cntr++;
-	if (millis() - lastReport > 30 * 1000) {
-		float rate =  1000. * (Cntr - lastCntr)/(millis() - lastReport) + 0.05;
+	if (millis() - last > 30 * 1000) {
+		float rate =  1000. * (Cntr - lastCntr)/(millis() - last) + 0.05;
 		if (rate > 10)
 			Debug.printf("Loop rate: %.1f #/second\n", rate);
 		else
 			Log.printf("Warning: LOW Loop rate: %.1f #/second\n", rate);
-		lastReport = millis();
+		last = millis();
 		lastCntr = Cntr;
 	}
+    }
+    {	static unsigned long last = 0;
+	if (millis() - last > REPORT_PERIOD) {
+		DynamicJsonBuffer  jsonBuffer(200);
+		JsonObject& out = jsonBuffer.createObject();
+		out[ "node" ] = moi;
+		out[ "counter" ] = beatCounter;
+
+		out[ "approve" ] = _approve;
+		out[ "deny" ] = _deny;
+		out[ "requests" ] = _reqs;
+
+		out[ "mqtt_reconnects" ] = _mqtt_reconnects;
+
+//           	out["coreTemp"]  = coreTemp();
+
+    		std::list<ACBase *>::iterator it;
+       		for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
+        		(*it)->report(out);
+
+		if (_report_callback) 
+			_report_callback(out);	
+
+		out.printTo(Log);Log.println();
+		last = millis();
+        }
     }
     // XX to hook into a callback of the ethernet/wifi
     // once we figure out how we can get this from the wifi.
@@ -349,6 +376,9 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
     }
     bool app = !strcasecmp("approved",req->cmd);
     bool den = !strcasecmp("denied", req->cmd);
+
+    if (app) _approve++;
+    if (den) _deny++;
 
     if (app || den) {
       char tmp[MAX_MSG], *p = tmp;

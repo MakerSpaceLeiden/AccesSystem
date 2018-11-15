@@ -6,6 +6,9 @@
 
 #define CACHE_DIR_PREFIX "/uid-"
 
+unsigned long cacheMiss = 0;
+unsigned long cacheHit = 0;
+
 static String uid2path(const char * tag) {
   String path = CACHE_DIR_PREFIX;
  
@@ -57,6 +60,8 @@ void setCache(const char * tag, bool ok, unsigned long beatCounter) {
 
 bool checkCache(const char * tag) {
   String path = uid2path(tag) + ".lastOK";
-  return SPIFFS.exists(path);
+  bool present = SPIFFS.exists(path);
+  if (present) cacheHit++; else cacheMiss++;
+  return present;
 };
 

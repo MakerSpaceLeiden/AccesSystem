@@ -4,17 +4,27 @@
 volatile bool cardScannedIrqSeen = false;
 static void readCard() { cardScannedIrqSeen = true; }
 
-
 RFID::RFID(const byte sspin , const byte rstpin , const byte irqpin , const byte spiclk , const byte spimiso , const byte spimosi ) 
 {
   if (spiclk == 255 && spimiso == 255 && spimosi == 255)
      SPI.begin();
   else
      SPI.begin(spiclk, spimiso, spimosi);
+/*
 
-  _mfrc522 = new MFRC522_SPI(sspin, rstpin);
-  assert(_mfrc522);
-  
+/Users/dirkx/Documents/Arduino/libraries/ACNode/src/RFID.cpp: In constructor 'RFID::RFID(byte, byte, byte, byte, byte, byte)':
+/Users/dirkx/Documents/Arduino/libraries/ACNode/src/RFID.cpp:15:27: error: invalid conversion from 'MFRC522_SPI*' to 'byte {aka unsigned char}' [-fpermissive]
+    _mfrc522 = new MFRC522(_spiDevice);
+                           ^
+In file included from /Users/dirkx/Documents/Arduino/libraries/ACNode/src/RFID.h:9:0,
+                 from /Users/dirkx/Documents/Arduino/libraries/ACNode/src/RFID.cpp:1:
+/Users/dirkx/Documents/Arduino/libraries/rfid-org/src/MFRC522.h:347:2: note:   initializing argument 1 of 'MFRC522::MFRC522(byte)'
+  MFRC522(byte resetPowerDownPin);
+  ^
+*/
+   _spiDevice = new MFRC522_SPI(sspin, rstpin, &SPI);
+   _mfrc522 = new MFRC522(_spiDevice);
+
   if (irqpin != 255)  {
   	pinMode(irqpin, INPUT_PULLUP);
 	attachInterrupt(digitalPinToInterrupt(irqpin), readCard, FALLING);
@@ -80,8 +90,11 @@ void RFID::loop() {
 	      } else {
 		   Debug.println( _swipe_cb ? "internal rq used " : "callback claimed" );
 	      };
-       }
-    }
+       };
+      _scan++;
+    } else {
+      _miss++;
+    };
 
     // clear the interupt and re-arm the reader.
     if (_irqMode) {
@@ -90,5 +103,10 @@ void RFID::loop() {
     };
 
     return;
+}
+
+void RFID::report(JsonObject& report) {
+	report["rfid_scans"] = _scan;
+	report["rfid_misses"] = _miss;
 }
 
