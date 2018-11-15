@@ -139,7 +139,7 @@ class TrustOnFirstContact(Beat.Beat):
       self.logger.info("Read {} TOFU keys from {}.".format(len(self.pubkeys), self.cnf.trustdb))
       return True
     except FileNotFoundError:
-      self.logger.critical("Could not find trustdb file {} (did you create it with 'touch'".
+      self.logger.critical("Could not find trustdb file {} (did you create it with 'touch')".
             format(self.cnf.trustdb))
     except Exception as e:
       self.logger.critical("Could not read line {} in trustdb  file {}: {}".
@@ -150,7 +150,7 @@ class TrustOnFirstContact(Beat.Beat):
     try:
       tmpname = self.cnf.trustdb + '.new.' + str(os.getpid())
       f = open(tmpname,'xt')
-      f.write("# Written {}\n\n".format(datetime.datetime.now()))
+      f.write("# Written {}\n#\n".format(datetime.datetime.now()))
       for node in self.pubkeys:
          f.write("{} {}\n".format(node, base64.b64encode(self.pubkeys[ node ].to_bytes()).decode('ASCII')));
       f.close();
