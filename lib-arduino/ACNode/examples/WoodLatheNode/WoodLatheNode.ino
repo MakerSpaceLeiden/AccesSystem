@@ -28,6 +28,8 @@
 #define OFF_BUTTON          (SW2_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 #define CURRENT_THRESHHOLD  (400) // 10% of the ADC scale.
+#define INTERLOCK           (OPTO2)
+
 //#define OTA_PASSWD          "SomethingSecrit"
 
 CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
@@ -38,8 +40,10 @@ CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-//cd P
+//
 ACNode node = ACNode(MACHINE);
+// RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
+// RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
 RFID reader = RFID();
 
 #ifdef OTA_PASSWD
@@ -50,7 +54,6 @@ LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
 ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
 ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
-
 
 // Various logging options (in addition to Serial).
 SyslogStream syslogStream = SyslogStream();
@@ -71,9 +74,10 @@ typedef enum {
 } machinestates_t;
 
 #define NEVER (0)
+
 struct {
   const char * label;                   // name of this state
-  LED::led_state_t ledState;            // flashing pattern for the aartLED
+  LED::led_state_t ledState;            // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
   time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
   machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
 } state[RUNNING + 1] =
@@ -94,6 +98,11 @@ unsigned long laststatechange = 0;
 static machinestates_t laststate = BOOTING;
 machinestates_t machinestate = BOOTING;
 
+unsigned long powered_total = 0, powered_last;
+unsigned long running_total = 0, running_last;
+unsigned long bad_poweroff = 0;
+unsigned long idle_poweroff = 0;
+
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
@@ -108,6 +117,10 @@ void setup() {
   pinMode(SW1_BUTTON, INPUT_PULLUP);
   pinMode(SW2_BUTTON, INPUT_PULLUP);
 
+  pinMode(INTERLOCK, INPUT_PULLUP);
+
+  Serial.printf("Boot state: SW1:%d SW2:%d INTERLOCK:%d\n",
+                digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON), digitalRead(INTERLOCK));
 
   // the default is space.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
@@ -170,9 +183,19 @@ void setup() {
 
   node.onReport([](JsonObject  & report) {
     report["state"] = state[machinestate].label;
+    report["interlock"] = digitalRead(INTERLOCK) ? true : false;
+
+    report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis()-powered_last)/1000) : 0);
+    report["running_time"] = running_total + ((machinestate == RUNNING) ? ((millis()-running_last)/1000) : 0);
+
+    report["idle_poweroff"] = idle_poweroff;
+    report["bad_poweroff"] = bad_poweroff;
   });
-  
-  reader.set_debug(true);
+
+  // This reports things such as FW version of the card; which can 'wedge' it. So we
+  // disable it unless we absolutely positively need that information.
+  //
+  reader.set_debug(false);
   node.addHandler(&reader);
   // default syslog port and destination (gateway address or broadcast address).
   //
@@ -215,6 +238,13 @@ void loop() {
   button1.update();
   button2.update();
 
+  if (digitalRead(INTERLOCK)) {
+    if (machinestate != OUTOFORDER || millis() - laststatechange > 60 * 1000) {
+      Log.printf("Problem with the interlock -- is the big green connector unseated ?\n");
+    }
+    machinestate = OUTOFORDER;
+  };
+
   if (analogRead(CURRENT_GPIO) > CURRENT_THRESHHOLD) {
     if (machinestate < POWERED) {
       Log.printf("Error -- device in state '%s' but current detected!\n",
@@ -240,6 +270,17 @@ void loop() {
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
                  state[laststate].label, state[machinestate].label);
+
+    if (machinestate == POWERED && laststate < POWERED) {
+      powered_last = millis();
+    } else if (laststate == POWERED && machinestate < POWERED) {
+      powered_total += (millis() - running_last) / 1000;
+    };
+    if (machinestate == RUNNING && laststate < RUNNING) {
+      running_last = millis();
+    } else if (laststate == RUNNING && machinestate < RUNNING) {
+      running_total += (millis() - running_last) / 1000;
+    };
     laststate = machinestate;
     laststatechange = millis();
   }
@@ -247,6 +288,7 @@ void loop() {
   if (button2.state() == LOW && machinestate >= POWERED) {
     if (machinestate == RUNNING) {
       Log.printf("Machine switched off with button while running (bad!)\n");
+      bad_poweroff++;
     } else if (machinestate == POWERED) {
       Log.printf("Machine switched OFF with the off-button.\n");;
     } else {
@@ -270,14 +312,16 @@ void loop() {
     sw2  += digitalRead(SW1_BUTTON);
     tock ++;
     if (millis() - last > 1000) {
-      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Current %f\n",
-                   digitalRead(SW1_BUTTON), 
-                   abs(tock-sw1),
-                   digitalRead(SW2_BUTTON), 
-                   abs(tock-sw2),
+      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Current %f Interlock %d\n",
+                   digitalRead(SW1_BUTTON),
+                   abs(tock - sw1),
+                   digitalRead(SW2_BUTTON),
+                   abs(tock - sw2),
                    digitalRead(RELAY_GPIO),
-                   currentSensor.sd());
-      last = millis(); sw1=sw2=tock=0;
+                   currentSensor.sd(),
+                   digitalRead(INTERLOCK)
+                  );
+      last = millis(); sw1 = sw2 = tock = 0;
     }
   }
   switch (machinestate) {
@@ -306,6 +350,7 @@ void loop() {
       if ((millis() - laststatechange) > MAX_IDLE_TIME) {
         Log.printf("Machine idle for too long - switching off.\n");
         machinestate = WAITINGFORCARD;
+        idle_poweroff++;
       }
       break;
 
@@ -317,10 +362,9 @@ void loop() {
 
     case TRANSIENTERROR:
       break;
-
+    case OUTOFORDER:
     case NOCONN:
     case BOOTING:
-    case OUTOFORDER:
       break;
   };
 }

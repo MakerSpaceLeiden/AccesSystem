@@ -147,6 +147,11 @@ class TrustOnFirstContact(Beat.Beat):
     return False
 
   def save_pkdb(self):
+    if not self.cnf.trustdb:
+      self.logger.critical("No trustdb specified.")
+      sys.exit(1)
+      return False
+
     try:
       tmpname = self.cnf.trustdb + '.new.' + str(os.getpid())
       f = open(tmpname,'xt')

@@ -30,7 +30,7 @@
 
 extern char * strsepspace(char **p);
 
-#define REPORT_PERIOD (10*1000) 	// Every 5 minutes - also triggers alarm in monitoring when awol
+#define REPORT_PERIOD (5*60*1000) 	// Every 5 minutes - also triggers alarm in monitoring when awol
 
 // typedef unsigned long beat_t;
 // extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
@@ -204,7 +204,7 @@ protected:
     acnode_proto_t _proto;
     char _lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
 // stat counters
-   unsigned long _approve, _deny, _reqs, _mqtt_reconnects;
+   unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
 };
 
 // Unfortunately - MQTT callbacks cannot yet pass

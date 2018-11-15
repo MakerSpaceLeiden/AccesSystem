@@ -38,6 +38,9 @@ void RFID::begin() {
   if (true == _irqMode) {
 	_mfrc522->PCD_WriteRegister(_mfrc522->ComIEnReg, 0xA0 /* irq on read */);
 	cardScannedIrqSeen = false; 
+	Serial.println("MFRC522: IRQ mode.");
+   } else {
+	Serial.println("MFRC522: Polling mode.");
    };
 
    // Note: this seems to wedge certain cards.
@@ -53,7 +56,7 @@ void RFID::loop() {
     if (true == _irqMode) {
      if (false == cardScannedIrqSeen) {
 	static unsigned long kick = 0;
-	if (millis() - kick > 1000) {
+	if (millis() - kick > 500) {
 		kick = millis();
     		_mfrc522->PCD_WriteRegister(_mfrc522->FIFODataReg, _mfrc522->PICC_CMD_REQA);
 		_mfrc522->PCD_WriteRegister(_mfrc522->CommandReg, _mfrc522->PCD_Transceive);
@@ -74,8 +77,6 @@ void RFID::loop() {
            strncat(tag, buff, sizeof(tag));
        };
 
-	// Stop the reading.
-	_mfrc522->PICC_HaltA();
 
        // Limit the rate of reporting. Unless it is a new tag.
        //
@@ -95,6 +96,9 @@ void RFID::loop() {
     } else {
       _miss++;
     };
+
+    // Stop the reading.
+    _mfrc522->PICC_HaltA();
 
     // clear the interupt and re-arm the reader.
     if (_irqMode) {

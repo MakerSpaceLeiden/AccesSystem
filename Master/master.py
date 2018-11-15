@@ -92,7 +92,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
       tag = self.session_decrypt(msg, tag_encoded)
 
       if not tag in self.userdb:
-        self.logger.info("Tag {} not in DB; reporting.".format(tag))
+        self.logger.info("Tag {} not in DB; reporting (no deny sent).".format(tag))
         self.rat(msg, tag)
         return
     else:

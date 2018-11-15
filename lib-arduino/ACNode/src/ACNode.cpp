@@ -22,6 +22,18 @@ SIG1 sig1 = SIG1(); // protocol machines 20015 (HMAC)
 SIG2 sig2 = SIG2();
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+uint8_t temprature_sens_read();
+#ifdef __cplusplus
+}
+#endif
+static double coreTemp() {
+  double   temp_farenheit = temprature_sens_read();
+  return ( temp_farenheit - 32. ) / 1.8;
+}
+
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
 void ACNode::set_mqtt_host(const char *p) { strncpy(mqtt_server,p, sizeof(mqtt_server)); };
@@ -198,11 +210,10 @@ void ACNode::begin() {
     }
   // secrit reset button that resets TOFU or the shared
   // secret.
-  if (digitalRead(SW2_BUTTON) == LOW) {
+  if (digitalRead(SW1_BUTTON) == LOW) {
     extern void wipe_eeprom();
-    Log.println("Wiped EEPROM with crypto stuff");
+    Log.println("Wiped EEPROM with crypto stuff (SW1 pressed)");
     wipe_eeprom();
-
     prepareCache(true);  
   } else {
     prepareCache(false);  
@@ -285,18 +296,28 @@ void ACNode::loop() {
     }
     {	static unsigned long last = 0;
 	if (millis() - last > REPORT_PERIOD) {
-		DynamicJsonBuffer  jsonBuffer(200);
+		last = millis();
+
+		DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);
 		JsonObject& out = jsonBuffer.createObject();
 		out[ "node" ] = moi;
-		out[ "counter" ] = beatCounter;
+		out[ "beat" ] = beatCounter;
+
+		if (beatCounter > 1542275849 && _start_beat == 0)
+			_start_beat  = beatCounter;
+		else if (_start_beat)
+			out[ "alive-uptime" ] = beatCounter - _start_beat;
 
 		out[ "approve" ] = _approve;
 		out[ "deny" ] = _deny;
 		out[ "requests" ] = _reqs;
 
+		out[ "cache_hit" ] =  cacheHit;
+		out[ "cache_miss" ] =  cacheMiss;
+
 		out[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
-//           	out["coreTemp"]  = coreTemp();
+           	out["coreTemp"]  = coreTemp();
 
     		std::list<ACBase *>::iterator it;
        		for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
@@ -305,8 +326,9 @@ void ACNode::loop() {
 		if (_report_callback) 
 			_report_callback(out);	
 
-		out.printTo(Log);Log.println();
-		last = millis();
+		char buff[MAX_MSG];
+		out.printTo(buff,sizeof(buff));
+		Log.println(buff);
         }
     }
     // XX to hook into a callback of the ethernet/wifi
