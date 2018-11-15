@@ -4,7 +4,7 @@
 // https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
 
 #ifndef CURRENT_GPIO
-#define CURRENT_GPIO    (24)  // Analog in - current
+#define CURRENT_GPIO    (36)  // Analog in - current
 #endif
 
 #ifndef RELAY_GPIO

@@ -13,10 +13,12 @@ void OTA::begin() {
   	Log.println("**** WARNING -- NO OTA PASSWORD SET *****");
 
   ArduinoOTA.onStart([]() {
-    Log.println("OTA process started.");
+    Log.println("OTA process started (trusting though - not wiping private keys).");
     Serial.print("Progress: 0%");
     Log.stop();
     Debug.stop();
+    // This would be the point where we'd normally would wipe the
+    // private keys; to prevent rogue firmware grapping them.
   });
   ArduinoOTA.onEnd([]() {
     Serial.println("..100% Done");

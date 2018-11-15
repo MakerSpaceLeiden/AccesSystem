@@ -30,6 +30,8 @@
 
 extern char * strsepspace(char **p);
 
+#define Trace if (0) Debug
+
 #define REPORT_PERIOD (5*60*1000) 	// Every 5 minutes - also triggers alarm in monitoring when awol
 
 // typedef unsigned long beat_t;

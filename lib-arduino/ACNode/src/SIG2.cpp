@@ -322,7 +322,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
         Log.println("Sender has changed its public signing key(s) - ignoring.");
         return ACSecurityHandler::FAIL;
       }
-      Debug.println("Recognize the Ed25519 signature of the master on message from earlier TOFU.");
+      Trace.println("Recognize the Ed25519 signature of the master on message from earlier TOFU.");
       signkey = eeprom.master_publicsignkey;
     } else {
       Debug.println("Unknown Ed25519 signature on message - giving the benefit of the doubt.");
@@ -334,7 +334,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     }
   };
   if (signkey == NULL && tofu) {
-    Debug.println("Using existing master keys to verify.");
+    Trace.println("Using existing master keys to verify.");
     signkey = eeprom.master_publicsignkey;
   }
   else if (signkey == NULL) {
@@ -354,7 +354,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     Debug.println("Verified nonce; so any beat ok.");
   }
   else if (delta < 120) {
-    Debug.println("Beat ok.");
+    Trace.println("Beat ok.");
   }
   else if (strcmp(req->cmd, "announce") == 0) {
     Debug.printf("Beat too far off (%lu) - sending nonced welcome <%s>\n",
@@ -377,7 +377,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     save_eeprom();
   }
   else {
-    Debug.println("Trust based on data from presistent store.");
+    Debug.println("Trusted; based on data from presistent store.");
   };
   if (newsession) {
     // Allways allow for the updating of session keys. On every welcome/announce. Provided that

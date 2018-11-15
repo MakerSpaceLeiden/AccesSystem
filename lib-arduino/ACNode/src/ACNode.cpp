@@ -8,7 +8,6 @@
 ACNode * _acnode;
 ACLog Log;
 ACLog Debug;
-#define Trace if (0) Debug
 
 #ifdef HAS_MSL
 MSL msl = MSL();    // protocol doors (private LAN)
