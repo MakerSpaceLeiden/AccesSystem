@@ -44,6 +44,8 @@ class RFID : public ACBase {
     void begin();
     void loop();
 
+    void report(JsonObject& report);
+
     typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
 
     RFID& onSwipe(THandlerFunction_SwipeCB fn) 
@@ -51,10 +53,11 @@ class RFID : public ACBase {
   
   private:
     bool _irqMode = false;
-    MFRC522_SPI * _mfrc522 = NULL;
+    MFRC522_SPI * _spiDevice;
+    MFRC522 * _mfrc522;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
 
     char lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
-    unsigned long lastswipe;
+    unsigned long lastswipe, _scan, _miss;
 };
 #endif

@@ -3,6 +3,7 @@
 
 #include <list>
 #include <stddef.h>
+#include <ArduinoJson.h>
 
 #include "PowerNodeV11.h"
 
@@ -42,7 +43,8 @@ public:
     virtual void begin() { return; };
     virtual void loop() { return; };
     virtual void stop() { return; };
-    
+    virtual void report(JsonObject& report) { return; }
+
     virtual cmd_result_t handle_cmd(ACRequest * req) { return CMD_DECLINE; };
     
     virtual void set_debug(bool debug);
@@ -63,5 +65,4 @@ public:
     virtual acauth_results secure(ACRequest * req) { return FAIL; }
     virtual acauth_results cloak(ACRequest * req) { return FAIL; }
 };
-
 #endif

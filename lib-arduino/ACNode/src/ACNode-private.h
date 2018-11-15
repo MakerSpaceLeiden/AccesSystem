@@ -26,7 +26,11 @@
 #include <ACBase.h>
 #include <LED.h>
 
+#include <ArduinoJson.h>
+
 extern char * strsepspace(char **p);
+
+#define REPORT_PERIOD (10*1000) 	// Every 5 minutes - also triggers alarm in monitoring when awol
 
 // typedef unsigned long beat_t;
 // extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
@@ -133,10 +137,14 @@ public:
     ACNode& onDenied(THandlerFunction_SimpleCallback fn)
 	    { _denied_callback = fn; return *this; };
     
+    typedef std::function<void(JsonObject &report)> THandlerFunction_Report;
+    void onReport(THandlerFunction_Report fn)
+            { _report_callback = fn; return; };
+
     void loop();
     void begin();
     cmd_result_t handle_cmd(ACRequest * req);
-    
+   
     void addHandler(ACBase *handler);
     void addSecurityHandler(ACSecurityHandler *handler);
    
@@ -169,6 +177,7 @@ private:
     THandlerFunction_Disconnect _disconnect_callback;
     THandlerFunction_SimpleCallback _approved_callback, _denied_callback;
     THandlerFunction_Command _command_callback;
+    THandlerFunction_Report _report_callback;
 
     beat_t _lastSwipe;    
     WiFiClient _espClient;
@@ -194,6 +203,8 @@ protected:
     bool _wired;
     acnode_proto_t _proto;
     char _lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
+// stat counters
+   unsigned long _approve, _deny, _reqs, _mqtt_reconnects;
 };
 
 // Unfortunately - MQTT callbacks cannot yet pass

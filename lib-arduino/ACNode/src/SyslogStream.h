@@ -15,7 +15,7 @@ class SyslogStream : public ACLog {
   private:
     const char * _dest;
     uint16_t _syslogPort;
-    char logbuff[512];
+    char logbuff[1024];
     size_t at = 0;
     bool _raw;
   protected:

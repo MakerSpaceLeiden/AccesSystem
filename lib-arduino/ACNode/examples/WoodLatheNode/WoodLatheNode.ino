@@ -168,6 +168,10 @@ void setup() {
     Debug.printf("Button 2 changed to %d\n", state);
   });
 
+  node.onReport([](JsonObject  & report) {
+    report["state"] = state[machinestate].label;
+  });
+  
   reader.set_debug(true);
   node.addHandler(&reader);
   // default syslog port and destination (gateway address or broadcast address).

@@ -105,7 +105,8 @@ void ACNode::reconnectMQTT() {
     }
     
     Debug.println("(re)connected ");
-    
+    _mqtt_reconnects ++;
+ 
     char topic[MAX_TOPIC];
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, ACNode::moi, master);
     _client.subscribe(topic);
