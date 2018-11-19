@@ -8,7 +8,7 @@
 
        http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
+   Unless required by applicable law or agreed to in writing, softwareM
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF
    ANY KIND, either express or implied.
@@ -36,12 +36,13 @@ CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
 
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
+#include "/home/dirkx/.passwd.h"
 
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-//
 ACNode node = ACNode(MACHINE);
+
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
 RFID reader = RFID();
@@ -158,6 +159,8 @@ void setup() {
     return ACBase::CMD_DECLINE;
   });
 
+  currentSensor.setOnLimit(0.5);
+  
   currentSensor.onCurrentOn([](void) {
     if (machinestate != RUNNING)
       machinestate = RUNNING;
@@ -244,20 +247,6 @@ void loop() {
     }
     machinestate = OUTOFORDER;
   };
-
-  if (analogRead(CURRENT_GPIO) > CURRENT_THRESHHOLD) {
-    if (machinestate < POWERED) {
-      Log.printf("Error -- device in state '%s' but current detected!\n",
-                 state[machinestate].label);
-    }
-    if (machinestate == POWERED) {
-      machinestate = RUNNING;
-      Log.printf("Machine running.\n");
-    }
-  } else if (machinestate == RUNNING) {
-    machinestate = POWERED;
-    Log.printf("Machine halted.\n");
-  }
 
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
@@ -368,4 +357,3 @@ void loop() {
       break;
   };
 }
-
