@@ -5,6 +5,8 @@ import sys
 import time
 import hmac
 import hashlib
+import logging
+import traceback
 
 sys.path.append('.')
 import db
@@ -162,8 +164,16 @@ master = Master()
 if not master:
   sys.exit(1)
 
-exitcode = master.run()
-sys.exit(exitcode)
+try:
+        exitcode = master.run()
+        sys.exit(exitcode)
+except (KeyboardInterrupt, SystemExit):
+        sys.exit(1)
+except Exception as e:
+        subject = "Exception in main run loop: {}, restarting".format(str(e))
+        msg = subject
+        master.logger.critical(subject)
+        print(msg)
+        master .send_email(subject,msg);
 
-
-
+sys.exit(-1)
