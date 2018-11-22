@@ -1,6 +1,6 @@
 Run in test mode with:
 
-    python3.6 master.py \
+python3.6 master.py \
 		--privatekeyfile .priv \
 		--db ./sample-keydb.txt \
 		--trustdb ./tofu.db \
