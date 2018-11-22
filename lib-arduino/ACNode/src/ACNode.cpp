@@ -46,6 +46,7 @@ void ACNode::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
 void ACNode::pop() {
     strncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
     mqtt_port = MQTT_DEFAULT_PORT;
+    _report_period = REPORT_PERIOD;
 
     moi[0] = 0;
 
@@ -294,7 +295,7 @@ void ACNode::loop() {
 	}
     }
     {	static unsigned long last = 0;
-	if (millis() - last > REPORT_PERIOD) {
+	if (millis() - last > _report_period) {
 		last = millis();
 
 		DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);

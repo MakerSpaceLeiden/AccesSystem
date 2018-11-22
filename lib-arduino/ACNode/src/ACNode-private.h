@@ -97,6 +97,7 @@ public:
 
     const char * name() { return "ACNode"; }
 
+    void set_report_period(const unsigned long period) { _report_period = period; };
     void set_mqtt_host(const char *p);
     void set_mqtt_port(uint16_t p);
     void set_mqtt_prefix(const char *p);
@@ -202,6 +203,7 @@ private:
 protected:
     const char * _ssid;
     const char * _ssid_passwd;
+    unsigned long _report_period;
     bool _wired;
     acnode_proto_t _proto;
     char _lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */

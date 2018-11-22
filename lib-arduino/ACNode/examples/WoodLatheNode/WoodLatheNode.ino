@@ -36,7 +36,6 @@ CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
 
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
-#include "/home/dirkx/.passwd.h"
 
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
@@ -131,6 +130,8 @@ void setup() {
   //
   node.set_master("test-master");
 
+  // \node.set_report_period(2000);
+
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
   });
@@ -159,11 +160,14 @@ void setup() {
     return ACBase::CMD_DECLINE;
   });
 
-  currentSensor.setOnLimit(0.5);
-  
+  currentSensor.setOnLimit(0.00095);
+
   currentSensor.onCurrentOn([](void) {
-    if (machinestate != RUNNING)
+    if (machinestate != RUNNING) {
       machinestate = RUNNING;
+      Log.println("Motor started");
+    };
+    
     if (machinestate < POWERED) {
       static unsigned long last = 0;
       if (millis() - last > 1000)
@@ -173,8 +177,11 @@ void setup() {
 
   currentSensor.onCurrentOff([](void) {
     // We let the auto-power off on timeout do its work.
-    if (machinestate > POWERED)
+    if (machinestate > POWERED) {
       machinestate = POWERED;
+      Log.println("Motor stopped");
+    };
+
   });
 
   button1.setCallback([](int state) {
@@ -188,11 +195,14 @@ void setup() {
     report["state"] = state[machinestate].label;
     report["interlock"] = digitalRead(INTERLOCK) ? true : false;
 
-    report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis()-powered_last)/1000) : 0);
-    report["running_time"] = running_total + ((machinestate == RUNNING) ? ((millis()-running_last)/1000) : 0);
+    report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);
+    report["running_time"] = running_total + ((machinestate == RUNNING) ? ((millis() - running_last) / 1000) : 0);
 
     report["idle_poweroff"] = idle_poweroff;
     report["bad_poweroff"] = bad_poweroff;
+
+    report["current"] = currentSensor.sd();
+
   });
 
   // This reports things such as FW version of the card; which can 'wedge' it. So we
@@ -233,7 +243,7 @@ void setup() {
   // node.set_debug(true);
   // node.set_debugAlive(true);
   node.begin();
-  Debug.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
 
 void loop() {
