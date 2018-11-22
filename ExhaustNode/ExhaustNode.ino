@@ -72,7 +72,6 @@ Log Log;
 
 #define BUILD  __FILE__ " " __DATE__ " " __TIME__ " " ARDUINO_BOARD
 
-#include "/Users/dirkx/.passwd.h"
 #ifndef CONFIGAP
 // Hardcoded, compile time settings.
 const char ssid[34] = WIFI_NETWORK ;
@@ -154,8 +153,10 @@ void setup() {
 #endif
 
 #ifdef WIRED_ETHERNET
+#ifdef  ESP32
   Debug.println("starting up ethernet");
   eth_setup();
+#endif
 #endif
 
 #ifdef CONFIGAP

@@ -176,23 +176,6 @@ void configureMQTT()  {
   client.setCallback(mqtt_callback);
 }
 
-#ifndef ESP32
-char * strsepspace(char **p) {
-  char *q = *p;
-  while (**p && **p != ' ') {
-    (*p)++;
-  };
-  if (**p == ' ') {
-    **p = 0;
-    (*p)++;
-    return q;
-  }
-  if (*q)
-    return q;
-  return NULL;
-}
-#endif
-
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
   char payload[MAX_MSG];
 
@@ -222,7 +205,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
       Log.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
       return false; \
     }; \
-    decode_base64((const unsigned char *)base64str, bin); \
+    decode_base64((unsigned char *)base64str, bin); \
   }
 
   SEP(version, "SIG header",/* void return */);

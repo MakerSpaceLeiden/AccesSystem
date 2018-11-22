@@ -23,6 +23,7 @@
 #   include <ESP8266WebServer.h>
 #   include <FS.h>
 #   define resetWatchdog() { ESP.wdtFeed(); }
+#   define trng() ((uint32_t)  ESP8266_DREG(0x20E44)) /* XXX we ought to check if Wifi/BT is up - as that is required for secure numbers. */
 #   include <Ticker.h>
 #endif
 

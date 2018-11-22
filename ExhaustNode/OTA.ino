@@ -4,10 +4,12 @@ void configureOTA() {
   ArduinoOTA.setPort(8266);
   ArduinoOTA.setHostname(moi);
 
+#ifdef OTA_PASSWD
   // We currenly hardcode this - as to not allow an 'easy' bypass by
   // means of the captive portal activation & subsequent change.
   //
   ArduinoOTA.setPassword((const char *)OTA_PASSWD);
+#endif
 
   ArduinoOTA.onStart([]() {
     Log.println("OTA process started.");
