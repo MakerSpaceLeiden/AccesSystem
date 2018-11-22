@@ -59,7 +59,7 @@
 
 #include <SPI.h>
 
-#include "MakerspaceMQTT.h"
+#include "MakerSpaceMQTT.h"
 #include "Log.h"
 #include "LEDs.h"
 #include "OTA.h"
@@ -104,6 +104,11 @@ unsigned long beatCounter = 0;      // My own timestamp - manually kept due to S
 void setup() {
   digitalWrite(RELAY, 0); // Stop the relay from fluttering during pinMode() change.
   pinMode(RELAY, OUTPUT);
+
+  {// Start with the exhaust fan ON, so you don't have to wait for WiFi to turn the fan on
+  machinestate = POWERED;
+  digitalWrite(RELAY, 1);
+  }
 
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_ORANGE, OUTPUT);
@@ -362,7 +367,7 @@ void loop() {
     Log.print(">");
 
     Log.print(" Button="); Log.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
-    Log.print(" Relay="); Log.print(digitalRead(RELAY)  ? "ON" : "off");
+    Log.print(" Relay="); Log.print(digitalRead(RELAY)  ? "ON" : "off"); // 
     Log.println(".");
 
     last_debug = millis();

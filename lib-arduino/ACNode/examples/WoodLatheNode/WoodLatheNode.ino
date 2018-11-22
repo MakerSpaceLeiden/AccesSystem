@@ -8,7 +8,7 @@
 
        http://www.apache.org/licenses/LICENSE-2.0
 
-   Unless required by applicable law or agreed to in writing, software
+   Unless required by applicable law or agreed to in writing, softwareM
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF
    ANY KIND, either express or implied.
@@ -33,11 +33,23 @@
 
 CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO, 197); //SVP, 197 Hz sampling of a 50hz signal/
 
+<<<<<<< HEAD
 ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
 //
 // ACNode node = ACNode(MACHINE);
+=======
+#include <ACNode.h>
+#include <RFID.h>   // SPI version
+#include "/home/dirkx/.passwd.h"
+
+// ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
+// ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
+// ACNode node = ACNode(MACHINE, true); // wired network (default).
+ACNode node = ACNode(MACHINE);
+
+>>>>>>> d3d7adaf2b3e7b400b0921072901efd308069440
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
 RFID reader = RFID();
@@ -157,6 +169,8 @@ void setup() {
     return ACBase::CMD_DECLINE;
   });
 
+  currentSensor.setOnLimit(0.5);
+  
   currentSensor.onCurrentOn([](void) {
     if (machinestate != RUNNING)
       machinestate = RUNNING;
@@ -254,6 +268,7 @@ void loop() {
     machinestate = OUTOFORDER;
   };
 
+<<<<<<< HEAD
   if (currentSensor.hasCurrent()) {
     if (machinestate < POWERED) {
       static unsigned long last = 0;
@@ -272,6 +287,8 @@ void loop() {
     Log.printf("Machine halted.\n");
   }
 
+=======
+>>>>>>> d3d7adaf2b3e7b400b0921072901efd308069440
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
     laststate = machinestate;
@@ -386,4 +403,3 @@ void loop() {
       break;
   };
 }
-
