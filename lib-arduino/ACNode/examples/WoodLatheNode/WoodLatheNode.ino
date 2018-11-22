@@ -19,23 +19,19 @@
 //
 #include <PowerNodeV11.h>
 #include <ACNode.h>
-#include <RFID.h>   // SPI version
+#include <RFID.h>   // SPI or  I2C specified in below constructor.
 
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
-#include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
+#include <ButtonDebounce.h>         // https://github.com/dikx/ButtonDebounce
 
 #define MACHINE             "test-woodlathe"
 #define OFF_BUTTON          (SW2_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-#define CURRENT_THRESHHOLD  (400) // 10% of the ADC scale.
 #define INTERLOCK           (OPTO2)
 
 //#define OTA_PASSWD          "SomethingSecrit"
 
-CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
-
-#include <ACNode.h>
-#include <RFID.h>   // SPI version
+CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO, 197); //SVP, 197 Hz sampling of a 50hz signal/
 
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
@@ -102,6 +98,8 @@ unsigned long powered_total = 0, powered_last;
 unsigned long running_total = 0, running_last;
 unsigned long bad_poweroff = 0;
 unsigned long idle_poweroff = 0;
+unsigned long manual_poweroff = 0;
+unsigned long errors = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -113,10 +111,8 @@ void setup() {
   pinMode(RELAY_GPIO, OUTPUT);
   digitalWrite(RELAY_GPIO, 0);
 
-  pinMode(CURRENT_GPIO, INPUT); // analog input.
   pinMode(SW1_BUTTON, INPUT_PULLUP);
   pinMode(SW2_BUTTON, INPUT_PULLUP);
-
   pinMode(INTERLOCK, INPUT_PULLUP);
 
   Serial.printf("Boot state: SW1:%d SW2:%d INTERLOCK:%d\n",
@@ -129,6 +125,8 @@ void setup() {
   // specify this when using your own `master'.
   //
   node.set_master("test-master");
+  // node.set_mqtt_prefix("");
+  // node.set_master("master");
 
   // \node.set_report_period(2000);
 
@@ -141,6 +139,7 @@ void setup() {
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
     machinestate = TRANSIENTERROR;
+    errors++;
   });
   node.onApproval([](const char * machine) {
     machinestate = POWERED;
@@ -170,8 +169,10 @@ void setup() {
     
     if (machinestate < POWERED) {
       static unsigned long last = 0;
-      if (millis() - last > 1000)
+      if (millis() - last > 1000) {
         Log.println("Very strange - current observed while we are 'off'. Should not happen.");
+        errors++;
+      }
     }
   });
 
@@ -184,12 +185,14 @@ void setup() {
 
   });
 
-  button1.setCallback([](int state) {
-    Debug.printf("Button 1 changed to %d\n", state);
-  });
-  button2.setCallback([](int state) {
-    Debug.printf("Button 2 changed to %d\n", state);
-  });
+  if (0) {
+    button1.setCallback([](int state) {
+      Debug.printf("Button 1 changed to %d\n", state);
+    });
+    button2.setCallback([](int state) {
+      Debug.printf("Button 2 changed to %d\n", state);
+    });
+  };
 
   node.onReport([](JsonObject  & report) {
     report["state"] = state[machinestate].label;
@@ -202,7 +205,9 @@ void setup() {
     report["bad_poweroff"] = bad_poweroff;
 
     report["current"] = currentSensor.sd();
+    report["manual_poweroff"] = manual_poweroff;
 
+    report["errors"] = errors;
   });
 
   // This reports things such as FW version of the card; which can 'wedge' it. So we
@@ -244,6 +249,8 @@ void setup() {
   // node.set_debugAlive(true);
   node.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+
+  currentSensor.begin();
 }
 
 void loop() {
@@ -290,9 +297,11 @@ void loop() {
       bad_poweroff++;
     } else if (machinestate == POWERED) {
       Log.printf("Machine switched OFF with the off-button.\n");;
+      manual_poweroff++;
     } else {
       Log.printf("Off button pressed (currently in state %s). Weird.\n",
                  state[machinestate].label);
+      errors++;
     }
     machinestate = WAITINGFORCARD;
   }
@@ -304,20 +313,23 @@ void loop() {
 
   aartLed.set(state[machinestate].ledState);
 
-  {
+  if (1) {
     static unsigned long last = millis();
     static unsigned long sw1, sw2, tock;
     sw1  += digitalRead(SW1_BUTTON);
     sw2  += digitalRead(SW1_BUTTON);
     tock ++;
     if (millis() - last > 1000) {
-      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Current %f Interlock %d\n",
+      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Current %f/%f=%f/%s Interlock %d\n",
                    digitalRead(SW1_BUTTON),
                    abs(tock - sw1),
                    digitalRead(SW2_BUTTON),
                    abs(tock - sw2),
                    digitalRead(RELAY_GPIO),
                    currentSensor.sd(),
+                   currentSensor.avg(),
+                   analogRead(CURRENT_GPIO) / 1024.,
+                   currentSensor.hasCurrent() ? "yes" : "no",
                    digitalRead(INTERLOCK)
                   );
       last = millis(); sw1 = sw2 = tock = 0;

@@ -317,9 +317,10 @@ void ACNode::loop() {
 
 		out[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
-           	out["coreTemp"]  = coreTemp();
+           	out["coreTemp"]  = coreTemp(); 
+		out["heap_free"] = ESP.getFreeHeap();	
 
-    		std::list<ACBase *>::iterator it;
+		std::list<ACBase *>::iterator it;
        		for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
         		(*it)->report(out);
 

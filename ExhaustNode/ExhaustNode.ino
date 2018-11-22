@@ -59,7 +59,7 @@
 
 #include <SPI.h>
 
-#include "MakerspaceMQTT.h"
+#include "MakerSpaceMQTT.h"
 #include "Log.h"
 #include "LEDs.h"
 #include "OTA.h"
@@ -72,7 +72,6 @@ Log Log;
 
 #define BUILD  __FILE__ " " __DATE__ " " __TIME__ " " ARDUINO_BOARD
 
-#include "/Users/dirkx/.passwd.h"
 #ifndef CONFIGAP
 // Hardcoded, compile time settings.
 const char ssid[34] = WIFI_NETWORK ;
@@ -104,6 +103,11 @@ unsigned long beatCounter = 0;      // My own timestamp - manually kept due to S
 void setup() {
   digitalWrite(RELAY, 0); // Stop the relay from fluttering during pinMode() change.
   pinMode(RELAY, OUTPUT);
+
+  {// Start with the exhaust fan ON, so you don't have to wait for WiFi to turn the fan on
+  machinestate = POWERED;
+  digitalWrite(RELAY, 1);
+  }
 
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_ORANGE, OUTPUT);
@@ -149,8 +153,10 @@ void setup() {
 #endif
 
 #ifdef WIRED_ETHERNET
+#ifdef  ESP32
   Debug.println("starting up ethernet");
   eth_setup();
+#endif
 #endif
 
 #ifdef CONFIGAP
@@ -362,7 +368,7 @@ void loop() {
     Log.print(">");
 
     Log.print(" Button="); Log.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
-    Log.print(" Relay="); Log.print(digitalRead(RELAY)  ? "ON" : "off");
+    Log.print(" Relay="); Log.print(digitalRead(RELAY)  ? "ON" : "off"); // 
     Log.println(".");
 
     last_debug = millis();

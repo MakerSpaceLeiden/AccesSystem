@@ -4,6 +4,8 @@
 // Upon which below is ignored and will give you an odd 
 // silent hang.
 
+#ifdef  ESP32
+
 #define ETH_PHY_ADDR      (1)
 #define ETH_PHY_MDC       (23)
 #define ETH_PHY_MDIO      (18)
@@ -61,4 +63,4 @@ void eth_setup()
   ETH.begin();
   Debug.println("Wired ethernet started.");
 }
-
+#endif
