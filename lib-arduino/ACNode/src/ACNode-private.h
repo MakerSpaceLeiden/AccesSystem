@@ -93,7 +93,7 @@ private:
 class ACNode : public ACBase {
 public:
     ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
-    ACNode(const char * machine, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
+    ACNode(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
 
     const char * name() { return "ACNode"; }
 
@@ -116,6 +116,7 @@ public:
     char mqtt_topic_prefix[MAX_NAME];
     
     IPAddress localIP() { if (_wired) return ETH.localIP(); else return WiFi.localIP(); };
+    String macAddressString() { if (_wired) return ETH.macAddress(); else return WiFi.macAddress(); };
     
     // Callbacks.
     typedef std::function<void(acnode_error_t)> THandlerFunction_Error;

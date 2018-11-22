@@ -48,7 +48,7 @@ void ACNode::pop() {
     mqtt_port = MQTT_DEFAULT_PORT;
     _report_period = REPORT_PERIOD;
 
-    moi[0] = 0;
+    strncpy(moi, String("node-" + macAddressString() ).c_str(), sizeof(moi));
 
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
@@ -59,7 +59,8 @@ ACNode::ACNode(const char * m, bool wired, acnode_proto_t proto) :
 	_ssid(NULL), _ssid_passwd(NULL), _wired(wired), _proto(proto)
 {
     _acnode = this;
-    strncpy(machine,m, sizeof(machine));
+    if (m && *m)
+      strncpy(machine,m, sizeof(machine));
     pop();
 }
 
@@ -67,7 +68,8 @@ ACNode::ACNode(const char *m, const char * ssid , const char * ssid_passwd, acno
    	_ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false), _proto(proto)
 {
     _acnode = this;
-    strncpy(machine,m, sizeof(machine));
+    if (m && *m)
+      strncpy(machine,m, sizeof(machine));
     pop();
 }
 
@@ -301,11 +303,18 @@ void ACNode::loop() {
 		DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);
 		JsonObject& out = jsonBuffer.createObject();
 		out[ "node" ] = moi;
+		out[ "machine" ] = machine;
+
+                out[ "ip" ] = String(localIP()).c_str();
+                out[ "net" ] = _wired ? "UTP" : "WiFi";
+  		out[ "mac" ] = macAddressString();
+
 		out[ "beat" ] = beatCounter;
 
 		if (beatCounter > 1542275849 && _start_beat == 0)
 			_start_beat  = beatCounter;
-		else if (_start_beat)
+		else 
+		if (_start_beat)
 			out[ "alive-uptime" ] = beatCounter - _start_beat;
 
 		out[ "approve" ] = _approve;
