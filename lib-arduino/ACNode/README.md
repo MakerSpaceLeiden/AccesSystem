@@ -3,9 +3,9 @@ Dependencies - from the standard Library manager:
 	ArduinoJson Benoit Blanchon, 5.13.3 (not the 6-beta!)
 
 To be added manually in to .../Arduino/library
-	https://github.com/dirkx/CurrentTransformer
+	https://github.com/dirkx/CurrentTransformer 	(awaiting pull request upstream)
 	https://github.com/maykon/ButtonDebounce.git
-	https://github.com/Densaugeo/base64_arduino.git
+	https://github.com/dirkx/base64_arduino.git	(assuming pull request upstream)
 	https://github.com/dirkx/rfid.git (assuming you need both spi & i2c support)
 
 The crypto libraries are packaged differently. Fetch:
