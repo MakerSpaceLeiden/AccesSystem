@@ -1,13 +1,32 @@
-Dependencies
-  git clone https://github.com/zhouhan0126/WebServer-esp32.git
-  git clone https://github.com/zhouhan0126/DNSServer---esp32.git
+Dependencies - from the standard Library manager:
+	PubSubCLient Nick O'Leary 2.7.0
+	ArduinoJson Benoit Blanchon, 5.13.3 (not the 6-beta!)
 
-Use:
-	git clone https://github.com/zhouhan0126/WIFIMANAGER-ESP32.git
-with PR#
-	https://github.com/zhouhan0126/WIFIMANAGER-ESP32/pull/21
-or
- 	git@github.com:dirkx/WIFIMANAGER-ESP32.git
+To be added manually in to .../Arduino/library
+	https://github.com/dirkx/CurrentTransformer
+	https://github.com/maykon/ButtonDebounce.git
+	https://github.com/Densaugeo/base64_arduino.git
+	https://github.com/dirkx/rfid.git (assuming you need both spi & i2c support)
+
+The crypto libraries are packaged differently. Fetch:
+
+	https://github.com/rweather/arduinolibs.git 
+
+and then  for
+	
+0.1.x versions
+	just move the dirctory Crypto up into .../Arduino/Library,
+0.2.x versions
+	move the directories  'Crypto' and `CryptoLegacy' up into .../Arduino/Library
+.
+Note that this later version of this library may contain some ESP32 optimisations that
+are not quite tested/conflict with the compiler.
+
+For test/as-is versions of the older code:
+	https://github.com/zhouhan0126/WebServer-esp32.git
+	https://github.com/zhouhan0126/DNSServer---esp32.git
+i
+You will have to edit PubSubClient.h and change the Packet size to something like a  1000.
 
 For debugging without a serial port (especially as you need to be isolated from the ground due to the PoE being at -48 volt and the unit having no galvanic separation); two options:
 
