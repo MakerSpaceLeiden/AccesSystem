@@ -24,7 +24,7 @@
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
 #include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
 
-#define MACHINE             /* "my name" -- default is 'node-<macaddres>' */
+#define MACHINE             "node-angle" /* "my name" -- default is 'node-<macaddres>' */
 #define OFF_BUTTON          (SW2_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 #define CURRENT_THRESHHOLD  (0.01) 
@@ -127,7 +127,7 @@ void setup() {
   //
   node.set_master("test-master");
 
-  node.set_report_period(10*000);
+  node.set_report_period(10*1000);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
@@ -198,7 +198,7 @@ void setup() {
     report["bad_poweroff"] = bad_poweroff;
 
     report["current"] = currentSensor.sd();
-#if OTA_PASSWD
+#ifdef OTA_PASSWD
     report["ota"] = true;
 #else    
     report["ota"] = false;

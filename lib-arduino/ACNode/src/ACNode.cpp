@@ -306,7 +306,7 @@ void ACNode::loop() {
 		out[ "node" ] = moi;
 		out[ "machine" ] = machine;
 
-                out[ "ip" ] = String(localIP()).c_str();
+                out[ "ip" ] = String(localIP().toString()).c_str();
                 out[ "net" ] = _wired ? "UTP" : "WiFi";
   		out[ "mac" ] = macAddressString();
 
