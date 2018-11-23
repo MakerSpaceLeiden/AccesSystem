@@ -171,9 +171,9 @@ except (KeyboardInterrupt, SystemExit):
         sys.exit(1)
 except Exception as e:
         subject = "Exception in main run loop: {}, restarting".format(str(e))
-        msg = subject
+        msg = "Tacktrace: " + traceback.format_exc()
         master.logger.critical(subject)
         print(msg)
-        master .send_email(subject,msg);
+        master .send_email(msg, subject);
 
 sys.exit(-1)

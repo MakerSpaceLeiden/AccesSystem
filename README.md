@@ -84,6 +84,23 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
 
 Currentl dependencyies for a `pip install' are:
 
-	daemon setproctitle configargparse python-axolotl_curve25519 ed25519 python-axolotl  
+	wheel setuptools 
 
+followed by (as otherwise dependencies can go funny):
+
+	daemon setproctitle configargparse python-axolotl_curve25519 ed25519 python-axolotl paho-mqtt pycrypto
+
+Pip can generally be installed with
+
+	pkg install pip
+	port install pip
+	apt install python-pip
+
+etc. On some platforms you will have to also install the headers; e.g.
+
+	apt install python3-dev
+
+or similar.
+
+	
 

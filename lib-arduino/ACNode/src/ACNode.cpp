@@ -48,7 +48,8 @@ void ACNode::pop() {
     mqtt_port = MQTT_DEFAULT_PORT;
     _report_period = REPORT_PERIOD;
 
-    strncpy(moi, String("node-" + macAddressString() ).c_str(), sizeof(moi));
+    // strncpy(moi, String("node-" + macAddressString() ).c_str(), sizeof(moi));
+    moi[0] = 0;
 
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));

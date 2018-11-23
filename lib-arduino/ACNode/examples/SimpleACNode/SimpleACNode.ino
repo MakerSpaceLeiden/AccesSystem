@@ -39,8 +39,7 @@ CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-// ACNode node = ACNode(MACHINE);
-ACNode node = ACNode();
+ACNode node = ACNode(MACHINE);
 
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
@@ -128,7 +127,7 @@ void setup() {
   //
   node.set_master("test-master");
 
-  // node.set_report_period(2000);
+  node.set_report_period(10*000);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
@@ -199,8 +198,12 @@ void setup() {
     report["bad_poweroff"] = bad_poweroff;
 
     report["current"] = currentSensor.sd();
-
-  });
+#if OTA_PASSWD
+    report["ota"] = true;
+#else    
+    report["ota"] = false;
+#endif
+});
 
   // This reports things such as FW version of the card; which can 'wedge' it. So we
   // disable it unless we absolutely positively need that information.
