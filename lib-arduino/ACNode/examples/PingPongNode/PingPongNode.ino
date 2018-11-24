@@ -100,11 +100,7 @@ void loop() {
 
   switch (machinestate) {
     case NOCONN:
-      if ((millis() - laststatechange) > 120 * 1000) {
-        Log.printf("Connection to SSID:%s lost for 120 seconds now -- Rebooting...\n", WiFi.SSID().c_str());
-        delay(500);
-        ESP.restart();
-      }
+      node.delayedReboot();
       break;
     case BOOTING:
       if (node.isUp())
@@ -112,12 +108,7 @@ void loop() {
       break;
     case OUTOFORDER:
     case SWERROR:
-      if (millis() - laststatechange > 10000) {
-        Log.printf("In %s state for longer than 10 seconds, rebooting.\n",
-                   machinestateName[machinestate]);
-        delay(500);
-        ESP.restart();
-      };
+      node.delayedReboot();
       break;
     case RUNNING:
       break;

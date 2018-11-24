@@ -117,7 +117,8 @@ public:
     
     IPAddress localIP() { if (_wired) return ETH.localIP(); else return WiFi.localIP(); };
     String macAddressString() { if (_wired) return ETH.macAddress(); else return WiFi.macAddress(); };
-    
+    void delayedReboot();
+ 
     // Callbacks.
     typedef std::function<void(acnode_error_t)> THandlerFunction_Error;
     ACNode& onError(THandlerFunction_Error fn)

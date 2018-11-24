@@ -560,3 +560,23 @@ _done:
     return;
 }
 
+void ACNode::delayedReboot() {
+   static int warn_counter = 0;
+   static unsigned long last = 0;
+
+   if (millis() - last < 1000) 
+       return;
+
+   if (warn_counter > 5)
+        Serial.println("Forced reboot NOW");
+        ESP.restart();
+   };
+
+   char buff[255];
+   snprintf(buff,sizeof(buff),"Countdown to forced reboot: %d", 5 - warn_counter);
+
+   Log.println(buff);
+
+   last = millis();
+   warn_counter ++;
+}

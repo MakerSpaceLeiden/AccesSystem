@@ -172,9 +172,7 @@ void loop() {
       digitalWrite(BUZZER, ((millis() % 3000) < 10) ? 1 : 0);
 
       if ((millis() - laststatechange) > 120 * 1000) {
-        Log.printf("Connection to SSID:%s lost for 120 seconds now -- Rebooting...\n", WiFi.SSID().c_str());
-        delay(500);
-        ESP.restart();
+        node.delayedReboot();
       }
       break;
 

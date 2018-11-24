@@ -340,18 +340,7 @@ void loop() {
       break;
 
     case REBOOT:
-      {
-        static int warn_counter = 0;
-        static unsigned long last = 0;
-        if (millis() - last > 1000) {
-          Log.println("Forced reboot.");
-          Serial.println("Forced reboot");
-          last = millis();
-          warn_counter ++;
-        };
-        if (warn_counter > 5)
-          ESP.restart();
-      }
+      node.delayedReboot();
       break;
 
     case CHECKINGCARD:

@@ -114,8 +114,8 @@ void setup() {
     Log.printf("Error %d\n", err);
     machinestate = TRANSIENTERROR;
   });
-  
-//  node.onValidatedCmd([]<ACNode::cmd_result_t>(const char *cmd, const char * rest) {
+
+  //  node.onValidatedCmd([]<ACNode::cmd_result_t>(const char *cmd, const char * rest) {
   node.onValidatedCmd([](const char *cmd, const char * rest) {
     if (!strcasecmp(cmd, "stop")) {
       machinestate = WAITING;
@@ -212,19 +212,7 @@ void loop() {
 
   switch (machinestate) {
     case REBOOT:
-      {
-        static int warn_counter = 0;
-        static unsigned long last = 0;
-        if (millis() - last > 1000) {
-          Log.println("Forced reboot.");
-          Serial.println("Forced reboot");
-          last = millis();
-          warn_counter ++;
-        };
-        if (warn_counter > 5)
-          Serial.println("Forced reboot NOW");
-        ESP.restart();
-      }
+      node.delayedReboot();
       break;
 
     case WAITING:
