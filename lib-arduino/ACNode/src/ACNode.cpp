@@ -567,7 +567,7 @@ void ACNode::delayedReboot() {
    if (millis() - last < 1000) 
        return;
 
-   if (warn_counter > 5)
+   if (warn_counter > 5) {
         Serial.println("Forced reboot NOW");
         ESP.restart();
    };
