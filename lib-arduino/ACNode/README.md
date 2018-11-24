@@ -1,3 +1,7 @@
+The *DEVELOPMENT* version of the Espressif-IDE is required; version 1.00
+	seems to produce broken code (FunctionalInterrupts.o functionality
+	seems AWOL; it hangs on an IRQ or produces StackOverflow errors).
+
 Dependencies - from the standard Library manager:
 	PubSubCLient Nick O'Leary 2.7.0
 	ArduinoJson Benoit Blanchon, 5.13.3 (not the 6-beta!)
