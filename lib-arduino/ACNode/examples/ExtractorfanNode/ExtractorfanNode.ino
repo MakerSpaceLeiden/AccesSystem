@@ -203,16 +203,13 @@ void loop() {
     machinestate = WAITING;
   }
 
-  if (laststate < RUNNING)
-    digitalWrite(RELAY_GPIO, 0);
-  else
-    digitalWrite(RELAY_GPIO, 1);
+  digitalWrite(RELAY_GPIO, laststate == RUNNING ? 1 : 0));
 
   aartLed.set(state[machinestate].ledState);
 
   switch (machinestate) {
-    case REBOOT:
-      node.delayedReboot();
+  case REBOOT:
+    node.delayedReboot();
       break;
 
     case WAITING:
