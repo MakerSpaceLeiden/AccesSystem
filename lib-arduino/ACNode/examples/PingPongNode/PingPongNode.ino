@@ -16,38 +16,44 @@
 */
 
 #include <ACNode.h>
-#include <SyslogStream.h>
-#include <MqttLogStream.h>
 
-ACNode node = ACNode(true); // Force wired PoE ethernet.
+ACNode node = ACNode("pingpong"); // Force wired PoE ethernet.
 
-SyslogStream syslogStream = SyslogStream();
-MqttLogStream mqttlogStream = MqttLogStream("test", "moi");
+MqttLogStream mqttlogStream = MqttLogStream();
 
-OTA ota = OTA("FooBar");
-
-MSL trivialSecurityHandler = MSL();
+#ifdef OTA_PASSWD
+OTA ota = OTA(OTA_PASSWD);
+#endif
 
 typedef enum {
   BOOTING, SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
   RUNNING,
-  NOTINUSE
 } machinestates_t;
 
-const char *machinestateName[NOTINUSE] = {
+const char *machinestateName[RUNNING + 1] = {
   "Software Error", "Out of order", "No network",
   "running",
-  "== not in use == "
 };
 
 unsigned long laststatechange = 0;
 static machinestates_t laststate = OUTOFORDER;
 machinestates_t machinestate = BOOTING;
 
+unsigned long pings_send = 0;
+unsigned long pings_recv = 0;
+
 unsigned long whatsups = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n" __FILE__ " " __DATE__ " " __TIME__);
+
+  // the default is space.makerspaceleiden.nl, prefix test
+  // node.set_mqtt_host("mymqtt-server.athome.nl");
+  // node.set_mqtt_prefix("test-1234");
+  node.set_master("test-master");
+
+  // report faster than usual.
+  node.set_report_period(10 * 1000);
 
   node.onConnect([]() {
     Log.println("Connected");
@@ -61,67 +67,57 @@ void setup() {
     Log.printf("Error %d\n", err);
     machinestate = OUTOFORDER;
   });
-  node.onValidatedCmd([](const char *cmd, const char *restl) {
-    if (!strcasecmp("whatsup", cmd)) {
-      send(NULL, "nuffing");
-      whatsups++;
-    } else {
-      Log.printf("Unhandled command <%s> -- ignored.", cmd);
-    }
+  
+  node.onValidatedCmd([](const char *cmd, const char * rest) -> ACBase::cmd_result_t  {
+    if (!strcasecmp(cmd, "pong")) {
+      pings_recv++;
+      return ACNode::CMD_CLAIMED;
+    };
+    return ACBase::CMD_DECLINE;
   });
 
-  node.addHandler(ota);
-  node.addSecurityHandler(trivialSecurityHandler);
+  node.onReport([](JsonObject  & report) {
+    report["state"] = machinestateName[machinestate];
+    report["pings_send"] = pings_send;
+    report["pings_recv"] = pings_recv;
 
-  // default syslog port and destination (gateway address or broadcast address).
-  //
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+#ifdef OTA_PASSWD
+    report["ota"] = true;
+#else
+    report["ota"] = false;
+#endif
+  });
 
-  // assumes the client connection for MQTT (and network, etc) is up - otherwise silenty fails/buffers.
-  //
+#ifdef OTA_PASSWD
+  node.addHandler(&ota);
+#endif
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
   machinestate = BOOTING;
-
-  node.set_debug(true);
-  node.set_debugAlive(true);
-
   node.begin();
 }
 
 void loop() {
   node.loop();
 
-  if (laststate != machinestate) {
-    laststate = machinestate;
-    laststatechange = millis();
-  }
-
   switch (machinestate) {
-    case NOCONN:
-      node.delayedReboot();
-      break;
     case BOOTING:
-      if (node.isUp())
-        machinestate = RUNNING;
-      break;
     case OUTOFORDER:
+      break;
+
+    case RUNNING: {
+        static unsigned long last = 0;
+        if (millis() - last > 5000) {
+          last = millis();
+          node.send("ping");
+          pings_send++;
+        }
+      }
+      break;
+
+    case NOCONN:
     case SWERROR:
       node.delayedReboot();
       break;
-    case RUNNING:
-      break;
-    case NOTINUSE:
-      break;
   };
-
-  {
-    static unsigned long lastreport = 0;
-    if (millis() - lastreport > 5000) {
-      Debug.printf("Report (every 5 seconds) -- state: %d:%s, whatsups: %lu\n",
-                   machinestate, machinestateName[machinestate], whatsups);
-    }
-  }
 }
-

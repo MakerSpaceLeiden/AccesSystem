@@ -17,6 +17,7 @@ class PingNode(ACNode.ACNode):
 
   def __init__(self):
     super().__init__()
+    self.commands[ 'ping' ] = self.cmd_ping
     self.commands[ 'pong' ] = self.cmd_ack
     self.commands[ 'ack' ] = self.cmd_ack
 
@@ -43,6 +44,11 @@ class PingNode(ACNode.ACNode):
         self.last_time_pingtimeout = time.time()
 
     super().loop()
+
+  def cmd_ping(self, msg):
+    self.send(msg['node'],"pong")
+    self.logger.debug("Ping-reply to "+msg['node'])
+    return
 
   def cmd_ack(self, msg):
     if self.last_ping_time.get(msg['node']):
