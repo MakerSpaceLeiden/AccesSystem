@@ -14,65 +14,65 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-
-#define BUZZER    (4)   // GPIO pin count.
-#define SOLENOID  (5)
-
-#define RFID_SELECT_PIN (6)
-#define RFID_RESET_PIN (7)
-
+#include <PowerNodeV11.h>
 #include <ACNode.h>
+#include <RFID.h>   // SPI version
 
-#include <MSL.h>
-#include <SIG1.h>
-#include <SIG2.h>
+#define SOLENOID  (4)
 
-#include <Beat.h>
+// Labelling as per `blue' RFID MFRC522-MSL 1471 'fixed'
+#define MFRC522_SDA     (15)
+#define MFRC522_SCK     (14)
+#define MFRC522_MOSI    (13)
+#define MFRC522_MISO    (12)
+#define MFRC522_IRQ     (33)
+#define MFRC522_GND     /* gnd pin */
+#define MFRC522_RSTO    (32)
+#define MFRC522_3V3     /* 3v3 */
 
-#include <OTA.h>
-#include <RFID.h>
+// Wired ethernet uses hte
+ACNode node = ACNode("a-door");
+RFID reader = RFID(MFRC522_SDA, MFRC522_RSTO, MFRC522_IRQ, MFRC522_SCK, MFRC522_MISO, MFRC522_MOSI);
 
-#include <SyslogStream.h>
-#include <MqttLogStream.h>
+MqttLogStream mqttlogStream = MqttLogStream();
 
-ACNode node = ACNode(true); // Force wired PoE ethernet.
+#ifdef OTA_PASSWD
+OTA ota = OTA(OTA_PASSWD);
+#endif
 
 typedef enum {
   BOOTING, SWERROR, OUTOFORDER, NOCONN, // some error - machine disabLED.
-  WAITINGFORCARD,             // waiting for card.
-  CHECKINGCARD,
+  WAITINGFORCARD,             // waiting for card (or checking one)
   BUZZING,                    // this is where we engage the solenoid.
-  REJECTED,
-  NOTINUSE
 } machinestates_t;
 
-const char *machinestateName[NOTINUSE] = {
-  "Software Error", "Out of order", "No network",
+const char *machinestateName[BUZZING + 1] = {
+  "Booting", "Software Error", "Out of order", "No network",
   "Waiting for card",
-  "Buzzing door",
-  "Rejecting noise",
-  "== not in use == "
+  "Buzzing door"
 };
 
 unsigned long laststatechange = 0;
 static machinestates_t laststate = OUTOFORDER;
 machinestates_t machinestate = BOOTING;
 
-OTA ota = OTA("FooBar");		// Over the air config, passowrd.
-RFID reader(RFID_SELECT_PIN, RFID_RESET_PIN);
-MSL msl = MSL();			// MSL `no security' handler as currently used for the doors.
-SIG1 sig1 = SIG1();
-SIG2 sig2 = SIG2();
-Beat beat = Beat();
+unsigned long opening_door_count  = 0;
 
 void setup() {
+  Serial.begin(115200);
+  Serial.println("\n\n\n");
+  Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 
   // Init the hardware and get it into a safe state.
   //
-  pinMode(BUZZER, OUTPUT);
-  digitalWrite(BUZZER, 0);
   pinMode(SOLENOID, OUTPUT);
   digitalWrite(SOLENOID, 0);
+
+  // the default is space.makerspaceleiden.nl, prefix test
+  // node.set_mqtt_host("mymqtt-server.athome.nl");
+  // node.set_mqtt_prefix("test-1234");
+  node.set_master("test-master");
+  node.set_report_period(10 * 1000);
 
   node.onConnect([]() {
     Log.println("Connected");
@@ -86,54 +86,35 @@ void setup() {
     Log.printf("Error %d\n", err);
     machinestate = WAITINGFORCARD;
   });
-  node.onValidatedCmd([](const char *cmd, const char *restl) {
-    if (!strcasecmp("open", cmd)) {
-      machinestate = BUZZING;
-    }
-    else if (!strcasecmp("denied", cmd)) {
-      machinestate = REJECTED;
-    } else {
-      Log.printf("Unhandled command <%s> -- ignored.", cmd);
-    }
+  node.onApproval([](const char * machine) {
+    machinestate = BUZZING;
+  });
+  node.onReport([](JsonObject  & report) {
+    report["state"] = machinestateName[machinestate];
+    report["opening_door_count"] = opening_door_count;
+
+#ifdef OTA_PASSWD
+    report["ota"] = true;
+#else
+    report["ota"] = false;
+#endif
   });
 
-  reader.onSwipe([](const char * tag) {
-    Log.printf("Card <%s> wiped - being checked.\n", tag);
-    machinestate = CHECKINGCARD;
-  });
-
-  node.addHandler(ota);
-  node.addHandler(reader);
-
-#if 0
-    // 2017 situation
-  node.addSecurityHandler(msl);
-#if 0
-    node.addSecurityHandler(sig1);
-#else
-    node.addSecurityHandler(sig2);
-#endif
-#else
-    node.addSecurityHandler(beat);
+  // This reports things such as FW version of the card; which can 'wedge' it. So we
+  // disable it unless we absolutely positively need that information.
+  //
+  reader.set_debug(false);
+  node.addHandler(&reader);
+#ifdef OTA_PASSWD
+  node.addHandler(&ota);
 #endif
 
-// default syslog port and destination (gateway address or broadcast address).
-//
-SyslogStream syslogStream = SyslogStream();
-Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
-// assumes the client connection for MQTT (and network, etc) is up - otherwise silenty fails/buffers.
-//
-MqttLogStream mqttlogStream = MqttLogStream("test", "moi");
-Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
-machinestate = BOOTING;
-
-  node.set_debug(true);
-  node.set_debugAlive(true);
-
+  // node.set_debug(true);
+  // node.set_debugAlive(true);
   node.begin();
+  Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
 
 void loop() {
@@ -142,46 +123,27 @@ void loop() {
   if (laststate != machinestate) {
     laststate = machinestate;
     laststatechange = millis();
+    if (machinestate == BUZZING)
+      opening_door_count++;
   }
 
   switch (machinestate) {
     case WAITINGFORCARD:
       digitalWrite(SOLENOID, 0);
-      digitalWrite(BUZZER, 0);
-      break;
-
-    case CHECKINGCARD:
-      digitalWrite(BUZZER, ((millis() % 500) < 100) ? 1 : 0);
-      if ((millis() - laststatechange) > 5000)
-        machinestate = REJECTED;
       break;
 
     case BUZZING:
       digitalWrite(SOLENOID, 1);
-      digitalWrite(BUZZER, 1);
       if ((millis() - laststatechange) > 5000)
         machinestate = WAITINGFORCARD;
-      break;
-
-    case REJECTED:
-      digitalWrite(BUZZER, ((millis() % 200) < 100) ? 1 : 0);
-      machinestate = WAITINGFORCARD;
-      break;
-
-    case NOCONN:
-      digitalWrite(BUZZER, ((millis() % 3000) < 10) ? 1 : 0);
-
-      if ((millis() - laststatechange) > 120 * 1000) {
-        node.delayedReboot();
-      }
       break;
 
     case BOOTING:
     case OUTOFORDER:
     case SWERROR:
-    case NOTINUSE:
-      digitalWrite(BUZZER, ((millis() % 1000) < 10) ? 1 : 0);
+    case NOCONN:
+      if ((millis() - laststatechange) > 120 * 1000)
+        node.delayedReboot();
       break;
   };
 }
-

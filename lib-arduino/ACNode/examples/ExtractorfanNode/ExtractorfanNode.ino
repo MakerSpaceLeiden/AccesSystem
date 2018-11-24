@@ -115,8 +115,7 @@ void setup() {
     machinestate = TRANSIENTERROR;
   });
 
-  //  node.onValidatedCmd([]<ACNode::cmd_result_t>(const char *cmd, const char * rest) {
-  node.onValidatedCmd([](const char *cmd, const char * rest) {
+  node.onValidatedCmd([](const char *cmd, const char * rest) -> ACBase::cmd_result_t  {
     if (!strcasecmp(cmd, "stop")) {
       machinestate = WAITING;
       net_poweroff++;

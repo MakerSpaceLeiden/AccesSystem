@@ -117,6 +117,18 @@ public:
     
     IPAddress localIP() { if (_wired) return ETH.localIP(); else return WiFi.localIP(); };
     String macAddressString() { if (_wired) return ETH.macAddress(); else return WiFi.macAddress(); };
+    String chipId() {
+#ifdef ESP32
+                uint64_t chipid = ESP.getEfuseMac();
+                uint32_t low = chipid & 0xFFFFFFFF;
+                uint32_t high = chipid >> 32;
+                return String(high, HEX) + String(low, HEX);
+#else
+                uint32_t chipid = ESP.getChipId();
+                return String(chipid);
+#endif
+    };
+
     void delayedReboot();
  
     // Callbacks.

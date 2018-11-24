@@ -48,8 +48,9 @@ void ACNode::pop() {
     mqtt_port = MQTT_DEFAULT_PORT;
     _report_period = REPORT_PERIOD;
 
-    // strncpy(moi, String("node-" + macAddressString() ).c_str(), sizeof(moi));
     moi[0] = 0;
+    if (machine == NULL || machine[0] == 0)
+    	strncpy(machine, String("node-" + chipId() ).c_str(), sizeof(machine));
 
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
@@ -107,12 +108,13 @@ void ACNode::begin() {
     if (_wired) {
         eth_setup();
     };
+
     if (!*machine)  
-	strncpy(machine, "unset-machine-name", sizeof(moi));
+	strncpy(machine, "unset-machine-name", sizeof(machine));
+
+    if (!*moi)  
+	strncpy(moi, machine, sizeof(moi));
    
-    if (!*moi) 
-	strncpy(moi,machine, sizeof(moi));
- 
 #ifdef CONFIGAP
     configBegin();
     
@@ -297,6 +299,24 @@ void ACNode::loop() {
 		lastCntr = Cntr;
 	}
     }
+    {
+    	static unsigned long last = millis();
+	static unsigned long sw1, sw2, tock;
+	sw1  += digitalRead(SW1_BUTTON);
+	sw2  += digitalRead(SW1_BUTTON);
+	tock ++;
+	if (millis() - last > 1000) {
+	      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Triac %d\n",
+	                digitalRead(SW1_BUTTON),
+	                abs(tock - sw1),
+	                digitalRead(SW2_BUTTON),
+	                abs(tock - sw2),
+      	 	        digitalRead(RELAY_GPIO),
+      	 	        digitalRead(TRIAC_GPIO)
+      	      );
+    	      last = millis(); sw1 = sw2 = tock = 0;
+   	 }
+    }
     {	static unsigned long last = 0;
 	if (millis() - last > _report_period) {
 		last = millis();
@@ -306,6 +326,7 @@ void ACNode::loop() {
 		out[ "node" ] = moi;
 		out[ "machine" ] = machine;
 
+		out[ "id" ] = chipId();
                 out[ "ip" ] = String(localIP().toString()).c_str();
                 out[ "net" ] = _wired ? "UTP" : "WiFi";
   		out[ "mac" ] = macAddressString();
@@ -370,30 +391,6 @@ void ACNode::loop() {
        for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
         (*it)->loop();
     }
-
-#if 0
-    if (_debug) {
-        // Emit the state of the node very 5 seconds or so.
-        static int last_debug = 0, last_debug_state = -1;
-        if (millis() - last_debug > 5000 || last_debug_state != machinestate) {
-            Log.print("State: ");
-            Log.print(machinestateName[machinestate]);
-            Log.print(" Wifi= ");
-            Log.print(WiFi.status());
-            Log.print(WiFi.status() == WL_CONNECTED ? "(connected)" : "");
-            Log.print(" MQTT=<");
-            Log.print(state2str(client.state()));
-            Log.print(">");
-            
-            Log.print(" Button="); Log.print(digitalRead(PUSHBUTTON)  ? "not-pressed" : "PRESSed");
-            Log.print(" Relay="); Log.print(digitalRead(RELAY)  ? "ON" : "off");
-            Log.println(".");
-            
-            last_debug = millis();
-            last_debug_state = machinestate;
-        }
-    };
-#endif
 }
 
 ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
@@ -407,8 +404,8 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
 	Debug.println("replied on the pick with an ack.");
         return ACNode::CMD_CLAIMED;
     }
-    bool app = !strcasecmp("approved",req->cmd);
-    bool den = !strcasecmp("denied", req->cmd);
+    bool app = ((strcasecmp("approved",req->cmd)==0) || (strcasecmp("open",req->cmd)==0));
+    bool den = (strcasecmp("denied", req->cmd) == 0);
 
     if (app) _approve++;
     if (den) _deny++;

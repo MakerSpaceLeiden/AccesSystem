@@ -24,10 +24,14 @@
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
 #include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
 
-#define MACHINE             /* "my name" -- default is 'node-<unqiueid>' */
+// Triac -- switches the DeWalt
+// Relay -- switches the table saw itself.
+
+#define MACHINE             "tablesaw"
 #define OFF_BUTTON          (SW2_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-#define CURRENT_THRESHHOLD  (0.01) 
+#define EXTRACTION_EXTRA    (20 * 1000) // 20 seconds extra time on the fan.
+#define CURRENT_THRESHHOLD  (0.01)
 
 //#define OTA_PASSWD          "SomethingSecrit"
 
@@ -51,14 +55,9 @@ OTA ota = OTA(OTA_PASSWD);
 
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
-ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
+ButtonDebounce offButton(SW2_BUTTON, 150 /* mSeconds */);
 
-// Various logging options (in addition to Serial).
-SyslogStream syslogStream = SyslogStream();
 MqttLogStream mqttlogStream = MqttLogStream();
-// TelnetSerialStream telnetSerialStream = TelnetSerialStream();
-
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -69,6 +68,7 @@ typedef enum {
   CHECKINGCARD,
   REJECTED,
   POWERED,                  // this is where we engage the relay.
+  EXTRACTION,               // run the extractor fan a bit longer.
   RUNNING,                  // this is when we detect a current.
 } machinestates_t;
 
@@ -79,28 +79,28 @@ struct {
   LED::led_state_t ledState;            // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
   time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
   machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
+  unsigned long timeInState;
+  unsigned long timeoutTransitions;
 } state[RUNNING + 1] =
 {
   { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT },
   { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT },
   { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT },
   { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "No network",           LED::LED_FLASH,         NEVER       , NOCONN },           // should we reboot at some point ?
-  { "Waiting for card",     LED::LED_IDLE,          NEVER       , WAITINGFORCARD },
+  { "No network",           LED::LED_FLASH,                NEVER, NOCONN },           // should we reboot at some point ?
+  { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD },
   { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD },
   { "Rejecting noise/card", LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "Powered - but idle",   LED::LED_ON,            NEVER       , WAITINGFORCARD },   // we leave poweroff idle to the code below.
-  { "Running",              LED::LED_ON,            NEVER       , WAITINGFORCARD },
+  { "Powered - but idle",   LED::LED_ON,           MAX_IDLE_TIME, WAITINGFORCARD },
+  { "Powered + extracton",  LED::LED_ON,        EXTRACTION_EXTRA, WAITINGFORCARD },
+  { "Running",              LED::LED_ON,                   NEVER, WAITINGFORCARD },
 };
 
 unsigned long laststatechange = 0;
 static machinestates_t laststate = BOOTING;
 machinestates_t machinestate = BOOTING;
 
-unsigned long powered_total = 0, powered_last;
-unsigned long running_total = 0, running_last;
 unsigned long bad_poweroff = 0;
-unsigned long idle_poweroff = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -127,7 +127,7 @@ void setup() {
   //
   node.set_master("test-master");
 
-  node.set_report_period(10*1000);
+  node.set_report_period(10 * 1000);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
@@ -145,6 +145,7 @@ void setup() {
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
   });
+
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
     // avoid swithing off a machine unless we have to.
     //
@@ -164,7 +165,7 @@ void setup() {
       machinestate = RUNNING;
       Log.println("Motor started");
     };
-    
+
     if (machinestate < POWERED) {
       static unsigned long last = 0;
       if (millis() - last > 1000)
@@ -175,66 +176,73 @@ void setup() {
   currentSensor.onCurrentOff([](void) {
     // We let the auto-power off on timeout do its work.
     if (machinestate > POWERED) {
-      machinestate = POWERED;
-      Log.println("Motor stopped");
+      machinestate = EXTRACTION;
+      Log.println("Motor stopped, extractor fan still on");
     };
 
   });
 
-  button1.setCallback([](int state) {
-    Debug.printf("Button 1 changed to %d\n", state);
-  });
-  button2.setCallback([](int state) {
-    Debug.printf("Button 2 changed to %d\n", state);
+  offButton.setCallback([](int buttonState) {
+    Debug.printf("Button 2 %s\n", buttonState == LOW ? "Pressed" : "Released again");
+    if (buttonState != LOW)
+      return;
+
+    if (machinestate < POWERED) {
+      // also force extractor fan off.
+      if (machinestate == EXTRACTION)
+        machinestate = WAITINGFORCARD;
+      return;
+    };
+
+    if (machinestate == RUNNING) {
+      Log.printf("Machine switched off with button while running (bad!)\n");
+      bad_poweroff++;
+    } else if (machinestate == POWERED) {
+      Log.printf("Machine switched OFF with the off-button.\n");;
+    } else {
+      Log.printf("Off button pressed (currently in state %s). Weird.\n",
+                 state[machinestate].label);
+    }
+    machinestate = WAITINGFORCARD;
   });
 
   node.onReport([](JsonObject  & report) {
     report["state"] = state[machinestate].label;
 
-    report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);
-    report["running_time"] = running_total + ((machinestate == RUNNING) ? ((millis() - running_last) / 1000) : 0);
+    report["powered_time"] = state[POWERED].timeInState + state[RUNNING].timeInState +  state[EXTRACTION].timeInState
+                             + ((machinestate >= POWERED) ? ((millis() - laststatechange) / 1000) : 0);
 
-    report["idle_poweroff"] = idle_poweroff;
+    report["extract_time"] = state[RUNNING].timeInState +  state[EXTRACTION].timeInState
+                             + ((machinestate >= EXTRACTION) ? ((millis() - laststatechange) / 1000) : 0);
+
+    report["running_time"] = state[RUNNING].timeInState
+                             + ((machinestate >= RUNNING) ? ((millis() - laststatechange) / 1000) : 0);
+
+    report["idle_poweroff"] = state[POWERED].timeoutTransitions;
+    report["fan_poweroff"] = state[EXTRACTION].timeoutTransitions;
+
     report["bad_poweroff"] = bad_poweroff;
 
     report["current"] = currentSensor.sd();
+
 #ifdef OTA_PASSWD
     report["ota"] = true;
-#else    
+#else
     report["ota"] = false;
 #endif
-});
+  });
 
   // This reports things such as FW version of the card; which can 'wedge' it. So we
   // disable it unless we absolutely positively need that information.
   //
   reader.set_debug(false);
+
   node.addHandler(&reader);
   // default syslog port and destination (gateway address or broadcast address).
   //
-#ifdef SYSLOG_HOST
-  syslogStream.setDestination(SYSLOG_HOST);
-  syslogStream.setRaw(true);
-#ifdef SYSLOG_PORT
-  syslogStream.setPort(SYSLOG_PORT);
-#endif
-#endif
 
   // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-
-  // We only sent the very low level debugging to syslog.
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-
-#if 0
-  // As the PoE devices have their own grounding - the cannot readily be connected
-  // to with a sericd Peral cable.  This allows for a telnet instead.
-  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-
-  Log.addPrintStream(t);
-  Debug.addPrintStream(t);
-#endif
 
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
@@ -248,13 +256,16 @@ void setup() {
 
 void loop() {
   node.loop();
-  button1.update();
-  button2.update();
+  offButton.update();
 
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
+      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
+  {
+    state[machinestate].timeoutTransitions++;
+
     laststate = machinestate;
     machinestate = state[machinestate].failStateOnTimeout;
+
     Debug.printf("Time-out; transition from %s to %s\n",
                  state[laststate].label, state[machinestate].label);
   };
@@ -263,37 +274,13 @@ void loop() {
     Debug.printf("Changed from state <%s> to state <%s>\n",
                  state[laststate].label, state[machinestate].label);
 
-    if (machinestate == POWERED && laststate < POWERED) {
-      powered_last = millis();
-    } else if (laststate == POWERED && machinestate < POWERED) {
-      powered_total += (millis() - running_last) / 1000;
-    };
-    if (machinestate == RUNNING && laststate < RUNNING) {
-      running_last = millis();
-    } else if (laststate == RUNNING && machinestate < RUNNING) {
-      running_total += (millis() - running_last) / 1000;
-    };
+    state[laststate].timeInState += (millis() - laststatechange) / 1000;
     laststate = machinestate;
     laststatechange = millis();
   }
 
-  if (button2.state() == LOW && machinestate >= POWERED) {
-    if (machinestate == RUNNING) {
-      Log.printf("Machine switched off with button while running (bad!)\n");
-      bad_poweroff++;
-    } else if (machinestate == POWERED) {
-      Log.printf("Machine switched OFF with the off-button.\n");;
-    } else {
-      Log.printf("Off button pressed (currently in state %s). Weird.\n",
-                 state[machinestate].label);
-    }
-    machinestate = WAITINGFORCARD;
-  }
-
-  if (laststate < POWERED)
-    digitalWrite(RELAY_GPIO, 0);
-  else
-    digitalWrite(RELAY_GPIO, 1);
+  digitalWrite(RELAY_GPIO,  (laststate >= POWERED) ? 1 : 0);
+  digitalWrite(TRIAC_GPIO,  (laststate >= EXTRACTION) ? 1 : 0);
 
   aartLed.set(state[machinestate].ledState);
 
@@ -309,11 +296,9 @@ void loop() {
       break;
 
     case POWERED:
-      if ((millis() - laststatechange) > MAX_IDLE_TIME) {
-        Log.printf("Machine idle for too long - switching off.\n");
-        machinestate = WAITINGFORCARD;
-        idle_poweroff++;
-      }
+      break;
+
+    case EXTRACTION:
       break;
 
     case RUNNING:
