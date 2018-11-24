@@ -203,7 +203,7 @@ void loop() {
     machinestate = WAITING;
   }
 
-  digitalWrite(RELAY_GPIO, laststate == RUNNING ? 1 : 0));
+  digitalWrite(RELAY_GPIO, (laststate == RUNNING) ? 1 : 0);
 
   aartLed.set(state[machinestate].ledState);
 
