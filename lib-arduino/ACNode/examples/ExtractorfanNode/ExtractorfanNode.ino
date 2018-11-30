@@ -170,14 +170,6 @@ void loop() {
   node.loop();
   offButton.update();
 
-  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
-    laststate = machinestate;
-    machinestate = state[machinestate].failStateOnTimeout;
-    Debug.printf("Time-out; too long in state %s; swiching to %s\n",
-                 state[laststate].label, state[machinestate].label);
-  };
-
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
                  state[laststate].label, state[machinestate].label);
@@ -201,6 +193,14 @@ void loop() {
     }
     machinestate = WAITING;
   }
+
+  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
+      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
+    laststate = machinestate;
+    machinestate = state[machinestate].failStateOnTimeout;
+    Debug.printf("Time-out; too long in state %s; swiching to %s\n",
+                 state[laststate].label, state[machinestate].label);
+  };
 
   digitalWrite(RELAY_GPIO, (laststate == RUNNING) ? 1 : 0);
 

@@ -251,14 +251,6 @@ void loop() {
   button1.update();
   button2.update();
 
-  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
-    laststate = machinestate;
-    machinestate = state[machinestate].failStateOnTimeout;
-    Debug.printf("Time-out; transition from %s to %s\n",
-                 state[laststate].label, state[machinestate].label);
-  };
-
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
                  state[laststate].label, state[machinestate].label);
@@ -276,6 +268,15 @@ void loop() {
     laststate = machinestate;
     laststatechange = millis();
   }
+
+  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
+      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
+    laststate = machinestate;
+    machinestate = state[machinestate].failStateOnTimeout;
+    Debug.printf("Time-out; transition from %s to %s\n",
+                 state[laststate].label, state[machinestate].label);
+  };
+
 
   if (button2.state() == LOW && machinestate >= POWERED) {
     if (machinestate == RUNNING) {
