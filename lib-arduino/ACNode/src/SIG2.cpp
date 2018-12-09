@@ -9,7 +9,7 @@
 #include <SHA256.h>
 
 #include <CBC.h>
-#include <AES256.h>
+#include <AES.h>
 
 #include <EEPROM.h>
 
