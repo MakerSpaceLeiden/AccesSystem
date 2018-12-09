@@ -260,8 +260,6 @@ void loop() {
   button1.update();
   button2.update();
 
-  static bool haveSeenPower = false;
-
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
                  state[laststate].label, state[machinestate].label);
@@ -301,9 +299,6 @@ void loop() {
     machinestate = WAITINGFORCARD;
   };
 
-  if (machinestate <= WAITINGFORCARD)
-    haveSeenPower = false;
-
   if (laststate < POWERED)
     digitalWrite(RELAY_GPIO, 0);
   else
@@ -323,8 +318,10 @@ void loop() {
       break;
 
     case ENABLED:
-      if (!(opto1.state()))
+      if (!(opto1.state())) {
+        Log.printf("Green button on safety contactor pressed.\n");
         machinestate = POWERED;
+      };
       break;
 
     case POWERED:
