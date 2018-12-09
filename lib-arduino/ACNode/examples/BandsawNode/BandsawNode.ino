@@ -19,19 +19,26 @@
 //
 #include <PowerNodeV11.h>
 #include <ACNode.h>
-#include <RFID.h>   // SPI or  I2C specified in below constructor.
+#include <RFID.h>   // SPI version
 
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
-#include <ButtonDebounce.h>         // https://github.com/dikx/ButtonDebounce
+#include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
 
-#define MACHINE             "woodlathe"
+#define MACHINE             "lintzaag"
 #define OFF_BUTTON          (SW2_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-#define INTERLOCK           (OPTO2)
+
+// Current reading whule runing 0.015 or higher
+// Current reading while idling 0.005
+// Current reading while off    0.020
+#define CURRENT_THRESHHOLD  (0.005)
 
 //#define OTA_PASSWD          "SomethingSecrit"
 
-CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO, 197); //SVP, 197 Hz sampling of a 50hz signal/
+CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
+
+#include <ACNode.h>
+#include <RFID.h>   // SPI version
 
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
@@ -82,12 +89,12 @@ struct {
   { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT },
   { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT },
   { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "No network",           LED::LED_FLASH,         NEVER     , NOCONN },           // should we reboot at some point ?
-  { "Waiting for card",     LED::LED_IDLE,          NEVER     , WAITINGFORCARD },
+  { "No network",           LED::LED_FLASH,         NEVER       , NOCONN },           // should we reboot at some point ?
+  { "Waiting for card",     LED::LED_IDLE,          NEVER       , WAITINGFORCARD },
   { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD },
   { "Rejecting noise/card", LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "Powered - but idle",   LED::LED_ON,            NEVER     , WAITINGFORCARD },   // we leave poweroff idle to the code below.
-  { "Running",              LED::LED_ON,            NEVER     , WAITINGFORCARD },
+  { "Powered - but idle",   LED::LED_ON,            NEVER       , WAITINGFORCARD },   // we leave poweroff idle to the code below.
+  { "Running",              LED::LED_ON,            NEVER       , WAITINGFORCARD },
 };
 
 unsigned long laststatechange = 0;
@@ -98,8 +105,6 @@ unsigned long powered_total = 0, powered_last;
 unsigned long running_total = 0, running_last;
 unsigned long bad_poweroff = 0;
 unsigned long idle_poweroff = 0;
-unsigned long manual_poweroff = 0;
-unsigned long errors = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -111,12 +116,14 @@ void setup() {
   pinMode(RELAY_GPIO, OUTPUT);
   digitalWrite(RELAY_GPIO, 0);
 
+  pinMode(CURRENT_GPIO, INPUT); // analog input.
   pinMode(SW1_BUTTON, INPUT_PULLUP);
   pinMode(SW2_BUTTON, INPUT_PULLUP);
-  pinMode(INTERLOCK, INPUT_PULLUP);
+  pinMode(OPTO1, INPUT_PULLUP);
+  pinMode(OPTO2, INPUT_PULLUP);
 
-  Serial.printf("Boot state: SW1:%d SW2:%d INTERLOCK:%d\n",
-                digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON), digitalRead(INTERLOCK));
+  Serial.printf("Boot state: SW1:%d SW2:%d\n",
+                digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON));
 
   // the default is space.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
@@ -125,10 +132,8 @@ void setup() {
   // specify this when using your own `master'.
   //
   node.set_master("test-master");
-  // node.set_mqtt_prefix("");
-  // node.set_master("master");
 
-  // \node.set_report_period(2000);
+  // node.set_report_period(10 * 1000);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
@@ -139,7 +144,6 @@ void setup() {
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
     machinestate = TRANSIENTERROR;
-    errors++;
   });
   node.onApproval([](const char * machine) {
     machinestate = POWERED;
@@ -159,18 +163,18 @@ void setup() {
     return ACBase::CMD_DECLINE;
   });
 
-  currentSensor.setOnLimit(0.00125);
+  currentSensor.setOnLimit(CURRENT_THRESHHOLD);
 
   currentSensor.onCurrentOn([](void) {
-    if (machinestate >= POWERED) {
+    if (machinestate != RUNNING) {
       machinestate = RUNNING;
       Log.println("Motor started");
-    } else {
+    };
+
+    if (machinestate < POWERED) {
       static unsigned long last = 0;
-      if (millis() - last > 1000) {
+      if (millis() - last > 1000)
         Log.println("Very strange - current observed while we are 'off'. Should not happen.");
-        errors++;
-      }
     }
   });
 
@@ -183,18 +187,15 @@ void setup() {
 
   });
 
-  if (0) {
-    button1.setCallback([](int state) {
-      Debug.printf("Button 1 changed to %d\n", state);
-    });
-    button2.setCallback([](int state) {
-      Debug.printf("Button 2 changed to %d\n", state);
-    });
-  };
+  button1.setCallback([](int state) {
+    Debug.printf("Button 1 changed to %d\n", state);
+  });
+  button2.setCallback([](int state) {
+    Debug.printf("Button 2 changed to %d\n", state);
+  });
 
   node.onReport([](JsonObject  & report) {
     report["state"] = state[machinestate].label;
-    report["interlock"] = digitalRead(INTERLOCK) ? true : false;
 
     report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);
     report["running_time"] = running_total + ((machinestate == RUNNING) ? ((millis() - running_last) / 1000) : 0);
@@ -203,9 +204,11 @@ void setup() {
     report["bad_poweroff"] = bad_poweroff;
 
     report["current"] = currentSensor.sd();
-    report["manual_poweroff"] = manual_poweroff;
-
-    report["errors"] = errors;
+#ifdef OTA_PASSWD
+    report["ota"] = true;
+#else
+    report["ota"] = false;
+#endif
   });
 
   // This reports things such as FW version of the card; which can 'wedge' it. So we
@@ -247,7 +250,6 @@ void setup() {
   // node.set_debugAlive(true);
   node.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
-
 }
 
 void loop() {
@@ -255,12 +257,19 @@ void loop() {
   button1.update();
   button2.update();
 
-  if (digitalRead(INTERLOCK)) {
-    if (machinestate != OUTOFORDER || millis() - laststatechange > 60 * 1000) {
-      Log.printf("Problem with the interlock -- is the big green connector unseated ?\n");
-    }
-    machinestate = OUTOFORDER;
-  };
+  static bool haveSeenPower = false;
+  // take the jitter - or rather - hitting low points in the 50hz.
+  static bool opto1 = false;
+  static int opto1cnt = 0;
+  static int opto1sum = 0;
+
+  opto1cnt++;
+  opto1sum += (digitalRead(OPTO1) == HIGH) ? 1 : 0;
+  if (opto1cnt > 500) {
+    opto1 = (opto1sum > 50) ? true : false;
+    opto1cnt = 0; 
+    opto1sum = 0;
+  }
 
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
@@ -294,14 +303,30 @@ void loop() {
       bad_poweroff++;
     } else if (machinestate == POWERED) {
       Log.printf("Machine switched OFF with the off-button.\n");;
-      manual_poweroff++;
     } else {
       Log.printf("Off button pressed (currently in state %s). Weird.\n",
                  state[machinestate].label);
-      errors++;
     }
     machinestate = WAITINGFORCARD;
+  };
+
+  // Once you have swiped your card - you have 120 seconds to hit the green button on the back.
+  if (opto1 && machinestate == POWERED && millis() - laststatechange > 120 * 1000) {
+    Log.print("Switching off - card swiped but the green button was not pressed within 120 seconds.\n");
+    machinestate = WAITINGFORCARD;
   }
+
+  // If you have ran the machine - and press the red button on the back - go off immediately.
+  if (opto1 && machinestate > WAITINGFORCARD && haveSeenPower && millis() - laststatechange > 500) {
+    Log.print("Switching off - red button at the back pressed.\n");
+    machinestate = WAITINGFORCARD;
+  }
+
+  if (opto1 == LOW)
+    haveSeenPower = true;
+
+  if (machinestate <= WAITINGFORCARD)
+    haveSeenPower = false;
 
   if (laststate < POWERED)
     digitalWrite(RELAY_GPIO, 0);
@@ -310,28 +335,6 @@ void loop() {
 
   aartLed.set(state[machinestate].ledState);
 
-  if (1) {
-    static unsigned long last = millis();
-    static unsigned long sw1, sw2, tock;
-    sw1  += digitalRead(SW1_BUTTON);
-    sw2  += digitalRead(SW1_BUTTON);
-    tock ++;
-    if (millis() - last > 1000) {
-      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Current %f/%f=%f/%s Interlock %d\n",
-                   digitalRead(SW1_BUTTON),
-                   abs(tock - sw1),
-                   digitalRead(SW2_BUTTON),
-                   abs(tock - sw2),
-                   digitalRead(RELAY_GPIO),
-                   currentSensor.sd(),
-                   currentSensor.avg(),
-                   analogRead(CURRENT_GPIO) / 1024.,
-                   currentSensor.hasCurrent() ? "yes" : "no",
-                   digitalRead(INTERLOCK)
-                  );
-      last = millis(); sw1 = sw2 = tock = 0;
-    }
-  }
   switch (machinestate) {
     case WAITINGFORCARD:
       break;
