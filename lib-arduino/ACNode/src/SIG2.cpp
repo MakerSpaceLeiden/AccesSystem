@@ -8,10 +8,9 @@
 #include <RNG.h>
 #include <SHA256.h>
 
-#include <CBC.h>
-#include <AES.h>
-
 #include <EEPROM.h>
+#include <CryptoLib/AES.h>
+#include <CBC.h>
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
 
@@ -59,8 +58,6 @@ extern uint8_t sessionkey[CURVE259919_SESSIONLEN];
 #define RNG_APP_TAG  __FILE__  __DATE__  __TIME__
 #endif
 
-#define RNG_EEPROM_ADDRESS (sizeof(eeprom)+4)
-
 extern bool sig2_active();
 
 extern void kickoff_RNG();
@@ -100,7 +97,7 @@ void kickoff_RNG() {
   // Note that Wifi/BT should be on according to:
   //    https://github.com/espressif/esp-idf/blob/master/components/esp32/hw_random.c
   //
-  RNG.begin(RNG_APP_TAG, RNG_EEPROM_ADDRESS);
+  RNG.begin(RNG_APP_TAG);
 
   SHA256 sha256;
   sha256.reset();

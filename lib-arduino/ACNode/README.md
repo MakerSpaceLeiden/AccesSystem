@@ -13,7 +13,6 @@ To be added manually in to .../Arduino/library
 	https://github.com/dirkx/rfid.git (assuming you need both spi & i2c support)
 
 The crypto libraries are packaged differently. Fetch:
-
 	https://github.com/rweather/arduinolibs.git 
 
 and then  for
@@ -25,6 +24,13 @@ and then  for
 .
 Note that this later version of this library may contain some ESP32 optimisations that
 are not quite tested/conflict with the compiler.
+
+In order to build above on case-insenstive and case-sensitive systems; create a set
+of 'unqiue' header signatures:
+
+	cd Crypto
+	mkdir CryptoLib	# we can't use Crypto - already in use by WPA supplicant.
+	 for i in *.h; do ln  $i CryptoLib/$i; done
 
 For test/as-is versions of the older code:
 	https://github.com/zhouhan0126/WebServer-esp32.git
