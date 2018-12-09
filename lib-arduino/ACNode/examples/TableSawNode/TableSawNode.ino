@@ -23,12 +23,12 @@
 
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
 #include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
+#include <OptoDebounce.h>
 
 // Triac -- switches the DeWalt
 // Relay -- switches the table saw itself.
 
 #define MACHINE             "tablesaw"
-#define OFF_BUTTON          (SW2_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 #define EXTRACTION_EXTRA    (20 * 1000) // 20 seconds extra time on the fan.
 #define CURRENT_THRESHHOLD  (0.01)
@@ -36,6 +36,7 @@
 //#define OTA_PASSWD          "SomethingSecrit"
 
 CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
+OptoDebounce opt1 = OptoDebounce(OPTO1);
 
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
@@ -67,7 +68,8 @@ typedef enum {
   WAITINGFORCARD,           // waiting for card.
   CHECKINGCARD,
   REJECTED,
-  POWERED,                  // this is where we engage the relay.
+  ENABLED,                  // this is where we engage the relay.
+  POWERED,                  // The user has pressed the green button on the safety relay.
   EXTRACTION,               // run the extractor fan a bit longer.
   RUNNING,                  // this is when we detect a current.
 } machinestates_t;
@@ -91,6 +93,7 @@ struct {
   { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD },
   { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD },
   { "Rejecting noise/card", LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
+  { "Enabled, wating",      LED::LED_ON,              120 * 1000, WAITINGFORCARD },
   { "Powered - but idle",   LED::LED_ON,           MAX_IDLE_TIME, WAITINGFORCARD },
   { "Powered + extracton",  LED::LED_ON,        EXTRACTION_EXTRA, WAITINGFORCARD },
   { "Running",              LED::LED_ON,                   NEVER, WAITINGFORCARD },
@@ -126,7 +129,6 @@ void setup() {
   // specify this when using your own `master'.
   //
   node.set_master("test-master");
-
   node.set_report_period(10 * 1000);
 
   node.onConnect([]() {
@@ -161,12 +163,10 @@ void setup() {
   currentSensor.setOnLimit(CURRENT_THRESHHOLD);
 
   currentSensor.onCurrentOn([](void) {
-    if (machinestate != RUNNING) {
+    if (machinestate >=  POWERED) {
       machinestate = RUNNING;
       Log.println("Motor started");
-    };
-
-    if (machinestate < POWERED) {
+    } else {
       static unsigned long last = 0;
       if (millis() - last > 1000)
         Log.println("Very strange - current observed while we are 'off'. Should not happen.");
@@ -182,26 +182,20 @@ void setup() {
 
   });
 
-  offButton.setCallback([](int buttonState) {
+  opto1.setCallback([](int buttonState) {
     Debug.printf("Button 2 %s\n", buttonState == LOW ? "Pressed" : "Released again");
-    if (buttonState != LOW)
-      return;
 
-    if (machinestate < POWERED) {
-      // also force extractor fan off.
-      if (machinestate == EXTRACTION)
-        machinestate = WAITINGFORCARD;
+    if (buttonState == LOW) {
+      if (powerstate == ENABLED)
+        powerstated = POWERED;
       return;
-    };
+    }
 
-    if (machinestate == RUNNING) {
+    if (machinestate >= POWERED) {
       Log.printf("Machine switched off with button while running (bad!)\n");
       bad_poweroff++;
     } else if (machinestate == POWERED) {
       Log.printf("Machine switched OFF with the off-button.\n");;
-    } else {
-      Log.printf("Off button pressed (currently in state %s). Weird.\n",
-                 state[machinestate].label);
     }
     machinestate = WAITINGFORCARD;
   });

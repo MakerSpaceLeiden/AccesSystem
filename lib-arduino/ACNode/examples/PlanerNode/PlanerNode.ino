@@ -23,6 +23,7 @@
 
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
 #include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
+#include <OptoDebounce.h>           // https://github.com/dirkx/OptoDebounce.git
 
 #define MACHINE             "vandiktebank"
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
@@ -56,7 +57,7 @@ LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
 ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
 ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
-ButtonDebounce opto1(OPTO1, 500 /* mSeconds */);
+OptoDebounce opto1(OPTO1);
 
 // Various logging options (in addition to Serial).
 SyslogStream syslogStream = SyslogStream();
@@ -322,7 +323,7 @@ void loop() {
       break;
 
     case ENABLED:
-      if !(opto1.state())
+      if (!(opto1.state()))
         machinestate = POWERED;
       break;
 

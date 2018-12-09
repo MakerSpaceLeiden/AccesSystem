@@ -22,7 +22,8 @@
 #include <RFID.h>   // SPI version
 
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
-#include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
+#include <ButtonDebounce.h>         // https://github.com/dirkx/ButtonDebounce.git
+#include <OptoDebounce.h>           // https://github.com/dirkx/OptoDebounce.git
 
 #define MACHINE             "lintzaag"
 #define OFF_BUTTON          (SW2_BUTTON)
@@ -57,6 +58,7 @@ LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
 ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
 ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
+OptoDebounce opto1 = OptoDebounce(OPTO1);
 
 // Various logging options (in addition to Serial).
 SyslogStream syslogStream = SyslogStream();
@@ -258,18 +260,6 @@ void loop() {
   button2.update();
 
   static bool haveSeenPower = false;
-  // take the jitter - or rather - hitting low points in the 50hz.
-  static bool opto1 = false;
-  static int opto1cnt = 0;
-  static int opto1sum = 0;
-
-  opto1cnt++;
-  opto1sum += (digitalRead(OPTO1) == HIGH) ? 1 : 0;
-  if (opto1cnt > 500) {
-    opto1 = (opto1sum > 50) ? true : false;
-    opto1cnt = 0; 
-    opto1sum = 0;
-  }
 
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
@@ -310,20 +300,22 @@ void loop() {
     machinestate = WAITINGFORCARD;
   };
 
-  // Once you have swiped your card - you have 120 seconds to hit the green button on the back.
-  if (opto1 && machinestate == POWERED && millis() - laststatechange > 120 * 1000) {
-    Log.print("Switching off - card swiped but the green button was not pressed within 120 seconds.\n");
-    machinestate = WAITINGFORCARD;
+  if ((machinestate > WAITINGFORCARD) && (opto1.state())) {
+    // Once you have swiped your card - you have 120 seconds to hit the green button on the back.
+    if (millis() - laststatechange > 120 * 1000) {
+      Log.print("Switching off - card swiped but the green button was not pressed within 120 seconds.\n");
+      machinestate = WAITINGFORCARD;
+    }
+    // If you have ran the machine - and press the red button on the back - go off pretty much right away.
+    if (haveSeenPower && millis() - laststatechange > 1000) {
+      Log.print("Switching off - red button at the back pressed.\n");
+      machinestate = WAITINGFORCARD;
+    }
   }
 
-  // If you have ran the machine - and press the red button on the back - go off immediately.
-  if (opto1 && machinestate > WAITINGFORCARD && haveSeenPower && millis() - laststatechange > 500) {
-    Log.print("Switching off - red button at the back pressed.\n");
-    machinestate = WAITINGFORCARD;
-  }
-
-  if (opto1 == LOW)
+  if !(opto1.state()) {
     haveSeenPower = true;
+  }
 
   if (machinestate <= WAITINGFORCARD)
     haveSeenPower = false;
