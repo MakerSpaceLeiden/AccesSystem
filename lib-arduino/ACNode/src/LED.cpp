@@ -32,9 +32,9 @@ void LED::set(led_state_t state) {
       digitalWrite(_pin, 1);
       break;
     case LED_FLASH:
+    case LED_IDLE:
       _ticker.attach_ms(100, &flipPin,  (int) 128 | _pin); // no need to detach - code will disarm and re-use existing timer.
       break;
-    case LED_IDLE:
     case LED_SLOW:
       digitalWrite(_pin, 1);
       _ticker.attach_ms(500, &flipPin, (int) _pin); // no need to detach - code will disarm and re-use existing timer.
