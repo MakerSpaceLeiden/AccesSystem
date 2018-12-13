@@ -443,7 +443,7 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
 
   strncpy(req->version, "SIG/2.0", sizeof(req->version));
-  snprintf(msg, MAX_MSG, "%s %s %s", req->version, sigb64, req->payload);
+  snprintf(msg, sizeof(msg), "%s %s %s", req->version, sigb64, req->payload);
 
   strncpy(req->payload, msg, sizeof(req->payload));
   return OK;
@@ -523,13 +523,13 @@ SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
 }
 
 SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
-  char buff[MAX_MSG];
   if (!sig2_active()) {
     Debug.printf("Not sending %s from _send_helo() - not yet active.\n", req->payload);
     return FAIL;
   };
 
   IPAddress myIp = _acnode->localIP();
+  char buff[MAX_TOKEN_LEN * 2];
   snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", req->payload, myIp[0], myIp[1], myIp[2], myIp[3]);
 
   char b64[128];

@@ -30,13 +30,14 @@
 
 #define MACHINE             "tablesaw"
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-#define EXTRACTION_EXTRA    (20 * 1000) // 20 seconds extra time on the fan.
-#define CURRENT_THRESHHOLD  (0.01)
+#define EXTRACTION_EXTRA    (8 * 1000) // 20 seconds extra time on the fan.
+#define CURRENT_THRESHHOLD  (0.002500)
 
 //#define OTA_PASSWD          "SomethingSecrit"
 
 CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
-OptoDebounce opt1 = OptoDebounce(OPTO1);
+OptoDebounce opto1 = OptoDebounce(OPTO1, 500 /* mSecond */); // low when switch in correct setting.
+OptoDebounce opto2 = OptoDebounce(OPTO2, 500 /* mSecond */);
 
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
@@ -55,8 +56,6 @@ OTA ota = OTA(OTA_PASSWD);
 #endif
 
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
-
-ButtonDebounce offButton(SW2_BUTTON, 150 /* mSeconds */);
 
 MqttLogStream mqttlogStream = MqttLogStream();
 
@@ -83,23 +82,24 @@ struct {
   machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
   unsigned long timeInState;
   unsigned long timeoutTransitions;
+  unsigned long autoReportCycle;
 } state[RUNNING + 1] =
 {
-  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "No network",           LED::LED_FLASH,                NEVER, NOCONN },           // should we reboot at some point ?
-  { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD },
-  { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD },
-  { "Rejecting noise/card", LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "Enabled, wating",      LED::LED_ON,              120 * 1000, WAITINGFORCARD },
-  { "Powered - but idle",   LED::LED_ON,           MAX_IDLE_TIME, WAITINGFORCARD },
-  { "Powered + extracton",  LED::LED_ON,        EXTRACTION_EXTRA, WAITINGFORCARD },
-  { "Running",              LED::LED_ON,                   NEVER, WAITINGFORCARD },
+  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
+  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT,         5 * 60 * 1000 },
+  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
+  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD, 5 * 60 * 1000 },
+  { "No network",           LED::LED_FLASH,                NEVER, NOCONN,         0 },           // should we reboot at some point ?
+  { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD, 0 },
+  { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD, 0 },
+  { "Rejecting noise/card", LED::LED_ERROR,             5 * 1000, WAITINGFORCARD, 0 },
+  { "Contactor Enabled",    LED::LED_ON,               30 * 1000, WAITINGFORCARD, 0},
+  { "Powered - but idle",   LED::LED_ON,           MAX_IDLE_TIME, WAITINGFORCARD, 5 * 60 * 1000 },
+  { "Powered + extracton",  LED::LED_ON,        EXTRACTION_EXTRA, POWERED,        1 * 60 * 1000 },
+  { "Running",              LED::LED_ON,                   NEVER, WAITINGFORCARD, 1 * 60 * 1000 },
 };
 
-unsigned long laststatechange = 0;
+unsigned long laststatechange = 0, lastReport = 0;
 static machinestates_t laststate = BOOTING;
 machinestates_t machinestate = BOOTING;
 
@@ -115,9 +115,14 @@ void setup() {
   pinMode(RELAY_GPIO, OUTPUT);
   digitalWrite(RELAY_GPIO, 0);
 
+  pinMode(TRIAC_GPIO, OUTPUT);
+  digitalWrite(TRIAC_GPIO, 0);
+
   pinMode(CURRENT_GPIO, INPUT); // analog input.
   pinMode(SW1_BUTTON, INPUT_PULLUP);
   pinMode(SW2_BUTTON, INPUT_PULLUP);
+  pinMode(OPTO1, INPUT_PULLUP);
+  pinMode(OPTO1, INPUT_PULLUP);
 
   Serial.printf("Boot state: SW1:%d SW2:%d\n",
                 digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON));
@@ -129,7 +134,7 @@ void setup() {
   // specify this when using your own `master'.
   //
   node.set_master("test-master");
-  node.set_report_period(10 * 1000);
+  // node.set_report_period(10 * 1000);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
@@ -142,7 +147,7 @@ void setup() {
     machinestate = TRANSIENTERROR;
   });
   node.onApproval([](const char * machine) {
-    machinestate = POWERED;
+    machinestate = ENABLED;
   });
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
@@ -179,25 +184,6 @@ void setup() {
       machinestate = EXTRACTION;
       Log.println("Motor stopped, extractor fan still on");
     };
-
-  });
-
-  opto1.setCallback([](int buttonState) {
-    Debug.printf("Button 2 %s\n", buttonState == LOW ? "Pressed" : "Released again");
-
-    if (buttonState == LOW) {
-      if (powerstate == ENABLED)
-        powerstated = POWERED;
-      return;
-    }
-
-    if (machinestate >= POWERED) {
-      Log.printf("Machine switched off with button while running (bad!)\n");
-      bad_poweroff++;
-    } else if (machinestate == POWERED) {
-      Log.printf("Machine switched OFF with the off-button.\n");;
-    }
-    machinestate = WAITINGFORCARD;
   });
 
   node.onReport([](JsonObject  & report) {
@@ -219,6 +205,8 @@ void setup() {
 
     report["current"] = currentSensor.sd();
 
+    report["opto"] = opto1.state() ? "high" : "low";
+
 #ifdef OTA_PASSWD
     report["ota"] = true;
 #else
@@ -229,7 +217,7 @@ void setup() {
   // This reports things such as FW version of the card; which can 'wedge' it. So we
   // disable it unless we absolutely positively need that information.
   //
-  reader.set_debug(false);
+  reader.set_debug(true);
 
   node.addHandler(&reader);
   // default syslog port and destination (gateway address or broadcast address).
@@ -237,6 +225,7 @@ void setup() {
 
   // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+  // Debug.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
@@ -250,8 +239,24 @@ void setup() {
 
 void loop() {
   node.loop();
-  offButton.update();
-
+#if 0
+  {
+    static unsigned long last = 0;
+    if (millis() - last > 2000) {
+      int sum1 = 0, sum2 = 0;
+      for (int i = 0; i < 20; i++) {
+        sum1 += digitalRead(OPTO1);
+        sum2 += digitalRead(OPTO2);
+        delay(1);
+      };
+      Log.printf("OPTO1: %d/%d/%f, OPTO2: %d/%d/%f, state %s\n",
+                 opto1.state(), sum1, opto1.s(),
+                 opto2.state(), sum2, opto2.s(),
+                 state[machinestate].label);
+      last = millis();
+    }
+  }
+#endif
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
   {
@@ -260,8 +265,8 @@ void loop() {
     laststate = machinestate;
     machinestate = state[machinestate].failStateOnTimeout;
 
-    Debug.printf("Time-out; transition from %s to %s\n",
-                 state[laststate].label, state[machinestate].label);
+    Log.printf("Time-out; transition from <%s> to <%s>\n",
+               state[laststate].label, state[machinestate].label);
   };
 
   if (laststate != machinestate) {
@@ -272,14 +277,28 @@ void loop() {
     laststate = machinestate;
     laststatechange = millis();
   }
+  if (state[machinestate].autoReportCycle && \
+      millis() - laststatechange > state[machinestate].autoReportCycle && \
+      millis() - lastReport > state[machinestate].autoReportCycle)
+  {
+    Log.printf("State: %s now for %lu seconds", state[laststate].label, (millis() - laststatechange) / 1000);
+    lastReport = millis();
+  };
 
-  digitalWrite(RELAY_GPIO,  (laststate >= POWERED) ? 1 : 0);
+  digitalWrite(RELAY_GPIO,  (laststate >= ENABLED) ? 1 : 0);
   digitalWrite(TRIAC_GPIO,  (laststate >= EXTRACTION) ? 1 : 0);
 
   aartLed.set(state[machinestate].ledState);
 
   switch (machinestate) {
     case WAITINGFORCARD:
+      if (opto2.state() == LOW) {
+        static unsigned long lastWarnig = 0;
+        if (millis() - lastWarnig > 1 * 60 * 1000) {
+          lastWarnig = millis();
+          Log.printf("ODD: Control node is switched off - but voltage on motor detected\n");
+        }
+      }
       break;
 
     case REBOOT:
@@ -289,20 +308,46 @@ void loop() {
     case CHECKINGCARD:
       break;
 
-    case POWERED:
+    case ENABLED:
+      if (opto2.state() == LOW) {
+        Log.printf("Machine switched ON with the safety contacto green on-button.\n");
+        machinestate = POWERED;
+      };
       break;
 
     case EXTRACTION:
+    case POWERED: {
+        static unsigned long last = 0;
+        if (opto2.state() == HIGH) {
+          if (millis() - last > 500) {
+            Log.printf("Machine switched OFF with the safety contactor off-button.\n");
+            machinestate = WAITINGFORCARD;
+          } else {
+            last = millis();
+          }
+        };
+      };
       break;
 
     case RUNNING:
+      {
+        static unsigned long last = 0;
+        if (opto2.state() == HIGH) {
+          if (millis() - last > 500) {
+            Log.printf("Machine switched OFF with safety contactorbutton while running (bad!)\n");
+            bad_poweroff++;
+            machinestate = WAITINGFORCARD;
+          } else {
+            last = millis();
+          }
+        };
+      }
       break;
 
     case REJECTED:
       break;
 
     case TRANSIENTERROR:
-      break;
     case OUTOFORDER:
     case NOCONN:
     case BOOTING:

@@ -213,16 +213,16 @@ void ACNode::begin() {
             (*it)->begin();
         }
     }
+#if 0
   // secrit reset button that resets TOFU or the shared
   // secret.
   if (digitalRead(SW1_BUTTON) == LOW) {
     extern void wipe_eeprom();
     Log.println("Wiped EEPROM with crypto stuff (SW1 pressed)");
     wipe_eeprom();
-    prepareCache(true);  
-  } else {
-    prepareCache(false);  
   };
+#endif
+  prepareCache(false);  
 }
 
 char * ACNode::cloak(char * tag) {
@@ -285,12 +285,15 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	send(NULL,buff);
 };
 
+float loopRate = 0;
+
 void ACNode::loop() {
     {
 	static unsigned long last = 0, lastCntr = 0, Cntr = 0;
 	Cntr++;
 	if (millis() - last > 30 * 1000) {
 		float rate =  1000. * (Cntr - lastCntr)/(millis() - last) + 0.05;
+		loopRate = rate;
 		if (rate > 10)
 			Debug.printf("Loop rate: %.1f #/second\n", rate);
 		else
@@ -350,6 +353,8 @@ void ACNode::loop() {
 
 		out[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
+		out["loop_rate"] = loopRate;
+
            	out["coreTemp"]  = coreTemp(); 
 		out["heap_free"] = ESP.getFreeHeap();	
 
@@ -398,7 +403,7 @@ void ACNode::loop() {
 ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
 {
     if (!strncmp("ping", req->cmd, 4)) {
-        char buff[MAX_MSG];
+        char buff[MAX_TOKEN_LEN*2];
         IPAddress myIp = localIP();
         
         snprintf(buff, sizeof(buff), "ack %s %s %d.%d.%d.%d", master, moi, myIp[0], myIp[1], myIp[2], myIp[3]);

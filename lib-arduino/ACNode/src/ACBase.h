@@ -13,6 +13,8 @@ typedef unsigned long beat_t;
 extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
 extern beat_t beat_absdelta(beat_t a, beat_t b);
 
+#define MAX_TOKEN_LEN (128)
+
 class ACRequest {
 public:
     ACRequest() { topic[0] = payload[0] = rest[0] = 0; };
@@ -22,16 +24,16 @@ public:
         strncpy(rest, _payload, sizeof(payload));
     };
     // raw data as/when received:
-    char topic[MAX_MSG];
+    char topic[MAX_TOKEN_LEN];
     char payload[MAX_MSG];
 
     // data as extracted from any payload.
     beat_t beatExtracted;
-    char version[32];
-    char beat[MAX_MSG];
-    char cmd[MAX_MSG];
+    char version[MAX_TOKEN_LEN];
+    char beat[MAX_TOKEN_LEN];
+    char cmd[MAX_TOKEN_LEN];
     char rest[MAX_MSG];
-    char tag[MAX_MSG];
+    char tag[MAX_TOKEN_LEN];
 };
 
 class ACBase {
