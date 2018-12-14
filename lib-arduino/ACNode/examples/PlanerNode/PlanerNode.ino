@@ -25,7 +25,7 @@
 #include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
 #include <OptoDebounce.h>           // https://github.com/dirkx/OptoDebounce.git
 
-#define MACHINE             "vandiktebank"
+#define MACHINE             "planer" // "vandiktebank"
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 
 // Current reading whule runing 0.015 or higher
@@ -40,10 +40,10 @@ CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
 
-// ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
+ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-ACNode node = ACNode(MACHINE);
+// ACNode node = ACNode(MACHINE);
 
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
