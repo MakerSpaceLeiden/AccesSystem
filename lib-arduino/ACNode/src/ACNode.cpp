@@ -158,7 +158,7 @@ void ACNode::begin() {
     };
     
     if (!_wired && !isConnected()) {
-        Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
+        // Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
         // configPortal();
         Log.printf("No connection after %d seconds (ssid=%s). Rebooting.\n", del, WiFi.SSID().c_str());
         Log.println("Rebooting...");
@@ -176,13 +176,12 @@ void ACNode::begin() {
     _espClient = WiFiClient();
     _client = PubSubClient(_espClient);
     
+#ifdef CONFIGAP
     configBegin();
+#endif
     configureMQTT();
   
  
-    if (_debug)
-        debugListFS("/");
-
     switch(_proto) {
     case PROTO_MSL:
 #ifdef HAS_MSL

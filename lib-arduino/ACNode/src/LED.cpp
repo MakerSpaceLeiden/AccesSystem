@@ -3,19 +3,28 @@
 
 void flipPin(int pin) {
   static unsigned int tock = 0;
-  if (pin & 128) {
-    digitalWrite(pin & 127, !(tock & 31));
-  } else {
-    digitalWrite(pin, !digitalRead(pin));
-  }
+  bool onoff;
+
+  // Sequencer or toggler
+  if (pin & 128) 
+    onoff =  !(tock & 31);
+  else
+    onoff = !digitalRead(pin & 127);
+
+  if (pin & 256)
+    onoff = !onoff;
+
+  digitalWrite(pin & 127,onoff);
   tock++;
 }
 
-LED::LED(const byte pin) : _pin(pin) {
-	pinMode(_pin, OUTPUT);
+LED::LED(const byte pin, const bool inverted) : _pin(pin) ,_inverted(inverted) {
+	pinMode(_pin & 127, OUTPUT);
   	_ticker = Ticker();
 	_lastState = NEVERSET;
 	set(LED_FAST);
+	if (_inverted)
+		_pin &= 256;
 }
 
 void LED::set(led_state_t state) {

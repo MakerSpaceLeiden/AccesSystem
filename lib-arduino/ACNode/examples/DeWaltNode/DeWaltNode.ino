@@ -17,8 +17,8 @@
 */
 #ifdef ESP32
 #error "This is not a standard PoE/Powernode board -- " \
-       "but a simple ESP8622 acting as a simple i-spy that " \
-       "reports when the DeWalt is doing its thing."
+"but a simple ESP8622 acting as a simple i-spy that " \
+"reports when the DeWalt is doing its thing."
 #endif
 
 #include <ACNode.h>
@@ -30,11 +30,11 @@
 //
 #define RED_LED_GPIO       (12) // LED on the daughter board.
 #define OPTO               (13) // Two diode PC417 that checks if there is AC.
-#define BLUE_LED           (01) // The LED on the ESP itself
+#define BLUE_LED           (LED_BUILTIN) // The LED on the ESP itself
 
 
-OptoDebounce opto(OPTO);       
-LED aartLed = LED(BLUE_LED);   
+OptoDebounce opto(OPTO);
+LED aartLed = LED(BLUE_LED,true); // LED is inverted.
 
 ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 
@@ -68,8 +68,8 @@ struct {
   { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT },
   { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT },
   { "Transient Error",      LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "No network",           LED::LED_FLASH,           120 * 1000, REBOOT },  
-  { "Powered - but idle",   LED::LED_IDLE,                 NEVER, POWERED },   
+  { "No network",           LED::LED_FLASH,           120 * 1000, REBOOT },
+  { "Powered - but idle",   LED::LED_IDLE,                 NEVER, POWERED },
   { "Running",              LED::LED_ON,                   NEVER, RUNNING },
 };
 
@@ -120,11 +120,11 @@ void setup() {
 #else
     report["ota"] = false;
 #endif
-    report["acstate"] = opto.state();
+  report["acstate"] = opto.state();
 
   });
 
-  // Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
@@ -140,7 +140,7 @@ void loop() {
   node.loop();
 
   if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
+    Log.printf("Changed from state <%s> to state <%s>\n",
                  state[laststate].label, state[machinestate].label);
 
     if (machinestate == POWERED && laststate < POWERED) {
@@ -166,11 +166,13 @@ void loop() {
   };
 
   aartLed.set(state[machinestate].ledState);
-  digitalWrite(RED_LED_GPIO, (laststate >= POWERED));
+  digitalWrite(RED_LED_GPIO, (laststate >= RUNNING));
 
   // Low means = transistor in opto coupler pulls pull-up high held down.
   if (opto.state() == LOW)
     machinestate = RUNNING;
+  else
+    machinestate = POWERED;
 
   switch (machinestate) {
     case REBOOT:
@@ -180,7 +182,7 @@ void loop() {
     case POWERED:
       {
         static unsigned long last = 0;
-        if (millis() - last > 30* 1000) {
+        if (millis() - last > 30 * 1000 || last == 0) {
           Log.printf("DeWalt powered on, not running.\n");
           last = millis();
         };
@@ -189,7 +191,7 @@ void loop() {
     case RUNNING:
       {
         static unsigned long last = 0;
-        if (millis() - last > 5 * 1000) {
+        if (millis() - last > 5 * 1000 || last == 0) {
           Log.printf("DeWalt is actually running.\n");
           last = millis();
         };

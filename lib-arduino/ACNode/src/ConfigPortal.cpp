@@ -1,5 +1,6 @@
 #include <ACNode-private.h>
 #include "ConfigPortal.h"
+#ifdef CONFIGAP
 
 //flag for saving data
 bool shouldSaveConfig = false;
@@ -175,3 +176,5 @@ int configLoad() {
 
   return defined == 8;
 }
+#endif
+

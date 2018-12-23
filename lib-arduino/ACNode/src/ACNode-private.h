@@ -52,7 +52,7 @@ typedef enum {
 
 // #define HAS_MSL
 // #define HAS_SIG1
-#define HAS_SIG2
+// #define HAS_SIG2
 
 typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
 
