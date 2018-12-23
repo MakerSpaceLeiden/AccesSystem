@@ -21,13 +21,14 @@
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
 #include <OptoDebounce.h>           // https://github.com/dirkx/OptoDebounce.git
+#include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
 
 // This wifi node has an extra LED that is wired to GPIO 2
 //
 #define RED_LED_GPIO       (2) 
 
-#include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
-#define MACHINE             "planer" // "vandiktebank"
+#define MACHINE             "jointer" // "vlakbank"
+
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 
 // Current reading whule runing 0.015 or higher
