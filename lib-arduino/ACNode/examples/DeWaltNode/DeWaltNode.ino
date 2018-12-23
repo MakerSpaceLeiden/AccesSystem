@@ -15,20 +15,21 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-// This is not a standard PoE/Powernode board -- but
-// a simple ESP8622 acting as a simple i-spy that
-// reports when the DeWalt is doing its thing.
-//
+#ifdef ESP32
+#error "This is not a standard PoE/Powernode board -- " \
+       "but a simple ESP8622 acting as a simple i-spy that " \
+       "reports when the DeWalt is doing its thing."
+#endif
+
 #include <ACNode.h>
-#include <RFID.h>   // SPI version
-#include <OptoDebounce.h>           // https://github.com/dirkx/OptoDebounce.git
+#include <OptoDebounce.h>           // https://github.com/dirkx/OptocouplerDebouncer.git
 
 #define MACHINE             "dewalt"
 
 // This wifi node has an extra LED that is wired to GPIO 2
 //
 #define RED_LED_GPIO       (12) // LED on the daughter board.
-#define OPTO               (13) // Two diode PC417
+#define OPTO               (13) // Two diode PC417 that checks if there is AC.
 #define BLUE_LED           (01) // The LED on the ESP itself
 
 
@@ -119,17 +120,11 @@ void setup() {
 #else
     report["ota"] = false;
 #endif
+    report["acstate"] = opto.state();
+
   });
 
-#ifdef SYSLOG_HOST
-  syslogStream.setDestination(SYSLOG_HOST);
-  syslogStream.setRaw(true);
-#ifdef SYSLOG_PORT
-  syslogStream.setPort(SYSLOG_PORT);
-#endif
-#endif
-
-  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+  // Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
@@ -173,7 +168,8 @@ void loop() {
   aartLed.set(state[machinestate].ledState);
   digitalWrite(RED_LED_GPIO, (laststate >= POWERED));
 
-  if (opto.state())
+  // Low means = transistor in opto coupler pulls pull-up high held down.
+  if (opto.state() == LOW)
     machinestate = RUNNING;
 
   switch (machinestate) {
@@ -207,4 +203,3 @@ void loop() {
       break;
   };
 }
-

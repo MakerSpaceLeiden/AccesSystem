@@ -7,7 +7,6 @@
 //
 #include <ACNode-private.h>
 #include "TelnetSerialStream.h"
-#include <WiFi.h>
 
 size_t TelnetSerialStream::write(uint8_t c) {
 	if (!_acnode->isConnected())

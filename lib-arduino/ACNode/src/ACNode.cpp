@@ -21,6 +21,7 @@ SIG1 sig1 = SIG1(); // protocol machines 20015 (HMAC)
 SIG2 sig2 = SIG2();
 #endif
 
+#ifdef ESP32
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -32,6 +33,7 @@ static double coreTemp() {
   double   temp_farenheit = temprature_sens_read();
   return ( temp_farenheit - 32. ) / 1.8;
 }
+#endif
 
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
@@ -303,7 +305,7 @@ void ACNode::loop() {
 		lastCntr = Cntr;
 	}
     }
-    {
+    if (_debug) {
     	static unsigned long last = millis();
 	static unsigned long sw1, sw2, tock;
 	sw1  += digitalRead(SW1_BUTTON);
@@ -348,15 +350,17 @@ void ACNode::loop() {
 		out[ "approve" ] = _approve;
 		out[ "deny" ] = _deny;
 		out[ "requests" ] = _reqs;
-
+#ifdef ESP32
 		out[ "cache_hit" ] =  cacheHit;
 		out[ "cache_miss" ] =  cacheMiss;
+#endif
 
 		out[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
 		out["loop_rate"] = loopRate;
-
+#ifdef ESP32
            	out["coreTemp"]  = coreTemp(); 
+#endif
 		out["heap_free"] = ESP.getFreeHeap();	
 
 		std::list<ACBase *>::iterator it;

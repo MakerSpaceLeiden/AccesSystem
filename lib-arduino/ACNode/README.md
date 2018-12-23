@@ -21,7 +21,7 @@ and then  for
 	just move the dirctory Crypto up into .../Arduino/Library,
 0.2.x versions
 	move the directories  'Crypto' and `CryptoLegacy' up into .../Arduino/Library
-.
+
 Note that this later version of this library may contain some ESP32 optimisations that
 are not quite tested/conflict with the compiler.
 

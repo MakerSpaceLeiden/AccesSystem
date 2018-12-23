@@ -10,7 +10,9 @@
 
 #include <EEPROM.h>
 #include <CryptoLib/AES.h>
+#include <CryptoLib/AES256.h>
 #include <CBC.h>
+
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
 
@@ -37,6 +39,9 @@ typedef struct __attribute__ ((packed)) {
   uint8_t master_publicsignkey[CURVE259919_KEYLEN];
 
 } eeprom_t;
+
+#define EEPROM_PRIVATE_OFFSET (0x100)
+#define EEPROM_RND_OFFSET (EEPROM_PRIVATE_OFFSET + sizeof(eeprom_t))
 
 extern eeprom_t eeprom;
 extern uint8_t node_publicsign[CURVE259919_KEYLEN];
@@ -97,7 +102,11 @@ void kickoff_RNG() {
   // Note that Wifi/BT should be on according to:
   //    https://github.com/espressif/esp-idf/blob/master/components/esp32/hw_random.c
   //
+#ifdef ESP32
   RNG.begin(RNG_APP_TAG);
+#else
+  RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
+#endif
 
   SHA256 sha256;
   sha256.reset();
@@ -122,7 +131,6 @@ void kickoff_RNG() {
 
   RNG.setAutoSaveTime(60);
 }
-#define EEPROM_PRIVATE_OFFSET (0x100)
 void load_eeprom() {
   for (size_t adr = 0; adr < sizeof(eeprom); adr++)
     ((uint8_t *)&eeprom)[adr] = EEPROM.read(EEPROM_PRIVATE_OFFSET + adr);
