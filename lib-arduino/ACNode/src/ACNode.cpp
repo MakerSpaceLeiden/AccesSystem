@@ -82,8 +82,10 @@ void send(const char * topic, const char * payload) {
 void ACNode::set_debugAlive(bool debug) { _debug_alive = debug; }
 
 bool ACNode::isConnected() {
+#ifdef ESP32
     if (_wired)
         return eth_connected();
+#endif
     return (WiFi.status() == WL_CONNECTED);
 };
 
@@ -104,11 +106,10 @@ void ACNode::begin() {
     if (_debug)
         debugFlash();
 #endif
-    
-    if (_wired) {
+#ifdef ESP32 
+    if (_wired) 
         eth_setup();
-    };
-
+#endif
     if (!*machine)  
 	strncpy(machine, "unset-machine-name", sizeof(machine));
 

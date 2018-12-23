@@ -115,11 +115,26 @@ public:
     char logpath[MAX_NAME];
     char mqtt_topic_prefix[MAX_NAME];
     
-    IPAddress localIP() { if (_wired) return ETH.localIP(); else return WiFi.localIP(); };
-    String macAddressString() { if (_wired) return ETH.macAddress(); else return WiFi.macAddress(); };
+    IPAddress localIP() { 
+#ifdef ESP32
+	if (_wired) 
+	    return ETH.localIP(); 
+	else 
+#endif 
+	    return WiFi.localIP(); 
+    };
+    String macAddressString() { 
+#ifdef ESP32
+         if (_wired) 
+            return ETH.macAddress(); 
+         else 
+#endif
+	    return WiFi.macAddress(); 
+    };
     String chipId() {
 #ifdef ESP32
                 uint64_t chipid = ESP.getEfuseMac();
+                // We can't do 64 bit straight to string.
                 uint32_t low = chipid & 0xFFFFFFFF;
                 uint32_t high = chipid >> 32;
                 return String(high, HEX) + String(low, HEX);

@@ -1,3 +1,5 @@
+#ifdef ESP32
+
 #include <Cache.h>
 #include <string.h>
 #include <Arduino.h>
@@ -64,4 +66,9 @@ bool checkCache(const char * tag) {
   if (present) cacheHit++; else cacheMiss++;
   return present;
 };
+#else
+void prepareCache(bool wipe) { return; }
+void setCache(const char * tag, bool ok, unsigned long beatCounter) { return; };
+bool checkCache(const char * tag) { return false; };
+#endif
 

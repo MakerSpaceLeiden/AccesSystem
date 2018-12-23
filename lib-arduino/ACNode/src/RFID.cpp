@@ -6,10 +6,12 @@ static void readCard() { cardScannedIrqSeen = true; }
 
 RFID::RFID(const byte sspin , const byte rstpin , const byte irqpin , const byte spiclk , const byte spimiso , const byte spimosi ) 
 {
-  if (spiclk == 255 && spimiso == 255 && spimosi == 255)
-     SPI.begin();
-  else
+#ifdef ESP32
+  if (spiclk != 255 || spimiso != 255 || spimosi != 255)
      SPI.begin(spiclk, spimiso, spimosi);
+  else
+#endif
+     SPI.begin();
 /*
 
 /Users/dirkx/Documents/Arduino/libraries/ACNode/src/RFID.cpp: In constructor 'RFID::RFID(byte, byte, byte, byte, byte, byte)':

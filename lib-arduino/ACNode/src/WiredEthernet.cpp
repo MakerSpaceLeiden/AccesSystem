@@ -9,6 +9,7 @@ bool eth_connected () {
 void WiFiEvent(WiFiEvent_t event)
 {
   switch (event) {
+#ifdef ESP32
     case SYSTEM_EVENT_WIFI_READY:
       break;
     case SYSTEM_EVENT_STA_START:
@@ -45,6 +46,7 @@ void WiFiEvent(WiFiEvent_t event)
       Log.println("ETH Stopped");
       _connected = false;
       break;
+#endif
     default:
       Log.printf("ETH unknown event %d (ignored)\n", event);
       break;
@@ -54,5 +56,7 @@ void WiFiEvent(WiFiEvent_t event)
 void eth_setup()
 {
   WiFi.onEvent(WiFiEvent);
+#ifdef ESP32
   ETH.begin();
+#endif
 }

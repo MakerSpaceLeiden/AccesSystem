@@ -23,6 +23,7 @@
 #   include <ESP8266WebServer.h>
 #   include <FS.h>
 #   define resetWatchdog() { ESP.wdtFeed(); }
+#   define trng() os_random()
 #endif
 
 #include <Ticker.h>
