@@ -128,6 +128,7 @@ void setup() {
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
+  digitalWrite(RED_LED_GPIO, 0);
 
   // node.set_debug(true);
   // node.set_debugAlive(true);

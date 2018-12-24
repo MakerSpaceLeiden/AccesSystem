@@ -509,7 +509,9 @@ void ACNode::process(const char * topic, const char * payload)
 		(*it)->name(), req->version, req->beat, req->cmd, req->payload, req->rest, payload);
     }
     if (r != ACSecurityHandler::OK) {
+#if defined(HAS_SIG1) || defined (HAS_SIG2) || defined (HAS_MSL)
         Log.println("Unrecognized payload. Ignoring.");
+#endif
         goto _done;
     }
 

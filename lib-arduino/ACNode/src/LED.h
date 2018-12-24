@@ -11,7 +11,7 @@ public:
    void set(led_state_t state);
 
 private:
-   byte _pin; 
+   unsigned int _pin; 
    const bool _inverted;
    Ticker _ticker;
    led_state_t _lastState;
