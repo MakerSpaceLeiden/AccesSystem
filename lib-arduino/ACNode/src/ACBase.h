@@ -5,8 +5,6 @@
 #include <stddef.h>
 #include <ArduinoJson.h>
 
-#include "PowerNodeV11.h"
-
 #include "MakerSpaceMQTT.h"
 
 typedef unsigned long beat_t;

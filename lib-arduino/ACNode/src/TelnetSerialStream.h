@@ -1,6 +1,5 @@
 #include <MakerSpaceMQTT.h>
 #include <Print.h>
-// #include <WiFi.h>
 
 #ifndef _H_TelnetSerialStream
 #define _H_TelnetSerialStream

@@ -1,7 +1,8 @@
-#ifndef _H_PowerNodeV11
-#define _H_PowerNodeV11
+#pragma once
 
 // https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
+//
+#include <WiredEthernet.h>
 
 #ifndef CURRENT_GPIO
 #define CURRENT_GPIO    (36)  // Analog in - current
@@ -59,6 +60,3 @@
 #ifndef RFID_IRQ_PIN
 #define RFID_IRQ_PIN    (33) // Set to -1 to switch to polling mode; 33 to use IRQs
 #endif
-
-#endif
-

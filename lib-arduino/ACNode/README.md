@@ -1,3 +1,14 @@
+If needed - create a file such as
+
+		.../hardware/espressif/.../platform.local.txt 
+
+and include a statement such as
+
+               compiler.cpp.extra_flags=-imacros/Users/dirkx/.local-config.h
+
+to include any #define's to override the default ones. E.g. for the
+WIFI and OTA passwords used.
+
 The *DEVELOPMENT* version of the Espressif-IDE is required; version 1.00
 	seems to produce broken code (FunctionalInterrupts.o functionality
 	seems AWOL; it hangs on an IRQ or produces StackOverflow errors).

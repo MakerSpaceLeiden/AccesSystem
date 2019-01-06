@@ -36,7 +36,6 @@
 //#define OTA_PASSWD          "SomethingSecrit"
 
 CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
-OptoDebounce opto1 = OptoDebounce(OPTO1, 500 /* mSecond */); // low when switch in correct setting.
 OptoDebounce opto2 = OptoDebounce(OPTO2, 500 /* mSecond */);
 
 #include <ACNode.h>
@@ -55,7 +54,7 @@ RFID reader = RFID();
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
+LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
 
 MqttLogStream mqttlogStream = MqttLogStream();
 
@@ -118,11 +117,19 @@ void setup() {
   pinMode(TRIAC_GPIO, OUTPUT);
   digitalWrite(TRIAC_GPIO, 0);
 
+  if (0) {
+    for (int i = 0; i < 4; i++) {
+      digitalWrite(TRIAC_GPIO, 1);
+      digitalWrite(AART_LED, 1);
+      delay(300);
+      digitalWrite(TRIAC_GPIO, 0);
+      digitalWrite(AART_LED, 0);
+      delay(300);
+    }
+  }
   pinMode(CURRENT_GPIO, INPUT); // analog input.
   pinMode(SW1_BUTTON, INPUT_PULLUP);
   pinMode(SW2_BUTTON, INPUT_PULLUP);
-  pinMode(OPTO1, INPUT_PULLUP);
-  pinMode(OPTO1, INPUT_PULLUP);
 
   Serial.printf("Boot state: SW1:%d SW2:%d\n",
                 digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON));
@@ -205,7 +212,10 @@ void setup() {
 
     report["current"] = currentSensor.sd();
 
-    report["opto"] = opto1.state() ? "high" : "low";
+    report["opto"] = opto2.state() ? "high" : "low";
+
+    report["triac"] = digitalRead(TRIAC_GPIO);
+    report["relay"] = digitalRead(RELAY_GPIO);
 
 #ifdef OTA_PASSWD
     report["ota"] = true;
@@ -239,24 +249,9 @@ void setup() {
 
 void loop() {
   node.loop();
-#if 0
-  {
-    static unsigned long last = 0;
-    if (millis() - last > 2000) {
-      int sum1 = 0, sum2 = 0;
-      for (int i = 0; i < 20; i++) {
-        sum1 += digitalRead(OPTO1);
-        sum2 += digitalRead(OPTO2);
-        delay(1);
-      };
-      Log.printf("OPTO1: %d/%d/%f, OPTO2: %d/%d/%f, state %s\n",
-                 opto1.state(), sum1, opto1.s(),
-                 opto2.state(), sum2, opto2.s(),
-                 state[machinestate].label);
-      last = millis();
-    }
-  }
-#endif
+  currentSensor.loop();
+  opto2.loop();
+
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
   {
@@ -292,7 +287,7 @@ void loop() {
 
   switch (machinestate) {
     case WAITINGFORCARD:
-      if (opto2.state() == LOW) {
+      if (opto2.state()) {
         static unsigned long lastWarnig = 0;
         if (millis() - lastWarnig > 1 * 60 * 1000) {
           lastWarnig = millis();
@@ -309,7 +304,7 @@ void loop() {
       break;
 
     case ENABLED:
-      if (opto2.state() == LOW) {
+      if (opto2.state()) {
         Log.printf("Machine switched ON with the safety contacto green on-button.\n");
         machinestate = POWERED;
       };
@@ -318,7 +313,7 @@ void loop() {
     case EXTRACTION:
     case POWERED: {
         static unsigned long last = 0;
-        if (opto2.state() == HIGH) {
+        if (!opto2.state()) {
           if (millis() - last > 500) {
             Log.printf("Machine switched OFF with the safety contactor off-button.\n");
             machinestate = WAITINGFORCARD;
@@ -332,7 +327,7 @@ void loop() {
     case RUNNING:
       {
         static unsigned long last = 0;
-        if (opto2.state() == HIGH) {
+        if (!opto2.state()) {
           if (millis() - last > 500) {
             Log.printf("Machine switched OFF with safety contactorbutton while running (bad!)\n");
             bad_poweroff++;

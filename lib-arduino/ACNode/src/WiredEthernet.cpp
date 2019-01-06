@@ -1,5 +1,6 @@
 #include <ACNode-private.h>
 
+#ifdef ESP32
 static bool _connected = false;
 
 bool eth_connected () {
@@ -9,7 +10,6 @@ bool eth_connected () {
 void WiFiEvent(WiFiEvent_t event)
 {
   switch (event) {
-#ifdef ESP32
     case SYSTEM_EVENT_WIFI_READY:
       break;
     case SYSTEM_EVENT_STA_START:
@@ -17,8 +17,7 @@ void WiFiEvent(WiFiEvent_t event)
       break;
     case SYSTEM_EVENT_ETH_START:
       Log.println("ETH Started");
-      //set eth hostname here
-      ETH.setHostname("esp32-ethernet");
+      ETH.setHostname(_acnode->moi);
       break;
     case SYSTEM_EVENT_ETH_CONNECTED:
       Log.println("ETH Connected");
@@ -46,17 +45,9 @@ void WiFiEvent(WiFiEvent_t event)
       Log.println("ETH Stopped");
       _connected = false;
       break;
-#endif
     default:
       Log.printf("ETH unknown event %d (ignored)\n", event);
       break;
   }
 }
-
-void eth_setup()
-{
-  WiFi.onEvent(WiFiEvent);
-#ifdef ESP32
-  ETH.begin();
 #endif
-}

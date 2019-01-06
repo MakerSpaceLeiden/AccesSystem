@@ -23,8 +23,9 @@
 #include <OptoDebounce.h>           // https://github.com/dirkx/OptoDebounce.git
 
 // This wifi node has an extra LED that is wired to GPIO 2
-//
-#define RED_LED_GPIO       (2) 
+// We light it up when big start-stop safety-contactor is actually enaged (i.e. we see
+// a voltage on the OPTO/going to the machine).
+#define RED_LED_GPIO       (2)
 
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
 #define MACHINE             "planer" // "vandiktebank"
@@ -43,25 +44,19 @@ OptoDebounce opto1(OPTO1);
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
 
-ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
-// ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
-// ACNode node = ACNode(MACHINE, true); // wired network (default).
-// ACNode node = ACNode(MACHINE);
-
-// RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
-// RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
+ACNode node = ACNode(MACHINE, WIFI_MAKERSPACE_NETWORK, WIFI_MAKERSPACE_PASSWD); // wireless, fixed wifi network.
 RFID reader = RFID();
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
+LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
 
 // Various logging options (in addition to Serial).
 SyslogStream syslogStream = SyslogStream();
 MqttLogStream mqttlogStream = MqttLogStream();
-// TelnetSerialStream telnetSerialStream = TelnetSerialStream();
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 
 typedef enum {
@@ -117,7 +112,7 @@ void setup() {
   //
   pinMode(RELAY_GPIO, OUTPUT);
   digitalWrite(RELAY_GPIO, 0);
-  
+
   pinMode(RED_LED_GPIO, OUTPUT);
   digitalWrite(RED_LED_GPIO, 1);
 
@@ -125,13 +120,13 @@ void setup() {
 
   // the default is space.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
-  // node.set_mqtt_prefix("test-1234");
+  node.set_mqtt_prefix("test");
 
   // specify this when using your own `master'.
   //
   node.set_master("test-master");
 
-  // node.set_report_period(10 * 1000);
+  // node.set_report_period(2 * 1000);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
@@ -195,6 +190,8 @@ void setup() {
     report["bad_poweroff"] = bad_poweroff;
 
     report["current"] = currentSensor.sd();
+    report["opto"] = opto1.state();
+
 #ifdef OTA_PASSWD
     report["ota"] = true;
 #else
@@ -224,7 +221,7 @@ void setup() {
   // We only sent the very low level debugging to syslog.
   Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
-#if 0
+#if 1
   // As the PoE devices have their own grounding - the cannot readily be connected
   // to with a sericd Peral cable.  This allows for a telnet instead.
   auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
@@ -246,7 +243,16 @@ void setup() {
 
 void loop() {
   node.loop();
+  currentSensor.loop();
+  opto1.loop();
 
+ {
+    static unsigned long last = 0;
+    if (millis() - last > 1000) {
+      last = millis();
+      Debug.printf("Current: %f, OPTO: %d\n", currentSensor.sd(),opto1.state());
+    }
+ }
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
                  state[laststate].label, state[machinestate].label);
@@ -294,7 +300,7 @@ void loop() {
       break;
 
     case ENABLED:
-      if (!(opto1.state())) {
+      if (opto1.state()) {
         Log.printf("Green button on safety contactor pressed.\n");
         machinestate = POWERED;
       };
@@ -306,15 +312,15 @@ void loop() {
         machinestate = WAITINGFORCARD;
         idle_poweroff++;
       };
-      
-      if (opto1.state()) {
+
+      if (!opto1.state()) {
         Log.print("Switching off - red button at the back pressed.\n");
         machinestate = WAITINGFORCARD;
       }
       break;
 
     case RUNNING:
-      if (opto1.state()) {
+      if (!opto1.state()) {
         Log.print("Switching off - red button at the back pressed - while running - BAD !\n");
         machinestate = WAITINGFORCARD;
       }

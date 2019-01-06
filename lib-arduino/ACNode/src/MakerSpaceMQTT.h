@@ -1,7 +1,7 @@
 #pragma once
 
 #ifdef  ESP32
-#   include <WiFi.h>
+// #   include <WiFi.h>
 #   include <ESPmDNS.h>
 #   include <WiFiUdp.h>
 #   include "FS.h"

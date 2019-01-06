@@ -1,16 +1,19 @@
 #ifndef _H_ACNODE
 #define _H_ACNODE
 
-// #include <Ethernet.h>
+// #include <OlimexBoard.h>         
+#include <PowerNodeV11.h>
+
 #ifdef  ESP32
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#include "WiredEthernet.h"
-#include <esp32-hal-gpio.h> // digitalWrite and friends L	.
+//#  include <WiFi.h>
+#  include <ESPmDNS.h>
+#  include <WiFiUdp.h>
+#  include "WiredEthernet.h"
+#  include <esp32-hal-gpio.h> // digitalWrite and friends L	.
 #else
-#include <ESP8266WiFi.h>
+#  include <ESP8266WiFi.h>
 #endif
+
 #include <PubSubClient.h>        // https://github.com/knolleary/
 #include <SPI.h>
 
@@ -50,9 +53,14 @@ typedef enum {
     ACNODE_DEBUG
 } acnode_loglevel_t;
 
+typedef enum { 
+	BOARD_AART,  	// https://wiki.makerspaceleiden.nl/mediawiki/index.php/POESP-board_1.0
+	BOARD_OLIMEX 	// https://www.olimex.com/Products/IoT/ESP32/ESP32-POE/open-source-hardware
+} eth_board_t;
+
 // #define HAS_MSL
 // #define HAS_SIG1
-// #define HAS_SIG2
+#define HAS_SIG2
 
 typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
 
@@ -174,7 +182,7 @@ public:
             { _report_callback = fn; return; };
 
     void loop();
-    void begin();
+    void begin(eth_board_t board = BOARD_AART);
     cmd_result_t handle_cmd(ACRequest * req);
    
     void addHandler(ACBase *handler);

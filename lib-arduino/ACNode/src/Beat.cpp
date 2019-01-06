@@ -82,10 +82,17 @@ void Beat::loop() {
     // the SPI access to the reader seems to mess with the millis().
     // So we revert to doing 'our own'.
     //
-    if (millis() - last_loop >= 1000) {
-        unsigned long secs = (millis() - last_loop + 499) / 1000;
+    unsigned long delta = millis() - last_loop;
+    if (delta >= 1000UL) {
+        unsigned long secs = (delta + 499UL) / 1000UL;
         last_loop += secs * 1000;
-        beatCounter += secs;
+
+	if (secs > 3600) {
+        	Log.printf("Time warp by <%lu> seconds; delta=%lu, millis()=%lu. sizeof=%u, Coding error ?\n", 
+			secs, delta, millis(), sizeof(unsigned long));
+	} else {
+        	beatCounter += secs;
+        };
     }
 
     if (_debug_alive) {

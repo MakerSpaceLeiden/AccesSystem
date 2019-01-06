@@ -14,29 +14,24 @@
    ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
-#ifdef ESP32
-#error "This is not a standard PoE/Powernode board -- " \
-"but a simple ESP8622 acting as a simple i-spy that " \
-"reports when the DeWalt is doing its thing."
-#endif
+*/ 
+#define AART_LED           (04) // Large LED on middle front.
+#define OPTO1              (35) // Two diode PC417 that checks if there is AC.
+#define OPTO2              (33) // Two diode PC417 that checks if there is AC.
+#define OPTO3              (32) // Two diode PC417 that checks if there is AC.
 
 #include <ACNode.h>
 #include <OptoDebounce.h>           // https://github.com/dirkx/OptocouplerDebouncer.git
 
-#define MACHINE             "dewalt"
+#define MACHINE             "lights"
 
-// This wifi node has an extra LED that is wired to GPIO 2
-//
-#define RED_LED_GPIO       (12) // LED on the daughter board.
-#define OPTO               (13) // Two diode PC417 that checks if there is AC.
-#define BLUE_LED           (LED_BUILTIN) // The LED on the ESP itself
+OptoDebounce opto1(OPTO1);
+OptoDebounce opto2(OPTO2);
+OptoDebounce opto3(OPTO3);
 
+LED aartLed = LED(AART_LED,true); // LED is inverted.
 
-OptoDebounce opto(OPTO);
-LED aartLed = LED(BLUE_LED,true); // LED is inverted.
-
-ACNode node = ACNode(MACHINE, WIFI_MAKERSPACE_NETWORK, WIFI_MAKERSPACE_PASSWD); // wireless, fixed wifi network.
+ACNode node = ACNode(MACHINE); // PoE Wired, Olimex baord.
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
@@ -69,8 +64,8 @@ struct {
   { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT },
   { "Transient Error",      LED::LED_ERROR,           120 * 1000, REBOOT },
   { "No network",           LED::LED_FLASH,           120 * 1000, REBOOT },
-  { "Powered - but idle",   LED::LED_IDLE,                 NEVER, POWERED },
-  { "Running",              LED::LED_ON,                   NEVER, RUNNING },
+  { "Powered - no lights",  LED::LED_IDLE,                 NEVER, POWERED },
+  { "Lights are ON",        LED::LED_ON,                   NEVER, RUNNING },
 };
 
 unsigned long laststatechange = 0;
@@ -85,8 +80,7 @@ void setup() {
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 
-  pinMode(RED_LED_GPIO, OUTPUT);
-  digitalWrite(RED_LED_GPIO, 1);
+  aartLed.set(LED::LED_ERROR);
 
   // the default is space.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
@@ -96,7 +90,7 @@ void setup() {
   //
   // node.set_master("test-master");
 
-  // node.set_report_period(10 * 1000);
+  // node.set_report_period(2 * 1000);
 
   node.onConnect([]() {
     machinestate = POWERED;
@@ -120,25 +114,27 @@ void setup() {
 #else
     report["ota"] = false;
 #endif
-  report["acstate"] = opto.state();
-
+  report["acstate1"] = opto1.state();
+  report["acstate2"] = opto2.state();
+  report["acstate3"] = opto3.state();
   });
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
-  digitalWrite(RED_LED_GPIO, 0);
 
   // node.set_debug(true);
   // node.set_debugAlive(true);
-  node.begin();
+  node.begin(BOARD_OLIMEX);
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
-
 }
 
 void loop() {
   node.loop();
+  opto1.loop();
+  opto2.loop();
+  opto3.loop();
 
   if (laststate != machinestate) {
     Log.printf("Changed from state <%s> to state <%s>\n",
@@ -167,10 +163,13 @@ void loop() {
   };
 
   aartLed.set(state[machinestate].ledState);
-  digitalWrite(RED_LED_GPIO, (laststate >= RUNNING));
 
-  // Low means = transistor in opto coupler pulls pull-up high held down.
-  if (opto.state() == LOW)
+  // This is a bit odd - you'd expect them to be identical. But it is not.
+  // So we must have miswired something. But what ?! 
+  //
+  // "acstate1":true,"acstate2":false,"acstate3":false}
+  // "acstate1":false,"acstate2":true,"acstate3":true}
+  if (opto1.state() != false || opto2.state() != true  || opto3.state() != true)
     machinestate = RUNNING;
   else
     machinestate = POWERED;
@@ -181,19 +180,13 @@ void loop() {
       break;
 
     case POWERED:
-      {
-        static unsigned long last = 0;
-        if (millis() - last > 30 * 1000 || last == 0) {
-          Log.printf("DeWalt powered on, not running.\n");
-          last = millis();
-        };
-      }
+      // Normal state -- PoE power is always on.
       break;
     case RUNNING:
       {
         static unsigned long last = 0;
-        if (millis() - last > 5 * 1000 || last == 0) {
-          Log.printf("DeWalt is actually running.\n");
+        if (millis() - last > 60 * 1000 || last == 0) {
+          Log.printf("Lights are on.\n");
           last = millis();
         };
       }

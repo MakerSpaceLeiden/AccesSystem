@@ -1,7 +1,7 @@
 /*
       Copyright 2015-2018 Dirk-Willem van Gulik <dirkx@webweaving.org>
                           Stichting Makerspace Leiden, the Netherlands.
-
+  
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -54,7 +54,7 @@ RFID reader = RFID();
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
+LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
 
 ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
 ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
@@ -121,8 +121,6 @@ void setup() {
   pinMode(CURRENT_GPIO, INPUT); // analog input.
   pinMode(SW1_BUTTON, INPUT_PULLUP);
   pinMode(SW2_BUTTON, INPUT_PULLUP);
-  pinMode(OPTO1, INPUT_PULLUP);
-  pinMode(OPTO2, INPUT_PULLUP);
 
   Serial.printf("Boot state: SW1:%d SW2:%d\n",
                 digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON));
@@ -256,6 +254,9 @@ void setup() {
 
 void loop() {
   node.loop();
+  opto1.loop();
+  currentSensor.loop();
+
   button1.update();
   button2.update();
 
@@ -300,7 +301,7 @@ void loop() {
     machinestate = WAITINGFORCARD;
   };
 
-  if ((machinestate > WAITINGFORCARD) && (opto1.state())) {
+  if ((machinestate > WAITINGFORCARD) && (!opto1.state())) {
     // Once you have swiped your card - you have 120 seconds to hit the green button on the back.
     if (millis() - laststatechange > 120 * 1000) {
       Log.print("Switching off - card swiped but the green button was not pressed within 120 seconds.\n");
@@ -313,7 +314,10 @@ void loop() {
     }
   }
 
-  if !(opto1.state()) {
+  if (opto1.state()) {
+    if ((!haveSeenPower) && machinestate > WAITINGFORCARD)
+      Log.print("Switched on - green button at the back pressed.\n");
+
     haveSeenPower = true;
   }
 

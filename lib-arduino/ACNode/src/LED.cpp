@@ -1,63 +1,71 @@
 #include <ACNode-private.h>
 #include "LED.h"
 
-void flipPin(unsigned int pin) {
-  static unsigned int tock = 0;
-  bool onoff;
-
-  // Sequencer or toggler
-  if (pin & 128) 
-    onoff =  (tock & 31) == 0; // one flash every 32 tocks.
-  else
-    onoff = digitalRead(pin & 127) == LOW;
-
-  if (pin & 256)
-    onoff = !onoff;
-
-  digitalWrite(pin & 127,onoff ? HIGH : LOW);
-
-  tock++;
-}
+// We cannot quite call objects from the ticker callback; so
+// we use a tiny bit of glue.
+static void flipPin(LED * led) { led->_update(); }
 
 LED::LED(const byte pin, const bool inverted) : _pin(pin) ,_inverted(inverted) {
-	pinMode(_pin & 127, OUTPUT);
-  	_ticker = Ticker();
+        if (_pin != -1) {
+	   pinMode(_pin, OUTPUT);
+  	   _ticker = Ticker();
+        }
 	_lastState = NEVERSET;
 	set(LED_FAST);
-	if (_inverted)
-		_pin &= 256;
+}
+
+void LED::_on() { _set(true); }
+void LED::_off() { _set(false); }
+void LED::_set(bool on) { digitalWrite(_pin, on ^ _inverted); }
+
+//                       01234567012345670123456701234567
+#define PATTERN_IDLE   0b10000000000000000000000000000000
+#define PATTERN_EVEN   0b10101010101010101010101010101010
+#define PATTERN_SO     0b11100111100111001001001000000000
+#define PATTERN_A      0b11000000111111000000000000000000
+
+void LED::_update() {
+  bool on = false;
+  unsigned int pattern = PATTERN_EVEN;
+
+  if (_lastState == LED_IDLE)
+    pattern = PATTERN_IDLE;
+
+  on = pattern & (1<<(_tock & 31)); 
+  _set(on);
+  _tock++;
 }
 
 void LED::set(led_state_t state) {
   if (_lastState == state)
      return;
   _lastState = state;
+  if(_pin == -1) {
+      Serial.printf("LED - change to state %d\n", state);
+      return;
+  }
   switch(state) {
     case LED_OFF:
       _ticker.detach();
-      digitalWrite(_pin & 127, 0 ^ _inverted);
+      _off();
       break;
     case LED_ON:
       _ticker.detach();
-      digitalWrite(_pin & 127, 1 ^ _inverted);
+      _on();
       break;
     case LED_FLASH:
     case LED_IDLE:
-      _ticker.attach_ms(100, &flipPin,  128 | _pin); // no need to detach - code will disarm and re-use existing timer.
-      break;
-    case LED_SLOW:
-      digitalWrite(_pin & 127, 1 ^ _inverted);
-      _ticker.attach_ms(500, &flipPin,  _pin); // no need to detach - code will disarm and re-use existing timer.
-      break;
     case LED_PENDING:
     case LED_FAST:
-      _ticker.attach_ms(100, &flipPin, _pin); // no need to detach - code will disarm and re-use existing timer.
+      _ticker.attach_ms(100, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
+      break;
+    case LED_SLOW:
+      _ticker.attach_ms(500, &flipPin,  this); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_ERROR:
     case NEVERSET: // include this here - though it should enver happen. 50 hz flash
     default:
-      _ticker.attach_ms(20, &flipPin, _pin); // no need to detach - code will disarm and re-use existing timer.
+      _ticker.attach_ms(20, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
       break;
   }
 }
-

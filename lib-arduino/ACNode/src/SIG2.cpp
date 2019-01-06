@@ -105,7 +105,8 @@ void kickoff_RNG() {
 #ifdef ESP32
   RNG.begin(RNG_APP_TAG);
 #else
-  RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
+  // RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
+  RNG.begin(RNG_APP_TAG);
 #endif
 
   SHA256 sha256;
@@ -120,10 +121,6 @@ void kickoff_RNG() {
   uint8_t mac[6];
   WiFi.macAddress(mac);
   sha256.update(mac, sizeof(mac));
-#if 0
-  ETH.macAddress(mac);
-  sha256.update(mac, sizeof(mac));
-#endif
 
   uint8_t result[sha256.hashSize()];
   sha256.finalize(result, sizeof(result));
@@ -358,7 +355,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   if (nonceOk) {
     Debug.println("Verified nonce; so any beat ok.");
   }
-  else if (delta < 120) {
+  else if (delta < 1200) { // Apparently we can drive minutes in a short space of time.
     Trace.println("Beat ok.");
   }
   else if (strcmp(req->cmd, "announce") == 0) {

@@ -103,21 +103,35 @@ void ACNode::addSecurityHandler(ACSecurityHandler * handler) {
     addHandler(handler);
 }
 
-void ACNode::begin() {
-#if 0
-    if (_debug)
-        debugFlash();
-#endif
-#ifdef ESP32 
-    if (_wired) 
-        eth_setup();
-#endif
+void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
+{
     if (!*machine)  
 	strncpy(machine, "unset-machine-name", sizeof(machine));
 
     if (!*moi)  
 	strncpy(moi, machine, sizeof(moi));
-   
+
+#if 0
+    if (_debug)
+        debugFlash();
+#endif
+#ifdef ESP32 
+    if (_wired)  {
+       WiFi.onEvent(WiFiEvent);
+
+       switch(board) {
+       case BOARD_OLIMEX:
+         ETH.begin(ETH_PHY_ADDR, 12 /* power */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
+         break;
+       case BOARD_AART:
+         ETH.begin(1 /* address */, 17 /* power */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLK_MODE);
+         break;
+       default:
+         ETH.begin();
+      }
+    }
+#endif
+  
 #ifdef CONFIGAP
     configBegin();
     
@@ -293,7 +307,7 @@ void ACNode::loop() {
     {
 	static unsigned long last = 0, lastCntr = 0, Cntr = 0;
 	Cntr++;
-	if (millis() - last > 30 * 1000) {
+	if (millis() - last > (unsigned long)(30 * 1000)) {
 		float rate =  1000. * (Cntr - lastCntr)/(millis() - last) + 0.05;
 		loopRate = rate;
 		if (rate > 10)
@@ -304,6 +318,8 @@ void ACNode::loop() {
 		lastCntr = Cntr;
 	}
     }
+
+#if 0
     if (_debug) {
     	static unsigned long last = millis();
 	static unsigned long sw1, sw2, tock;
@@ -322,6 +338,8 @@ void ACNode::loop() {
     	      last = millis(); sw1 = sw2 = tock = 0;
    	 }
     }
+#endif
+
     {	static unsigned long last = 0;
 	if (millis() - last > _report_period) {
 		last = millis();
@@ -417,6 +435,7 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
     }
     bool app = ((strcasecmp("approved",req->cmd)==0) || (strcasecmp("open",req->cmd)==0));
     bool den = (strcasecmp("denied", req->cmd) == 0);
+    // if (den) { den = false; app = true; };
 
     if (app) _approve++;
     if (den) _deny++;

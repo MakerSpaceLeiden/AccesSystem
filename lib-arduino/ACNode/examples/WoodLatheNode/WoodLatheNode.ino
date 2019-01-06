@@ -46,7 +46,7 @@ RFID reader = RFID();
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
+LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
 
 ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
 ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
@@ -54,7 +54,7 @@ ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
 // Various logging options (in addition to Serial).
 SyslogStream syslogStream = SyslogStream();
 MqttLogStream mqttlogStream = MqttLogStream();
-// TelnetSerialStream telnetSerialStream = TelnetSerialStream();
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 
 typedef enum {
@@ -158,7 +158,6 @@ void setup() {
     //
     return ACBase::CMD_DECLINE;
   });
-
   currentSensor.setOnLimit(0.00125);
 
   currentSensor.onCurrentOn([](void) {
@@ -230,7 +229,7 @@ void setup() {
   // We only sent the very low level debugging to syslog.
   Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
-#if 0
+#if 1
   // As the PoE devices have their own grounding - the cannot readily be connected
   // to with a sericd Peral cable.  This allows for a telnet instead.
   auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
@@ -254,6 +253,8 @@ void loop() {
   node.loop();
   button1.update();
   button2.update();
+  currentSensor.loop();
+  // opto1.loop();
 
   if (digitalRead(INTERLOCK)) {
     if (machinestate != OUTOFORDER || millis() - laststatechange > 60 * 1000) {
