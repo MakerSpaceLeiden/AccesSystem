@@ -25,7 +25,7 @@
 
 OptoDebounce opto1(OPTO1); // wired to the 'pressure low' switch of the compressor.
 
-LED aartLed = LED(AART_LED); 
+LED aartLed = LED(AART_LED);
 ACNode node = ACNode(MACHINE, WIFI_MAKERSPACE_NETWORK, WIFI_MAKERSPACE_PASSWD);
 
 #ifdef OTA_PASSWD
@@ -161,7 +161,12 @@ void loop() {
 
   aartLed.set(state[machinestate].ledState);
 
-  if (opto1.state())
+  // We are inverted - i.e. over the on-off pressure switch; as there is a leak
+  // across the L which puts it at 100v when off (relative to N) or 220 when
+  // on. Which we cannot detect. So instead we detect the leak current and
+  // the 0 ohm of the siwch quelling that voltage.
+  //
+  if (opto1.state() == false)
     machinestate = RUNNING;
   else if (machinestate > POWERED)
     machinestate = POWERED;
