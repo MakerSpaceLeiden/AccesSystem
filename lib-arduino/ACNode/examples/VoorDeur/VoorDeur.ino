@@ -18,17 +18,22 @@
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
 
-#define MACHINE             "door"
+#define MACHINE             "voordeur"
 
-#define SOLENOID  (4)
-#define BUZZ_TIME (8 * 1000) // Buzz 8 seconds.
+#define SOLENOID_GPIO     (4)
+#define SOLENOID_OFF      (LOW)
+#define SOLENOID_ENGAGED  (HIGH)
+
+#define AARTLED_GPIO      (16)
+
+#define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-
 MqttLogStream mqttlogStream = MqttLogStream();
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
@@ -82,14 +87,11 @@ void setup() {
 
   // Init the hardware and get it into a safe state.
   //
-  pinMode(SOLENOID, OUTPUT);
-  digitalWrite(SOLENOID, 0);
+  pinMode(SOLENOID_GPIO, OUTPUT);
+  digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 
-  // the default is space.makerspaceleiden.nl, prefix test
-  // node.set_mqtt_host("mymqtt-server.athome.nl");
-  // node.set_mqtt_prefix("test-1234");
-  node.set_master("test-master");
-  node.set_report_period(10 * 1000);
+  node.set_mqtt_prefix("ac");
+  node.set_master("master");
 
   node.onConnect([]() {
     Log.println("Connected");
@@ -105,7 +107,7 @@ void setup() {
   });
   node.onApproval([](const char * machine) {
     machinestate = BUZZING;
-      opening_door_count++;
+    opening_door_count++;
   });
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
@@ -138,6 +140,12 @@ void setup() {
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
+#if 1
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+#endif
+
   // node.set_debug(true);
   // node.set_debugAlive(true);
   node.begin();
@@ -166,7 +174,7 @@ void loop() {
     state[laststate].timeInState += (millis() - laststatechange) / 1000;
     laststate = machinestate;
     laststatechange = millis();
-    
+
   }
   if (state[machinestate].autoReportCycle && \
       millis() - laststatechange > state[machinestate].autoReportCycle && \
@@ -176,17 +184,18 @@ void loop() {
     lastReport = millis();
   };
 
-  digitalWrite(SOLENOID, machinestate == BUZZING);
-    
+  digitalWrite(SOLENOID_GPIO, (machinestate == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
+
   switch (machinestate) {
     case REBOOT:
       node.delayedReboot();
       break;
 
     case WAITINGFORCARD:
-    case CHECKINGCARD:ard
+    case CHECKINGCARD:
     case REJECTED:
     case BUZZING:
+      // all handled in above stage engine.
       break;
 
     case BOOTING:

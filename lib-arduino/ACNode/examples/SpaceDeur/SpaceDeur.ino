@@ -17,18 +17,57 @@
 #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
+#include <AccelStepper.h>
 
-#define MACHINE             "door"
+#define MACHINE             "spacedeur"
 
-#define SOLENOID  (4)
-#define BUZZ_TIME (8 * 1000) // Buzz 8 seconds.
+// Stepper motor-Pololu / A4988
+//
+#define STEPPER_DIR       (2)
+#define STEPPER_ENABLE    (4)
+#define STEPPER_STEP      (5)
+
+#define STEPPER_MAXSPEED  (1850)
+#define STEPPER_ACCELL    (850)
+// Max time to let the stepper move with the stepper
+#define MAXMOVE_DELAY     (30*1000)
+
+#define DOOR_CLOSED       (0)
+#define DOOR_OPEN         (1100)
+#define DOOR_OPEN_DELAY   (10*1000)
+
+#define AARTLED_GPIO      (16)
+
+#define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-
 MqttLogStream mqttlogStream = MqttLogStream();
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
+
+
+// Simple overlay of the AccelStepper that configures for the A4988
+// driver of a 4 wire stepper-including the additional enable wire.
+//
+class PololuStepper : public AccelStepper
+{
+  public:
+    PololuStepper(uint8_t step_pin = 0xFF, uint8_t dir_pin = 0xFF, uint8_t enable_pin = 0xFF);
+};
+
+PololuStepper::PololuStepper(uint8_t step_pin, uint8_t dir_pin, uint8_t enable_pin)
+  : AccelStepper(AccelStepper::DRIVER, step_pin, dir_pin)
+{
+  pinMode(STEPPER_ENABLE, OUTPUT);
+  digitalWrite(STEPPER_ENABLE, LOW); // dis-able stepper first.
+  setPinsInverted(false, false, true); // The enable pin is NOT inverted. Kind of unusual.
+  setEnablePin(enable_pin);
+}
+
+PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_ENABLE);
+
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
@@ -42,7 +81,11 @@ typedef enum {
   WAITINGFORCARD,           // waiting for card.
   CHECKINGCARD,
   REJECTED,
-  BUZZING,                    // this is where we engage the solenoid.
+  START_OPEN,
+  OPENING,
+  OPEN,
+  START_CLOSE,
+  CLOSING,
 } machinestates_t;
 
 #define NEVER (0)
@@ -55,7 +98,7 @@ struct {
   unsigned long timeInState;
   unsigned long timeoutTransitions;
   unsigned long autoReportCycle;
-} state[BUZZING + 1] =
+} state[CLOSING + 1] =
 {
   { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
   { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT,         5 * 60 * 1000 },
@@ -65,7 +108,11 @@ struct {
   { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD, 0 },
   { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD, 0 },
   { "Rejected",             LED::LED_ERROR,             2 * 1000, WAITINGFORCARD, 0 },
-  { "Buzzing door",         LED::LED_ON,               BUZZ_TIME, WAITINGFORCARD, 0 },
+  { "Start opening door",   LED::LED_ON,           MAXMOVE_DELAY, START_CLOSE, 0 },
+  { "Opening door",         LED::LED_ON,           MAXMOVE_DELAY, START_CLOSE, 0 },
+  { "Door held open",       LED::LED_ON,         DOOR_OPEN_DELAY, START_CLOSE, 0 },
+  { "Start closing door",   LED::LED_ON,           MAXMOVE_DELAY, START_CLOSE, 0 },
+  { "Closing door",         LED::LED_ON,           MAXMOVE_DELAY, WAITINGFORCARD, 0 },
 };
 
 
@@ -80,16 +127,17 @@ void setup() {
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 
-  // Init the hardware and get it into a safe state.
-  //
-  pinMode(SOLENOID, OUTPUT);
-  digitalWrite(SOLENOID, 0);
+  stepper.setMaxSpeed(STEPPER_MAXSPEED);  // divide by 3 to get rpm
+  stepper.setAcceleration(STEPPER_ACCELL);
+  stepper.moveTo(DOOR_CLOSED);
+  stepper.run();
+  while (stepper.isRunning()) {
+    stepper.run();
+  };
+  stepper.disableOutputs();
 
-  // the default is space.makerspaceleiden.nl, prefix test
-  // node.set_mqtt_host("mymqtt-server.athome.nl");
-  // node.set_mqtt_prefix("test-1234");
-  node.set_master("test-master");
-  node.set_report_period(10 * 1000);
+  node.set_mqtt_prefix("ac");
+  node.set_master("master");
 
   node.onConnect([]() {
     Log.println("Connected");
@@ -104,8 +152,9 @@ void setup() {
     machinestate = WAITINGFORCARD;
   });
   node.onApproval([](const char * machine) {
-    machinestate = BUZZING;
-      opening_door_count++;
+    if (machinestate < START_OPEN)
+      machinestate = START_OPEN;
+    opening_door_count++;
   });
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
@@ -138,6 +187,12 @@ void setup() {
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
+#if 1
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+#endif
+
   // node.set_debug(true);
   // node.set_debugAlive(true);
   node.begin();
@@ -146,6 +201,7 @@ void setup() {
 
 void loop() {
   node.loop();
+  stepper.run();
 
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
@@ -166,7 +222,7 @@ void loop() {
     state[laststate].timeInState += (millis() - laststatechange) / 1000;
     laststate = machinestate;
     laststatechange = millis();
-    
+
   }
   if (state[machinestate].autoReportCycle && \
       millis() - laststatechange > state[machinestate].autoReportCycle && \
@@ -176,17 +232,38 @@ void loop() {
     lastReport = millis();
   };
 
-  digitalWrite(SOLENOID, machinestate == BUZZING);
-    
   switch (machinestate) {
     case REBOOT:
       node.delayedReboot();
       break;
 
     case WAITINGFORCARD:
-    case CHECKINGCARD:ard
+    case CHECKINGCARD:
     case REJECTED:
-    case BUZZING:
+      // all handled in above stage engine.
+      break;
+    case START_OPEN:
+      stepper.enableOutputs();
+      stepper.moveTo(DOOR_OPEN);
+      machinestate = OPENING;
+      break;
+    case OPENING:
+      if (stepper.currentPosition() == DOOR_OPEN) { // no sensors.
+        machinestate = OPEN;
+      }
+      break;
+    case OPEN:
+      // keep the enableOutputs on - to hold the door. Will timeout.
+      break;
+    case START_CLOSE:
+      stepper.moveTo(DOOR_CLOSED);
+      machinestate = CLOSING;
+      break;
+    case CLOSING:
+      if (stepper.currentPosition() == DOOR_CLOSED) {
+        machinestate = WAITINGFORCARD;
+        stepper.disableOutputs();
+      };
       break;
 
     case BOOTING:
