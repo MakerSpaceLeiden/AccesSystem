@@ -120,11 +120,11 @@ void setup() {
 
   // the default is space.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
-  node.set_mqtt_prefix("test");
+  node.set_mqtt_prefix("ac");
 
   // specify this when using your own `master'.
   //
-  node.set_master("test-master");
+  node.set_master("master");
 
   // node.set_report_period(2 * 1000);
 
