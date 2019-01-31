@@ -7,18 +7,24 @@ import hmac
 import hashlib
 import logging
 import traceback
+import json
 
 sys.path.append('.')
 import db
+import re
 
 sys.path.append('../lib')
 import DrumbeatNode as DrumbeatNode
 import AlertEmail as AlertEmail
 import PingNode as PingNode
 
+import mysql.connector
+
 class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNode.PingNode):
   default_subject="[Master ACNode]"
   default_email = None
+  opento = []
+  allopento = [] 
 
   def __init__(self):
     super().__init__()
@@ -31,10 +37,17 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     # self.commands[ 'beat' ] = self.cmd_beat
 
     # self.commands[ 'event' ] = self.cmd_event
+    self.cnx = None
 
   def parseArguments(self):
     self.parser.add('--secrets', action='append',
          help='Secret pairs for connecting nodes in nodename=secret style.')
+
+    self.parser.add('--opento', action='append',
+         help='Additional space log informants - spacedoor')
+
+    self.parser.add('--allopento', action='append',
+         help='Additional space log informants - all doors')
 
     super().parseArguments()
 
@@ -76,7 +89,6 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
       return
 
     self.logger.info("Unknown tag {} reportedly used at {}".format(tag,msg['node']))
-
     self.rat(msg,tag)
 
   def rat(self,msg,tag):
@@ -88,15 +100,13 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     cmd, target_node, target_machine, tag_encoded = self.split_payload(msg) or (None, None, None, None)
     
     if not target_node:
+       self.logger.info("Not the target node, igorning({})".format(target_node))
        return
 
+    tag = None
     if 'hdr' in msg and msg[ 'hdr' ] == 'SIG/2.0':
       tag = self.session_decrypt(msg, tag_encoded)
-
-      if not tag in self.userdb:
-        self.logger.info("Tag {} not in DB; reporting (no deny sent).".format(tag))
-        self.rat(msg, tag)
-        return
+      self.logger.debug("Tag decoded: {}".format(tag))
     else:
       tag = None
       secret = self.secret( msg['node'] )
@@ -126,23 +136,66 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
            tag = uid
            break
 
-      if not tag in self.userdb:
+      if not tag:
         self.logger.info("Tag not in DB; asking node to reveal it")
         self.send(msg['node'],"revealtag")
         return
 
     acl = 'error'
-    email = self.userdb[tag]['email'];
-    name = self.userdb[tag]['name'];
+    ok = False
+    found = False
+    v = {}
+    extra_msg = ''
 
-    if target_machine in self.userdb[tag]['access']:
-         self.logger.info("tag '%s' (%s) OK for action: '%s' on '%s'", tag, name, target_machine, target_node);
-         acl = 'approved'
+    try:
+          v = self.checkDB(target_machine,tag)
+    except Error as e:
+          extra_msg = ' but know that the Mysql database gave an error ({})'.format(str(e))
+
+    if v:
+          ok = True
+          found = True
+          self.logger.info("mysql approved")
+    elif tag in self.userdb:
+        email = self.userdb[tag]['email'];
+        name = self.userdb[tag]['name'];
+        v = { 'userid': 0, 'name': name, 'email': email, 'machine': target_machine }
+        found = True
+        if target_machine in self.userdb[tag]['access']:
+            ok = True
+            self.logger.info("textfile DB approved (falltrough)")
+
+    if not found:
+      self.logger.info("Tag {} not found either DB{}; reporting (no deny sent).".format(tag,extra_msg))
+      self.rat(msg, tag)
+      return
+
+    if ok:
+         v['acl'] = 'approved'
     else:
-         self.logger.info("tag '%s' (%s) denied action: '%s' on '%s'", tag, name, target_machine, target_node);
-         acl = 'denied'
+         v['acl'] = 'denied'
    
-    self.send(target_node, acl + ' ' + cmd + ' ' +  target_machine + ' ' + msg['theirbeat'])
+    self.logger.info("Member %s %s action: '%s' on '%s'", v['name'], v['acl'], target_machine, target_node);
+    self.logger.info('JSON={}'.format(json.dumps(v)))
+    try:
+        msg = "{} {} {} {}".format(v['acl'], cmd, target_machine, msg['theirbeat'])
+        self.send(target_node, msg)
+    except e:
+        self.logger.error("Fail in send: {}".format(str(e)))
+
+    dst = []
+    if self.cnf.allopento:
+        dst.extend(self.cnf.allopento)
+
+    # Temp hack (famous last words)
+    if target_machine == 'spacedeur':
+        dst.extend(self.cnf.opento)
+
+    if dst:
+       body = "{} has just now opened the {}.\n\n\nYour friendly Spacebot".format(v['name'], target_machine)
+       subject = "{} @ MSL".format(v['name'])
+       self.send_email(body,subject,dst)
+       self.logger.info("Email to {} sent.".format(dst))
 
   # XXX: at some point we could break this out and get nice, per node, logfiles.
   #
@@ -158,6 +211,52 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
 
     return super().cmd_beat(msg);
 
+  def checkDB(self, machine, tag):
+     # Both options are identical from an explain perspective at current DB settings.
+     #
+     SQL2 = "select email, first_name, last_name from acl_entitlement, acl_machine, members_tag, members_user where members_user.id = members_tag.owner_id  and members_tag.tag = %s and acl_machine.requires_permit_id = acl_entitlement.permit_id and acl_entitlement.holder_id =  members_user.id and  acl_machine.node_machine_name = %s"
+     SQL ="""select active, members_tag.owner_id, first_name,last_name,email from acl_entitlement 
+            inner join acl_machine on acl_machine.node_machine_name = %s and acl_machine.requires_permit_id = acl_entitlement.permit_id 
+                    inner join members_tag on members_tag.tag = %s and acl_entitlement.holder_id = members_tag.owner_id 
+                            inner join members_user on members_user.id = members_tag.owner_id"""
+     SQL2 ="""select active, members_tag.owner_id, first_name,last_name,email from acl_entitlement 
+            inner join acl_machine on acl_machine.node_machine_name = %s and acl_machine.requires_permit_id = acl_entitlement.permit_id 
+                    inner join members_tag on members_tag.tag like %s and acl_entitlement.holder_id = members_tag.owner_id 
+                            inner join members_user on members_user.id = members_tag.owner_id"""
+
+     retry = 2
+     while retry >= 0:
+        try:
+           if not self.cnx:
+             self.cnx = mysql.connector.connect(option_files='/usr/local/makerspaceleiden-crm/makerspaceleiden/my.cnf')
+             self.cnx.autocommit = True
+
+           cursor = self.cnx.cursor()
+           cursor.execute(SQL, (machine,tag))
+           for line in cursor.fetchall():
+             if line[0] == 1:
+                 return { 'userid': line[1], 'name': "{} {}".format(line[2],line[3]), 'email': line[4], 'machine': machine }
+
+           if len(tag.split('-')) <= 2:
+               return None
+
+           cursor = self.cnx.cursor()
+           cursor.execute(SQL2, (machine,tag+'%'))
+           for line in cursor.fetchall():
+             if line[0] == 1:
+                 msg = "Tag {} swiped - needed a LIKE".format(tag)
+                 self.logger.error(msg)
+                 self.send_email(msg, "tag short issue")
+                 return { 'userid': line[1], 'name': "{} {}".format(line[2],line[3]), 'email': line[4], 'machine': machine }
+   
+        except Exception as e:
+           self.cnx = None
+           self.logger.error("Failure with the DB: {}".format(str(e)))
+           if not retry:
+                  raise
+        retry = retry - 1
+
+     return None
 
 master = Master()
 
@@ -174,6 +273,6 @@ except Exception as e:
         msg = "Tacktrace: " + traceback.format_exc()
         master.logger.critical(subject)
         print(msg)
-        master .send_email(msg, subject);
+        master.send_email(msg, subject);
 
 sys.exit(-1)

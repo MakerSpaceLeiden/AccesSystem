@@ -262,7 +262,19 @@ class ACNodeBase:
 
     if cmd in self.commands:
         self.logger.debug("Handling command '{}' with {}:{}()".format(cmd,self.commands[cmd].__class__.__name__, self.commands[cmd].__name__))
-        return self.commands[cmd](msg)
+        try:
+            return self.commands[cmd](msg)
+        except Exception as e:
+            print("Exxception caught in handling of commnd. drat. {}".format(str(e)))
+            exc_type, exc_obj, tb = sys.exc_info()
+            f = tb.tb_frame
+            lineno = tb.tb_lineno
+            filename = f.f_code.co_filename
+            linecache.checkcache(filename)
+            line = linecache.getline(filename, lineno, f.f_globals)
+            traceback.print_exc()
+            self.logger.critical('Exception thrown while handling command ({}:{}\n {} LINE {} "{}"): {}'.format(cmd, str(e), filename, lineno, line.strip(), exc_obj))
+            return None
 
     # self.logger.debug("No mapping for {} - deferring <{}> for handling by {}".format(cmd, msg['payload'],self.__class__.__name__))
     self.logger.critical("Command {} ignored (and also not handled by {})".format(cmd ,self.__class__.__name__))
@@ -321,7 +333,7 @@ class ACNodeBase:
     if self.cnf.daemonize:
         daemon.daemonize(self.cnf.pidfile)
 
-    self.logger.warning("Node {} started.".format(self.cnf.node))
+    self.logger.info("Node {} started.".format(self.cnf.node))
     while(self.forever): 
       self.loop()
 
