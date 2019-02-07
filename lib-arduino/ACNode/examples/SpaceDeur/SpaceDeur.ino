@@ -37,6 +37,11 @@
 #define DOOR_OPEN         (1100)
 #define DOOR_OPEN_DELAY   (10*1000)
 
+// See https://mailman.makerspaceleiden.nl/mailman/private/deelnemers/2019-February/019837.html
+//
+#define DOOR_SENSOR       (34)
+#define DOOR_IS_OPEN      (LOW)
+
 #define AARTLED_GPIO      (16)
 
 #define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
@@ -121,7 +126,7 @@ unsigned long laststatechange = 0, lastReport = 0;
 static machinestates_t laststate = OUTOFORDER;
 machinestates_t machinestate = BOOTING;
 
-unsigned long opening_door_count  = 0, door_denied_count = 0;
+unsigned long opening_door_count  = 0, door_denied_count = 0, swipeouts_count = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -136,6 +141,8 @@ void setup() {
     stepper.run();
   };
   stepper.disableOutputs();
+
+  pinMode(DOOR_SENSOR, INPUT_PULLUP);
 
   node.set_mqtt_prefix("ac");
   node.set_master("master");
@@ -159,7 +166,7 @@ void setup() {
   });
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
-    door_denied_count ++;cd 
+    door_denied_count ++;
   });
 
   node.onReport([](JsonObject  & report) {
@@ -168,12 +175,40 @@ void setup() {
     report["door_denied_count"] = door_denied_count;
     report["state"] = state[machinestate].label;
     report["opens"] = opening_door_count;
+    report["swipeouts"] = swipeouts_count;
 
 #ifdef OTA_PASSWD
     report["ota"] = true;
 #else
     report["ota"] = false;
 #endif
+  });
+
+  reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t {
+
+    // special case of the someone is leaving swipe; technically
+    // we sent this as an 'ok to leave' sort of request; so the privacy
+    // of the tag/user is preserved on the wire.
+    //
+    // We expect the door to not be in the opening process; but we do
+    // allow a swipe post opening - e.g. when some-one holds the door
+    // open als someone comes in.
+    //
+    if ((machinestate == WAITINGFORCARD || machinestate >= OPEN) && digitalRead(DOOR_SENSOR) == DOOR_IS_OPEN)
+    {
+      node.request_approval(tag, "leave", NULL);
+      swipeouts_count++;
+      return ACBase::CMD_CLAIMED;
+    }
+
+    // avoid swithing messing with the door open process
+    if (machinestate > CHECKINGCARD)
+      return ACBase::CMD_CLAIMED;
+
+    // We'r declining so that the core library handle sending
+    // an approval request, keep state, and so on.
+    //
+    return ACBase::CMD_DECLINE;
   });
 
 
