@@ -114,12 +114,11 @@ class TrustOnFirstContact(Beat.Beat):
      signature = self.cnf.privatekey.sign(payload.encode('ASCII'))
      signature = base64.b64encode(signature).decode('ASCII')
 
-     self.logger.debug(" ** Payload=<{}>".format(payload.encode('ASCII')));
-     self.logger.debug(" ** Signature=<{}>".format(signature.encode('ASCII')));
-     self.logger.debug(" ** Pubkey=<{}>".format(base64.b64encode(self.cnf.publickey.to_bytes())))
+     # self.logger.debug(" ** Payload=<{}>".format(payload.encode('ASCII')));
+     # self.logger.debug(" ** Signature=<{}>".format(signature.encode('ASCII')));
+     # self.logger.debug(" ** Pubkey=<{}>".format(base64.b64encode(self.cnf.publickey.to_bytes())))
 
      payload =  "SIG/2.0 "+signature+" "+payload
-
 
      super().send(dstnode, payload, raw=True)
 
@@ -239,7 +238,7 @@ class TrustOnFirstContact(Beat.Beat):
                  self.logger.debug("Potentially learned a public key of node {} on first contact - checking signature next.".format(msg['node']))
     else:
         if not msg['node'] in self.pubkeys:
-            self.logger.info ("No public key for node {} -- ignoring.".format(msg['node']))
+            self.logger.info("No public key for node {} -- ignoring.".format(msg['node']))
             return None
         publickey = self.pubkeys[ msg['node'] ]
     

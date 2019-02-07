@@ -42,18 +42,22 @@ class AlertEmail(ACNode):
 
     super().parseArguments()
 
-  def send_email(self,mailmsg,mailsubject, to = None):
+  def send_email(self,mailmsg,mailsubject, extra= None):
     if not self.cnf.alertto:
         self.logger.debug("No alert email sent - not configured.")
         return
-    
+  
+    to = self.cnf.alertto
+    if extra:
+        to.extend(extra)
+
     msg = MIMEText(mailmsg)
 
     COMMASPACE = ', '
 
     msg['Subject'] = self.cnf.alertsubject + ' ' + mailsubject 
     msg['From'] = 'ACNode ' + self.cnf.node + ' <' + self.cnf.alertfrom + '>'
-    msg['To'] = COMMASPACE.join(self.cnf.alertto)
+    msg['To'] = COMMASPACE.join(to)
 
     s = smtplib.SMTP(self.cnf.smtphost, self.cnf.smtpport)
 
