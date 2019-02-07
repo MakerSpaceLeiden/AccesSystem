@@ -351,10 +351,13 @@ void ACNode::loop() {
 
 		out[ "maxMqtt" ] = MAX_MSG;
 
-		out[ "id" ] = chipId();
-                out[ "ip" ] = String(localIP().toString()).c_str();
+		char chipstr[30]; strncpy(chipstr,chipId().c_str(),sizeof(chipstr));
+		out[ "id" ] = chipstr;
+		char ipstr[30]; strncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
+                out[ "ip" ] = ipstr;
                 out[ "net" ] = _wired ? "UTP" : "WiFi";
-  		out[ "mac" ] = macAddressString();
+ 		char macstr[30]; strncpy(macstr, macAddressString().c_str(),sizeof(macstr));
+  		out[ "mac" ] = macstr;
 
 		out[ "beat" ] = beatCounter;
 

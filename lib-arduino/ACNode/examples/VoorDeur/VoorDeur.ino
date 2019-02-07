@@ -155,6 +155,16 @@ void setup() {
 void loop() {
   node.loop();
 
+  if (laststate != machinestate) {
+    Debug.printf("Changed from state <%s> to state <%s>\n",
+                 state[laststate].label, state[machinestate].label);
+
+    state[laststate].timeInState += (millis() - laststatechange) / 1000;
+    laststate = machinestate;
+    laststatechange = millis();
+    return;
+  }
+
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
   {
@@ -165,17 +175,9 @@ void loop() {
 
     Log.printf("Time-out; transition from <%s> to <%s>\n",
                state[laststate].label, state[machinestate].label);
+    return;
   };
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
-
-    state[laststate].timeInState += (millis() - laststatechange) / 1000;
-    laststate = machinestate;
-    laststatechange = millis();
-
-  }
   if (state[machinestate].autoReportCycle && \
       millis() - laststatechange > state[machinestate].autoReportCycle && \
       millis() - lastReport > state[machinestate].autoReportCycle)

@@ -29,6 +29,7 @@
 
 #define STEPPER_MAXSPEED  (1850)
 #define STEPPER_ACCELL    (850)
+
 // Max time to let the stepper move with the stepper
 #define MAXMOVE_DELAY     (30*1000)
 
@@ -158,7 +159,7 @@ void setup() {
   });
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
-    door_denied_count ++;
+    door_denied_count ++;cd 
   });
 
   node.onReport([](JsonObject  & report) {
@@ -203,6 +204,16 @@ void loop() {
   node.loop();
   stepper.run();
 
+  if (laststate != machinestate) {
+    Debug.printf("Changed from state <%s> to state <%s>\n",
+                 state[laststate].label, state[machinestate].label);
+
+    state[laststate].timeInState += (millis() - laststatechange) / 1000;
+    laststate = machinestate;
+    laststatechange = millis();
+    return;
+  }
+
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
   {
@@ -213,17 +224,9 @@ void loop() {
 
     Log.printf("Time-out; transition from <%s> to <%s>\n",
                state[laststate].label, state[machinestate].label);
+    return;
   };
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
-
-    state[laststate].timeInState += (millis() - laststatechange) / 1000;
-    laststate = machinestate;
-    laststatechange = millis();
-
-  }
   if (state[machinestate].autoReportCycle && \
       millis() - laststatechange > state[machinestate].autoReportCycle && \
       millis() - lastReport > state[machinestate].autoReportCycle)
