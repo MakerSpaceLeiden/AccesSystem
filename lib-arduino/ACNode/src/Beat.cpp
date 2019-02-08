@@ -85,7 +85,7 @@ void Beat::loop() {
     unsigned long delta = millis() - last_loop;
     if (delta >= 1000UL) {
         unsigned long secs = (delta + 499UL) / 1000UL;
-        last_loop += secs * 1000;
+        last_loop += secs * 1000UL;
 
 	if (secs > 3600) {
         	Log.printf("Time warp by <%lu> seconds; delta=%lu, millis()=%lu. sizeof=%u, Coding error ?\n", 

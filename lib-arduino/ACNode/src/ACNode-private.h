@@ -188,7 +188,7 @@ public:
     void addHandler(ACBase *handler);
     void addSecurityHandler(ACSecurityHandler *handler);
    
-    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL);
+    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
 
     char * cloak(char *tag);
     

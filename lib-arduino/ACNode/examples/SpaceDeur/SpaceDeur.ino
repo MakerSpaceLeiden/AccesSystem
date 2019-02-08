@@ -154,17 +154,20 @@ void setup() {
   node.onDisconnect([]() {
     Log.println("Disconnected");
     machinestate = NOCONN;
+    
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
     machinestate = WAITINGFORCARD;
   });
   node.onApproval([](const char * machine) {
+    Debug.println("Got approve");
     if (machinestate < START_OPEN)
       machinestate = START_OPEN;
     opening_door_count++;
   });
   node.onDenied([](const char * machine) {
+    Debug.println("Got denied");
     machinestate = REJECTED;
     door_denied_count ++;
   });
@@ -196,18 +199,23 @@ void setup() {
     //
     if ((machinestate == WAITINGFORCARD || machinestate >= OPEN) && digitalRead(DOOR_SENSOR) == DOOR_IS_OPEN)
     {
-      node.request_approval(tag, "leave", NULL);
+      Debug.printf("Detected a leave; sent tag to master.\n");
+
+      node.request_approval(tag, "leave", NULL, false);
       swipeouts_count++;
       return ACBase::CMD_CLAIMED;
     }
 
     // avoid swithing messing with the door open process
-    if (machinestate > CHECKINGCARD)
+    if (machinestate > CHECKINGCARD) {
+      Debug.printf("Ignoring a normal swipe - as we're still in some open process.");
       return ACBase::CMD_CLAIMED;
+    }
 
     // We'r declining so that the core library handle sending
     // an approval request, keep state, and so on.
     //
+    Debug.printf("Detected a normal swipe.\n");
     return ACBase::CMD_DECLINE;
   });
 

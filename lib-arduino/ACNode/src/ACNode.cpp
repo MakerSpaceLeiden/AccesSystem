@@ -267,7 +267,7 @@ char * ACNode::cloak(char * tag) {
     return NULL;
 }
 
-void ACNode::request_approval(const char * tag, const char * operation, const char * target) { 
+void ACNode::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) { 
 	if (tag == NULL) {
 		Log.println("invalid tag==NULL passed, approval request not sent");
 		return;
@@ -279,7 +279,9 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 		target = machine;
 
         strncpy(_lasttag, tag, sizeof(_lasttag));
-	if (_approved_callback && checkCache(_lasttag)) {
+        // Shortcircuit if permitted. Otherwise do the real thing. Note that our cache is primitive
+        // just tags - not commands or node/devices.
+	if (_approved_callback && useCacheOk && checkCache(_lasttag)) {
                 _approved_callback(machine);
 	};
 
