@@ -14,7 +14,7 @@
    ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/ 
+*/
 #define AART_LED           (04) // Large LED on middle front.
 #define OPTO1              (35) // Two diode PC417 that checks if there is AC.
 #define OPTO2              (33) // Two diode PC417 that checks if there is AC.
@@ -29,7 +29,7 @@ OptoDebounce opto1(OPTO1);
 OptoDebounce opto2(OPTO2);
 OptoDebounce opto3(OPTO3);
 
-LED aartLed = LED(AART_LED,true); // LED is inverted.
+LED aartLed = LED(AART_LED, true); // LED is inverted.
 
 ACNode node = ACNode(MACHINE); // PoE Wired, Olimex baord.
 
@@ -86,6 +86,9 @@ void setup() {
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
 
+  node.set_mqtt_prefix("ac");
+  node.set_master("master");
+
   // specify this when using your own `master'.
   //
   // node.set_master("test-master");
@@ -114,9 +117,9 @@ void setup() {
 #else
     report["ota"] = false;
 #endif
-  report["acstate1"] = opto1.state();
-  report["acstate2"] = opto2.state();
-  report["acstate3"] = opto3.state();
+    report["acstate1"] = opto1.state();
+    report["acstate2"] = opto2.state();
+    report["acstate3"] = opto3.state();
   });
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
@@ -138,7 +141,7 @@ void loop() {
 
   if (laststate != machinestate) {
     Log.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
+               state[laststate].label, state[machinestate].label);
 
     if (machinestate == POWERED && laststate < POWERED) {
       powered_last = millis();
@@ -165,7 +168,7 @@ void loop() {
   aartLed.set(state[machinestate].ledState);
 
   // This is a bit odd - you'd expect them to be identical. But it is not.
-  // So we must have miswired something. But what ?! 
+  // So we must have miswired something. But what ?!
   //
   // "acstate1":true,"acstate2":false,"acstate3":false}
   // "acstate1":false,"acstate2":true,"acstate3":true}

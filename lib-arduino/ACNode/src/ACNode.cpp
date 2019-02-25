@@ -153,7 +153,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
         WiFi.mode(WIFI_STA);
     } else
     if (_ssid) {
-        Serial.printf("Starting up wifi (hardcoded SSID <%s>)\n", _ssid);
+        Serial.printf("Starting up wifi (hardcoded SSID <%s>,<%s>)\n", _ssid,_ssid_passwd);
         WiFi.begin(_ssid, _ssid_passwd);
     } else {
         Serial.println("Staring wifi auto connect.");
@@ -161,15 +161,18 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
         wifiManager.autoConnect();
     };
     
-    const int del = 10; // seconds.
     
     // Try up to del seconds to get a WiFi connection; and if that fails; reboot
     // with a bit of a delay.
     //
+    const int del = 10; // seconds.
     unsigned long start = millis();
+    Serial.print("Connecting..");
     while (!isConnected() && (millis() - start < del * 1000)) {
-        delay(100);
+        delay(500);
+	Serial.print(",");
     };
+    Serial.println("Connected.");
     
     if (!_wired && !isConnected()) {
         // Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
@@ -194,7 +197,6 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     configBegin();
 #endif
     configureMQTT();
-  
  
     switch(_proto) {
     case PROTO_MSL:

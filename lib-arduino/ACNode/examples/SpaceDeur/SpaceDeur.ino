@@ -30,6 +30,9 @@
 #define STEPPER_MAXSPEED  (1850)
 #define STEPPER_ACCELL    (850)
 
+#define BUZ_CHANNEL       (0)
+#define BUZZER_GPIO       (0)
+
 // Max time to let the stepper move with the stepper
 #define MAXMOVE_DELAY     (30*1000)
 
@@ -41,7 +44,6 @@
 //
 #define DOOR_SENSOR       (34)
 #define DOOR_IS_OPEN      (LOW)
-
 #define AARTLED_GPIO      (16)
 
 #define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
@@ -121,6 +123,8 @@ struct {
   { "Closing door",         LED::LED_ON,           MAXMOVE_DELAY, WAITINGFORCARD, 0 },
 };
 
+enum { SILENT, LEAVE, CHECK } buzz, lastbuzz;
+unsigned long lastbuzchange = 0;
 
 unsigned long laststatechange = 0, lastReport = 0;
 static machinestates_t laststate = OUTOFORDER;
@@ -144,6 +148,9 @@ void setup() {
 
   pinMode(DOOR_SENSOR, INPUT_PULLUP);
 
+  ledcSetup(BUZ_CHANNEL, 2000, 8);
+  ledcAttachPin(BUZZER_GPIO, BUZ_CHANNEL);
+
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
@@ -154,7 +161,7 @@ void setup() {
   node.onDisconnect([]() {
     Log.println("Disconnected");
     machinestate = NOCONN;
-    
+
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
@@ -203,6 +210,7 @@ void setup() {
 
       node.request_approval(tag, "leave", NULL, false);
       swipeouts_count++;
+      buzz = LEAVE;
       return ACBase::CMD_CLAIMED;
     }
 
@@ -216,6 +224,7 @@ void setup() {
     // an approval request, keep state, and so on.
     //
     Debug.printf("Detected a normal swipe.\n");
+    buzz = CHECK;
     return ACBase::CMD_DECLINE;
   });
 
@@ -243,9 +252,33 @@ void setup() {
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
 
+void buzzer_loop() {
+  if (buzz != lastbuzz) {
+    switch (buzz) {
+      case CHECK:
+        ledcSetup(BUZ_CHANNEL, 2000, 8);
+        ledcWrite(BUZ_CHANNEL, 127);
+        break;
+      case LEAVE:
+        ledcSetup(BUZ_CHANNEL, 1000, 8);
+        ledcWrite(BUZ_CHANNEL, 127);
+        break;
+      case SILENT:
+      default:
+        ledcWrite(BUZ_CHANNEL, 0);
+        break;
+    };
+    lastbuzchange = millis();
+    lastbuzz = buzz;
+  };
+  if (millis() - lastbuzchange > 333)
+    buzz = SILENT;
+}
+
 void loop() {
   node.loop();
   stepper.run();
+  buzzer_loop();
 
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
