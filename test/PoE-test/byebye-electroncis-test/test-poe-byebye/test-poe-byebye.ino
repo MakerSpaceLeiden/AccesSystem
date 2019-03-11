@@ -1,14 +1,10 @@
-#include <SPI.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <MFRC522.h>
 
+#include "OLED.h"
 
 const uint8_t I2C_SDA_PIN = 13; //SDA;  // i2c SDA Pin, ext 2, pin 10
 const uint8_t I2C_SCL_PIN = 16; //SCL;  // i2c SCL Pin, ext 2, pin 7
-
-const uint8_t oled_sd1306_i2c_addr =  0x3C;
 
 const uint8_t mfrc522_rfid_i2c_addr = 0x28;
 const uint8_t mfrc522_rfid_i2c_irq = 4;   // Ext 1, pin 10
@@ -17,28 +13,11 @@ const uint8_t mfrc522_rfid_i2c_reset = 5; // Ext 1, pin  9
 const uint8_t aart_led  = 15; // Ext 2, pin 8
 const uint8_t pusbutton =  1; // Ext 1, pin 6
 
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1 /* no reset */);
-
 TwoWire i2cBus = TwoWire(0);
 MFRC522_I2C * dev = new MFRC522_I2C(mfrc522_rfid_i2c_reset, mfrc522_rfid_i2c_addr, i2cBus);
 MFRC522 mfrc522  = MFRC522(dev);
 
-
-void disp(char * buff) {
-
-  display.clearDisplay();
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(WHITE); // Draw white text
-  display.setCursor(0, 0);     // Start at top-left corner
-  display.cp437(true);
-  for (int i = 0; i < strlen(buff); i++)
-    display.write(buff[i]);
-  display.display();
-}
-
+OLED oled = OLED();
 
 void setup() {
   Serial.begin(115200);
@@ -60,19 +39,22 @@ void setup() {
   };
   Serial.println(".");
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, oled_sd1306_i2c_addr)) {
-    Serial.println(F("SSD1306 allocation failed"));
-  }
-  display.display();
+  oled.setup();
+  oled.setText("started");
 
   mfrc522.PCD_Init();    // Init MFRC522
   mfrc522.PCD_DumpVersionToSerial();
 
-  disp("started");
-
 }
 
 void loop() {
+  static unsigned long int last = 1;
+  if (millis() - last > 5000 && last != 0) {
+    oled.setText("Scan card...");
+    last = 0;
+  };
+  oled.loop();
+
   // digitalWrite(aart_led, (millis() >> 10) & 1);
   digitalWrite(aart_led, digitalRead(pusbutton));
 
@@ -93,7 +75,8 @@ void loop() {
         Serial.println("Good scan: ");
         Serial.println(buff);
 
-        disp(buff);
+        oled.setText(buff);
+        last = millis();
       };
     };
     mfrc522.PICC_HaltA();
