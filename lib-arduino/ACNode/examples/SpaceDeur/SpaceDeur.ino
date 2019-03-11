@@ -31,7 +31,7 @@
 #define STEPPER_ACCELL    (850)
 
 #define BUZ_CHANNEL       (0)
-#define BUZZER_GPIO       (0)
+#define BUZZER_GPIO       (16) // oude aartled
 
 // Max time to let the stepper move with the stepper
 #define MAXMOVE_DELAY     (30*1000)
@@ -44,13 +44,13 @@
 //
 #define DOOR_SENSOR       (34)
 #define DOOR_IS_OPEN      (LOW)
-#define AARTLED_GPIO      (16)
+// #define AARTLED_GPIO      (16) // weggehaald, maar 2019, Lucas
 
 #define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
+// LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
 MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
