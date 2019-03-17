@@ -34,6 +34,18 @@ In file included from /Users/dirkx/Documents/Arduino/libraries/ACNode/src/RFID.h
    };
 }
 
+RFID::RFID(TwoWire *i2cBus, const byte i2caddr, const byte rstpin, const byte irqpin) 
+{
+   _i2cDevice = new MFRC522_I2C(rstpin, i2caddr, *i2cBus);
+   _mfrc522 = new MFRC522(_i2cDevice);
+
+  if (irqpin != 255)  {
+  	pinMode(irqpin, INPUT_PULLUP);
+	attachInterrupt(digitalPinToInterrupt(irqpin), readCard, FALLING);
+	_irqMode = true;
+   };
+}
+
 void RFID::begin() {
   _mfrc522->PCD_Init();     // Init MFRC522
 

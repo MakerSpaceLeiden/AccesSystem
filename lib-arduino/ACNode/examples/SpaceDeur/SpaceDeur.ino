@@ -29,6 +29,10 @@
 
 #define STEPPER_MAXSPEED  (1850)
 #define STEPPER_ACCELL    (850)
+
+#define BUZ_CHANNEL       (0)
+#define BUZZER_GPIO       (16) // oude aartled
+
 // Max time to let the stepper move with the stepper
 #define MAXMOVE_DELAY     (30*1000)
 
@@ -36,13 +40,17 @@
 #define DOOR_OPEN         (1100)
 #define DOOR_OPEN_DELAY   (10*1000)
 
-#define AARTLED_GPIO      (16)
+// See https://mailman.makerspaceleiden.nl/mailman/private/deelnemers/2019-February/019837.html
+//
+#define DOOR_SENSOR       (34)
+#define DOOR_IS_OPEN      (LOW)
+// #define AARTLED_GPIO      (16) // weggehaald, maar 2019, Lucas
 
 #define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
+// LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
 MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
@@ -115,12 +123,14 @@ struct {
   { "Closing door",         LED::LED_ON,           MAXMOVE_DELAY, WAITINGFORCARD, 0 },
 };
 
+enum { SILENT, LEAVE, CHECK } buzz, lastbuzz;
+unsigned long lastbuzchange = 0;
 
 unsigned long laststatechange = 0, lastReport = 0;
 static machinestates_t laststate = OUTOFORDER;
 machinestates_t machinestate = BOOTING;
 
-unsigned long opening_door_count  = 0, door_denied_count = 0;
+unsigned long opening_door_count  = 0, door_denied_count = 0, swipeouts_count = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -136,6 +146,11 @@ void setup() {
   };
   stepper.disableOutputs();
 
+  pinMode(DOOR_SENSOR, INPUT_PULLUP);
+
+  ledcSetup(BUZ_CHANNEL, 2000, 8);
+  ledcAttachPin(BUZZER_GPIO, BUZ_CHANNEL);
+
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
@@ -146,17 +161,20 @@ void setup() {
   node.onDisconnect([]() {
     Log.println("Disconnected");
     machinestate = NOCONN;
+
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
     machinestate = WAITINGFORCARD;
   });
   node.onApproval([](const char * machine) {
+    Debug.println("Got approve");
     if (machinestate < START_OPEN)
       machinestate = START_OPEN;
     opening_door_count++;
   });
   node.onDenied([](const char * machine) {
+    Debug.println("Got denied");
     machinestate = REJECTED;
     door_denied_count ++;
   });
@@ -167,12 +185,47 @@ void setup() {
     report["door_denied_count"] = door_denied_count;
     report["state"] = state[machinestate].label;
     report["opens"] = opening_door_count;
+    report["swipeouts"] = swipeouts_count;
 
 #ifdef OTA_PASSWD
     report["ota"] = true;
 #else
     report["ota"] = false;
 #endif
+  });
+
+  reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t {
+
+    // special case of the someone is leaving swipe; technically
+    // we sent this as an 'ok to leave' sort of request; so the privacy
+    // of the tag/user is preserved on the wire.
+    //
+    // We expect the door to not be in the opening process; but we do
+    // allow a swipe post opening - e.g. when some-one holds the door
+    // open als someone comes in.
+    //
+    if ((machinestate == WAITINGFORCARD || machinestate >= OPEN) && digitalRead(DOOR_SENSOR) == DOOR_IS_OPEN)
+    {
+      Debug.printf("Detected a leave; sent tag to master.\n");
+
+      node.request_approval(tag, "leave", NULL, false);
+      swipeouts_count++;
+      buzz = LEAVE;
+      return ACBase::CMD_CLAIMED;
+    }
+
+    // avoid swithing messing with the door open process
+    if (machinestate > CHECKINGCARD) {
+      Debug.printf("Ignoring a normal swipe - as we're still in some open process.");
+      return ACBase::CMD_CLAIMED;
+    }
+
+    // We'r declining so that the core library handle sending
+    // an approval request, keep state, and so on.
+    //
+    Debug.printf("Detected a normal swipe.\n");
+    buzz = CHECK;
+    return ACBase::CMD_DECLINE;
   });
 
 
@@ -199,9 +252,43 @@ void setup() {
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
 
+void buzzer_loop() {
+  if (buzz != lastbuzz) {
+    switch (buzz) {
+      case CHECK:
+        ledcSetup(BUZ_CHANNEL, 2000, 8);
+        ledcWrite(BUZ_CHANNEL, 127);
+        break;
+      case LEAVE:
+        ledcSetup(BUZ_CHANNEL, 1000, 8);
+        ledcWrite(BUZ_CHANNEL, 127);
+        break;
+      case SILENT:
+      default:
+        ledcWrite(BUZ_CHANNEL, 0);
+        break;
+    };
+    lastbuzchange = millis();
+    lastbuzz = buzz;
+  };
+  if (millis() - lastbuzchange > 333)
+    buzz = SILENT;
+}
+
 void loop() {
   node.loop();
   stepper.run();
+  buzzer_loop();
+
+  if (laststate != machinestate) {
+    Debug.printf("Changed from state <%s> to state <%s>\n",
+                 state[laststate].label, state[machinestate].label);
+
+    state[laststate].timeInState += (millis() - laststatechange) / 1000;
+    laststate = machinestate;
+    laststatechange = millis();
+    return;
+  }
 
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
@@ -213,17 +300,9 @@ void loop() {
 
     Log.printf("Time-out; transition from <%s> to <%s>\n",
                state[laststate].label, state[machinestate].label);
+    return;
   };
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
-
-    state[laststate].timeInState += (millis() - laststatechange) / 1000;
-    laststate = machinestate;
-    laststatechange = millis();
-
-  }
   if (state[machinestate].autoReportCycle && \
       millis() - laststatechange > state[machinestate].autoReportCycle && \
       millis() - lastReport > state[machinestate].autoReportCycle)

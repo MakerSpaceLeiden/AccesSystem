@@ -40,6 +40,7 @@ class RFID : public ACBase {
     RFID(const byte sspin = RFID_SELECT_PIN, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN, 
 	 const byte spiclk = RFID_CLK_PIN, const byte spimiso = RFID_MISO_PIN, const byte spimosi = RFID_MOSI_PIN
     );
+    RFID(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN);
 
     void begin();
     void loop();
@@ -54,6 +55,7 @@ class RFID : public ACBase {
   private:
     bool _irqMode = false;
     MFRC522_SPI * _spiDevice;
+    MFRC522_I2C * _i2cDevice;
     MFRC522 * _mfrc522;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
 

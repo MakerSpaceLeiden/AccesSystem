@@ -153,7 +153,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
         WiFi.mode(WIFI_STA);
     } else
     if (_ssid) {
-        Serial.printf("Starting up wifi (hardcoded SSID <%s>)\n", _ssid);
+        Serial.printf("Starting up wifi (hardcoded SSID <%s>,<%s>)\n", _ssid,_ssid_passwd);
         WiFi.begin(_ssid, _ssid_passwd);
     } else {
         Serial.println("Staring wifi auto connect.");
@@ -161,15 +161,18 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
         wifiManager.autoConnect();
     };
     
-    const int del = 10; // seconds.
     
     // Try up to del seconds to get a WiFi connection; and if that fails; reboot
     // with a bit of a delay.
     //
+    const int del = 10; // seconds.
     unsigned long start = millis();
+    Serial.print("Connecting..");
     while (!isConnected() && (millis() - start < del * 1000)) {
-        delay(100);
+        delay(500);
+	Serial.print(",");
     };
+    Serial.println("Connected.");
     
     if (!_wired && !isConnected()) {
         // Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
@@ -194,7 +197,6 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     configBegin();
 #endif
     configureMQTT();
-  
  
     switch(_proto) {
     case PROTO_MSL:
@@ -267,7 +269,7 @@ char * ACNode::cloak(char * tag) {
     return NULL;
 }
 
-void ACNode::request_approval(const char * tag, const char * operation, const char * target) { 
+void ACNode::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) { 
 	if (tag == NULL) {
 		Log.println("invalid tag==NULL passed, approval request not sent");
 		return;
@@ -279,7 +281,9 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 		target = machine;
 
         strncpy(_lasttag, tag, sizeof(_lasttag));
-	if (_approved_callback && checkCache(_lasttag)) {
+        // Shortcircuit if permitted. Otherwise do the real thing. Note that our cache is primitive
+        // just tags - not commands or node/devices.
+	if (_approved_callback && useCacheOk && checkCache(_lasttag)) {
                 _approved_callback(machine);
 	};
 
@@ -351,10 +355,13 @@ void ACNode::loop() {
 
 		out[ "maxMqtt" ] = MAX_MSG;
 
-		out[ "id" ] = chipId();
-                out[ "ip" ] = String(localIP().toString()).c_str();
+		char chipstr[30]; strncpy(chipstr,chipId().c_str(),sizeof(chipstr));
+		out[ "id" ] = chipstr;
+		char ipstr[30]; strncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
+                out[ "ip" ] = ipstr;
                 out[ "net" ] = _wired ? "UTP" : "WiFi";
-  		out[ "mac" ] = macAddressString();
+ 		char macstr[30]; strncpy(macstr, macAddressString().c_str(),sizeof(macstr));
+  		out[ "mac" ] = macstr;
 
 		out[ "beat" ] = beatCounter;
 

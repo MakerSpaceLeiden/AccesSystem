@@ -15,6 +15,10 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
+#ifdef ESP32
+#error Remember -- this is an ESP8662 
+#endif
+
 #define AART_LED           (15) // Red LED, next to power on LED.
 #define OPTO1              (13) // Two diode PC417 that checks if there is AC.
 
@@ -125,8 +129,8 @@ void setup() {
 
   // node.set_debug(true);
   // node.set_debugAlive(true);
-  node.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  node.begin();
 }
 
 void loop() {
@@ -156,7 +160,8 @@ void loop() {
     laststate = machinestate;
     machinestate = state[machinestate].failStateOnTimeout;
     Debug.printf("Time-out; transition from %s to %s\n",
-                 state[laststate].label, state[machinestate].label);
+               state[laststate].label, state[machinestate].label);
+    return;
   };
 
   aartLed.set(state[machinestate].ledState);

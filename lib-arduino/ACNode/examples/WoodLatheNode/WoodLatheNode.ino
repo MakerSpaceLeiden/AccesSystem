@@ -228,7 +228,7 @@ void setup() {
   Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
   // We only sent the very low level debugging to syslog.
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
 #if 1
   // As the PoE devices have their own grounding - the cannot readily be connected
