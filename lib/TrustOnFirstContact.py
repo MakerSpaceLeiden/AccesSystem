@@ -135,7 +135,7 @@ class TrustOnFirstContact(Beat.Beat):
 
          (node,bs64pubkey) = line.split();
          self.pubkeys[ node ] = ed25519.VerifyingKey(bs64pubkey, encoding="base64")
-      self.logger.info("Read {} TOFU keys from {}.".format(len(self.pubkeys), self.cnf.trustdb))
+      self.logger.debug("Read {} TOFU keys from {}.".format(len(self.pubkeys), self.cnf.trustdb))
       return True
     except FileNotFoundError:
       self.logger.critical("Could not find trustdb file {} (did you create it with 'touch')".
