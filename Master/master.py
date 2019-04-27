@@ -169,7 +169,6 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
           extra_msg = ' but know that the Mysql database gave an error ({})'.format(str(e))
 
     if v:
-          ok = True
           found = True
     elif tag in self.userdb:
         email = self.userdb[tag]['email'];
@@ -293,6 +292,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
            cursor.execute(SQL3,[tag])
            for line in cursor.fetchall():
                self.recordTag(line[4])
+               self.send_email("{} {} denied XS to {}".format(line[1],line[2], machine),"Tag denied - potential leak")
                return { 'ok': False, 'userid': line[0], 'name': "{} {}".format(line[1],line[2]), 'email': line[3], 'machine': machine, 'first_name': line[1], 'last_name': line[2], 'type': 'event'  }
 
         except Exception as e:
