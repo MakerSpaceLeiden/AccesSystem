@@ -58,6 +58,7 @@ typedef enum {
   WAITINGFORCARD,           // waiting for card.
   CHECKINGCARD,
   REJECTED,
+  THANKS,
 } machinestates_t;
 
 #define NEVER (0)
@@ -70,7 +71,7 @@ struct {
   unsigned long timeInState;
   unsigned long timeoutTransitions;
   unsigned long autoReportCycle;
-} state[REJECTED + 1] =
+} state[] =
 {
   { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
   { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT,         5 * 60 * 1000 },
@@ -78,6 +79,8 @@ struct {
   { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD, 5 * 60 * 1000 },
   { "No network",           LED::LED_FLASH,                NEVER, NOCONN,         0 },
   { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD, 0 },
+  { "Unknown card ?!",      LED::LED_IDLE,              5 * 1000, WAITINGFORCARD, 0 },
+  { "Thanks. Bye Now !",    LED::LED_IDLE,              5 * 1000, WAITINGFORCARD, 0 },
 };
 
 
@@ -115,10 +118,12 @@ void setup() {
     machinestate = WAITINGFORCARD;
   });
   node.onApproval([](const char * machine) {
-    Debug.println("Got approve - ignored");
+    Log.println("Got approve - thanks");
+    machinestate = THANKS;
   });
   node.onDenied([](const char * machine) {
-    Debug.println("Got denied - ignored");
+    Log.println("Got denied - eh !?");
+    machinestate = REJECTED;
   });
 
   node.onReport([](JsonObject  & report) {
@@ -212,6 +217,7 @@ void loop() {
     case WAITINGFORCARD:
     case CHECKINGCARD:
     case REJECTED:
+    case THANKS:
       // all handled in above stage engine.
       break;
   };
