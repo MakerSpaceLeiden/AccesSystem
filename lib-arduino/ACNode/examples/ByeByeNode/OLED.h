@@ -118,6 +118,10 @@ class OLED : public ACBase {
       loop(true);
     }
 
+    void operator=(const char * str) {
+      setText(str);
+    }
+
     void loop() {
       loop(false);
     }

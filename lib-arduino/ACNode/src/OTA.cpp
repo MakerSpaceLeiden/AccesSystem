@@ -49,6 +49,10 @@ void OTA::begin() {
   Debug.println("OTA Enabled");
 }
 
+void OTA::report(JsonObject& report) {
+  report["ota"] = true;
+}
+
 void OTA::loop() {
   ArduinoOTA.handle();
 }

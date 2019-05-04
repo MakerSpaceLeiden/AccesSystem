@@ -17,10 +17,17 @@ class MachineState : public ACBase {
     typedef std::function<void(machinestates_t oldState, machinestates_t newState)> THandlerFunction_OnChangeCB; // in & out
     typedef std::function<void(machinestates_t currentState)> THandlerFunction_OnTimeoutCB;
 
+    static const machinestates_t BOOTING = 1,                  /* Startup state */
+                                 OUTOFORDER = 2,               /* device not functional.  */
+                                 REBOOT = 3,                   /* forcefull reboot  */
+                                 TRANSIENTERROR = 4,           /* hopefully goes away level error  */
+                                 NOCONN = 5,                   /* sort of fairly hopless (though we can cache RFIDs!)  */
+                                 WAITINGFORCARD = 6,           /* waiting for card. */
+                                 CHECKINGCARD = 7;             /* checkeing card. with server */
+
   private:
     unsigned long laststatechange, lastReport;
     typedef struct {
-      uint8_t state;
       const char * label;                   /* name of this state */
       LED::led_state_t ledState;            /* flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1. */
       time_t maxTimeInMilliSeconds;         /* how long we can stay in this state before we timeout. */
@@ -53,7 +60,6 @@ class MachineState : public ACBase {
         bcopy(dflt, s, sizeof(state_t));
       else
         bzero(s, sizeof(state_t));
-      s->state = state;
 
       _state2stateStruct[state] = s;
       return s;
@@ -79,10 +85,6 @@ class MachineState : public ACBase {
       machinestate = s;
     }
 
-    void report(JsonObject& report) {
-      report["state"] = label();
-    }
-
     void setOnLoopCallback(uint8_t state, THandlerFunction_OnLoopCB onLoopCB) {
       state_t *s = _state2stateStruct[state];
       if (s == NULL) s = _initState(state, NULL);
@@ -101,57 +103,58 @@ class MachineState : public ACBase {
       s->onTimeoutCB = onTimeoutCB;
     };
 
-    static const machinestates_t BOOTING = 1,                  /* Startup state */
-                                 OUTOFORDER = 2,               /* device not functional.  */
-                                 REBOOT = 3,                   /* forcefull reboot  */
-                                 TRANSIENTERROR = 4,           /* hopefully goes away level error  */
-                                 NOCONN = 5,                   /* sort of fairly hopless (though we can cache RFIDs!)  */
-                                 WAITINGFORCARD = 6,           /* waiting for card. */
-                                 CHECKINGCARD = 7;             /* checkeing card. with server */
 
-    void begin() {
-    };
+    uint8_t addState(const char * label, machinestate_t nextstate) {
+      return addState((state_t) {
+        label, LED::LED_ERROR, 5 * 10000, nextstate, 0, 0, 0, NULL, NULL, NULL
+      });
+    }
+
+    uint8_t addState(const char * label, time_t timeout, machinestate_t nextstate) {
+      return addState((state_t) {
+        label, LED::LED_ERROR, timeout, nextstate, 0, 0, 0, NULL, NULL, NULL
+      });
+    }
+
+    uint8_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate) {
+      return addState((state_t) {
+        label, ledState, timeout, nextstate, 0, 0, 0, NULL, NULL, NULL
+      });
+    }
 
     MachineState() {
       _initState(WAITINGFORCARD,
       (state_t) {
-        0,
-        "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD, 0,             0, 0,
+        "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD , 0,             0, 0,
         NULL, NULL, NULL
       });
       _initState(REBOOT,
       (state_t) {
-        0,
         "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT,         0,             0, 0,
         NULL, NULL, NULL
       });
       _initState(BOOTING,
       (state_t) {
-        0,
         "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT,         0 ,            0, 0,
         NULL, NULL, NULL
       });
       _initState(OUTOFORDER,
       (state_t) {
-        0,
         "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT,         5 * 60 * 1000, 0, 0,
         NULL, NULL, NULL
       });
       _initState(TRANSIENTERROR,
       (state_t) {
-        0,
         "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD, 5 * 60 * 1000, 0, 0,
         NULL, NULL, NULL
       });
       _initState(NOCONN,
       (state_t) {
-        0,
         "No network",           LED::LED_FLASH,                NEVER, NOCONN,         0,             0, 0,
         NULL, NULL, NULL
       });
       _initState(CHECKINGCARD,
       (state_t) {
-        0,
         "Checking",             LED::LED_IDLE,             10 * 1000, WAITINGFORCARD, 0,             0, 0,
         NULL, NULL, NULL
       });
@@ -160,24 +163,23 @@ class MachineState : public ACBase {
       machinestate = BOOTING;
     };
 
+    // ACBase - standard handlers.
+    //
+    void begin() {
+      // register reboot 'late' -- so we know we're through as much init complexity
+      // and surprises as possible.
+      //
+      setOnLoopCallback(REBOOT, [](MachineState::machinestates_t s) -> void {
+        _acnode->delayedReboot();
+      });
+    };
+
+    void report(JsonObject& report) {
+      report["state"] = label();
+    }
+
     void loop()
     {
-#if 1
-      { static time_t l = 0; static int mx = 3;
-        if (mx && (millis() - l > 30 * 1000)) {
-          l = millis();
-          mx--;
-          for (uint8_t i = 0; i < 16; i++) {
-            Debug.printf("%3d: %3d - %s --> %d\n", i,
-            _state2stateStruct[i] ? _state2stateStruct[i]->state : -1,
-            _state2stateStruct[i] &&  _state2stateStruct[i]->label ? _state2stateStruct[i]->label : "<0>",
-            _state2stateStruct[i] ? _state2stateStruct[i]->failStateOnTimeout : -1
-                        );
-          };
-        };
-        Debug.printf("Current State: %d\n======\n\n\n", machinestate);
-      };
-#endif
       if (laststate != machinestate) {
         Debug.printf("Changed from state <%s> to state <%s>\n",
                      _state2stateStruct[laststate]->label, _state2stateStruct[machinestate]->label);
@@ -234,24 +236,6 @@ class MachineState : public ACBase {
       Debug.println("BUG -- More than 254 active states ?");
       return 255;
     };
-
-
-    uint8_t addState(const char * label, machinestate_t nextstate) {
-      return addState((state_t) {
-        0, label, LED::LED_ERROR, 5 * 10000, nextstate, 0, 0, 0, NULL, NULL, NULL
-      });
-    }
-    uint8_t addState(const char * label, time_t timeout, machinestate_t nextstate) {
-      return addState((state_t) {
-        0, label, LED::LED_ERROR, timeout, nextstate, 0, 0, 0, NULL, NULL, NULL
-      });
-    }
-
-    uint8_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate) {
-      return addState((state_t) {
-        0, label, ledState, timeout, nextstate, 0, 0, 0, NULL, NULL, NULL
-      });
-    }
 
 };
 

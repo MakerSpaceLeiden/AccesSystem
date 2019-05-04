@@ -74,22 +74,24 @@ void setup() {
   BYEBYE = machinestate.addState("Thanks !", LED::LED_IDLE, 1 * 1000, machinestate.WAITINGFORCARD);
   REJECTED = machinestate.addState("Euh?!", LED::LED_ERROR, 3 * 1000, machinestate.WAITINGFORCARD);
 
+  // Update the display whenever we enter into a new state.
+  //
   machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestates_t last, MachineState::machinestates_t current) -> void {
-    oled.setText(machinestate.label());
+    oled = machinestate.label();
   });
 
   node.onConnect([]() {
     Log.println("Connected");
-    machinestate = machinestate.WAITINGFORCARD;
+    machinestate = MachineState::WAITINGFORCARD;
   });
   node.onDisconnect([]() {
     Log.println("Disconnected");
-    machinestate = machinestate.NOCONN;
+    machinestate = MachineState::NOCONN;
 
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
-    machinestate = machinestate.WAITINGFORCARD;
+    machinestate = MachineState::WAITINGFORCARD;
   });
 
   node.onApproval([](const char * machine) {
@@ -102,24 +104,13 @@ void setup() {
 
   node.onReport([](JsonObject  & report) {
     report["swipeouts"] = swipeouts_count;
-
-#ifdef OTA_PASSWD
-    report["ota"] = true;
-#else
-    report["ota"] = false;
-#endif
   });
-
 
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t {
     node.request_approval(tag, "leave", NULL, false);
+    oled = "...";
     swipeouts_count++;
     return ACBase::CMD_CLAIMED;
-  });
-
-  machinestate.setOnLoopCallback(machinestate.REBOOT, [](MachineState::machinestates_t s) -> void {
-    // Log.println("Called - reboot state");
-    // node.delayedReboot();
   });
 
   // This reports things such as FW version of the card; which can 'wedge' it. So we
@@ -141,7 +132,7 @@ void setup() {
   // node.set_debugAlive(true);
   node.begin(BOARD_OLIMEX); // OLIMEX
 
-  oled.setText("booting...");
+  oled = "booting...";
 
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
