@@ -15,17 +15,24 @@
    limitations under the License.
 */
 // #include <PowerNodeV11.h> -- this is an olimex board.
+
 #include <ACNode.h>
 #include <RFID.h>
 #include "OLED.h"
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
+#include "state.h"
+
+
+#include "acmerootcert.h"
 
 #define MACHINE             "byebye"
 
+const uint8_t I2C_SDA_PIN = 13; // i2c SDA Pin, ext 2, pin 10
+const uint8_t I2C_SCL_PIN = 16; // i2c SCL Pin, ext 2, pin 7
 
-const uint8_t I2C_SDA_PIN = 13; //SDA;  // i2c SDA Pin, ext 2, pin 10
-const uint8_t I2C_SCL_PIN = 16; //SCL;  // i2c SCL Pin, ext 2, pin 7
-
-const uint8_t mfrc522_rfid_i2c_addr = 0x28;
+const uint8_t mfrc522_rfid_i2c_addr = 0x28; // configured on the reader board itself.
 const uint8_t mfrc522_rfid_i2c_irq = 4;   // Ext 1, pin 10
 const uint8_t mfrc522_rfid_i2c_reset = 5; // Ext 1, pin  9
 
@@ -35,58 +42,20 @@ const uint8_t PUSHBUTTON_GPIO =  1; // Ext 1, pin 6
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 ACNode node = ACNode(MACHINE);
 
-TwoWire i2cBus = TwoWire(0);
+TwoWire i2cBus = TwoWire((uint8_t)0);
 
 RFID reader = RFID(&i2cBus, mfrc522_rfid_i2c_addr, mfrc522_rfid_i2c_reset, mfrc522_rfid_i2c_irq);
-
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
-
 OLED oled = OLED();
+OTA ota = OTA(OTA_PASSWD);
 
 MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
-#ifdef OTA_PASSWD
-OTA ota = OTA(OTA_PASSWD);
-#endif
+MachineState machinestate = MachineState();
+MachineState::machinestates_t BYEBYE, REJECTED;
 
-typedef enum {
-  BOOTING, OUTOFORDER,      // device not functional.
-  REBOOT,                   // forcefull reboot
-  TRANSIENTERROR,           // hopefully goes away level error
-  NOCONN,                   // sort of fairly hopless (though we can cache RFIDs!)
-  WAITINGFORCARD,           // waiting for card.
-  CHECKINGCARD,
-  REJECTED,
-  THANKS,
-} machinestates_t;
-
-#define NEVER (0)
-
-struct {
-  const char * label;                   // name of this state
-  LED::led_state_t ledState;            // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
-  time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
-  machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
-  unsigned long timeInState;
-  unsigned long timeoutTransitions;
-  unsigned long autoReportCycle;
-} state[] =
-{
-  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
-  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT,         5 * 60 * 1000 },
-  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
-  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD, 5 * 60 * 1000 },
-  { "No network",           LED::LED_FLASH,                NEVER, NOCONN,         0 },
-  { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD, 0 },
-  { "Unknown card ?!",      LED::LED_IDLE,              5 * 1000, WAITINGFORCARD, 0 },
-  { "Thanks. Bye Now !",    LED::LED_IDLE,              5 * 1000, WAITINGFORCARD, 0 },
-};
-
-
-unsigned long laststatechange = 0, lastReport = 0, swipeouts_count = 0;
-static machinestates_t laststate = OUTOFORDER;
-machinestates_t machinestate = BOOTING;
+unsigned long swipeouts_count = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -96,40 +65,42 @@ void setup() {
   pinMode(PUSHBUTTON_GPIO, INPUT_PULLUP);
   aartLed.set(LED::LED_FAST);
 
+  // i2C Setup for OLED and RFID
   i2cBus.begin(I2C_SDA_PIN, I2C_SCL_PIN); // , 50000);
-
-  oled.setup();
-  oled.setText("boot...");
 
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
+  BYEBYE = machinestate.addState("Thanks !", LED::LED_IDLE, 1 * 1000, machinestate.WAITINGFORCARD);
+  REJECTED = machinestate.addState("Euh?!", LED::LED_ERROR, 3 * 1000, machinestate.WAITINGFORCARD);
+
+  machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestates_t last, MachineState::machinestates_t current) -> void {
+    oled.setText(machinestate.label());
+  });
+
   node.onConnect([]() {
     Log.println("Connected");
-    machinestate = WAITINGFORCARD;
+    machinestate = machinestate.WAITINGFORCARD;
   });
   node.onDisconnect([]() {
     Log.println("Disconnected");
-    machinestate = NOCONN;
+    machinestate = machinestate.NOCONN;
 
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
-    machinestate = WAITINGFORCARD;
+    machinestate = machinestate.WAITINGFORCARD;
   });
+
   node.onApproval([](const char * machine) {
-    Log.println("Got approve - thanks");
-    machinestate = THANKS;
+    machinestate = BYEBYE;
   });
+
   node.onDenied([](const char * machine) {
-    Log.println("Got denied - eh !?");
     machinestate = REJECTED;
   });
 
   node.onReport([](JsonObject  & report) {
-    report["state"] = state[machinestate].label;
-
-    report["state"] = state[machinestate].label;
     report["swipeouts"] = swipeouts_count;
 
 #ifdef OTA_PASSWD
@@ -139,10 +110,16 @@ void setup() {
 #endif
   });
 
+
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t {
     node.request_approval(tag, "leave", NULL, false);
     swipeouts_count++;
     return ACBase::CMD_CLAIMED;
+  });
+
+  machinestate.setOnLoopCallback(machinestate.REBOOT, [](MachineState::machinestates_t s) -> void {
+    // Log.println("Called - reboot state");
+    // node.delayedReboot();
   });
 
   // This reports things such as FW version of the card; which can 'wedge' it. So we
@@ -150,9 +127,9 @@ void setup() {
   //
   reader.set_debug(false);
   node.addHandler(&reader);
-#ifdef OTA_PASSWD
+  node.addHandler(&oled);
   node.addHandler(&ota);
-#endif
+  node.addHandler(&machinestate);
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
@@ -162,64 +139,67 @@ void setup() {
 
   // node.set_debug(true);
   // node.set_debugAlive(true);
-  node.begin(BOARD_OLIMEX);
+  node.begin(BOARD_OLIMEX); // OLIMEX
+
+  oled.setText("booting...");
 
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
 
-void loop() {
-  node.loop();
-  oled.loop();
+#if 0
+void fetchAndUpdateState() {
+  WiFiClientSecure *client = new WiFiClientSecure;
+  if (!client) {
+    Log.println("Failed to client for fetch of state from server.");
+    return;
+  };
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
+  client->setCACert(rootCACertificate);
 
-    state[laststate].timeInState += (millis() - laststatechange) / 1000;
-    laststate = machinestate;
-    laststatechange = millis();
-    oled.setText(state[machinestate].label);
+  HTTPClient https;
+  if (!https.begin(*client, CRM_SPACE_URL "/api/v1/info" )) {
+    Log.println("Failed to create fetch of state from server.");
     return;
   }
 
-  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
-  {
-    state[machinestate].timeoutTransitions++;
+#ifdef CRM_SPACE_BEARER_TOKEN
+  https.addHeader("Authorization", "Bearer " CRM_SPACE_BEARER_TOKEN);
+#endif
 
-    laststate = machinestate;
-    machinestate = state[machinestate].failStateOnTimeout;
+  int httpCode = https.GET();
 
-    Log.printf("Time-out; transition from <%s> to <%s>\n",
-               state[laststate].label, state[machinestate].label);
+  if (httpCode != 200) {
+    Log.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
     return;
   };
 
-  if (state[machinestate].autoReportCycle && \
-      millis() - laststatechange > state[machinestate].autoReportCycle && \
-      millis() - lastReport > state[machinestate].autoReportCycle)
-  {
-    Log.printf("State: %s now for %lu seconds", state[laststate].label, (millis() - laststatechange) / 1000);
-    lastReport = millis();
-  };
+  String payload = https.getString();
 
-  switch (machinestate) {
-    case BOOTING:
-    case OUTOFORDER:
-    case TRANSIENTERROR:
-    case NOCONN:
-      break;
+  StaticJsonBuffer<200> jsonBuffer;
+  JsonObject& root = jsonBuffer.parseObject(json);
+  if (!root.success()) {
+    Serial.println("Parse of state-json failed");
+    return;
+  }
 
-    case REBOOT:
-      node.delayedReboot();
-      break;
+  /* {
+     "machines" : [
+        "Main room lights", "Woodlathe"
+     ],
+     "members" : [
+        "Peter", "Petra,
+     ],
+     "lights" : []
+    }
+  */
+  oled.setText(payload.c_str());
 
-    case WAITINGFORCARD:
-    case CHECKINGCARD:
-    case REJECTED:
-    case THANKS:
-      // all handled in above stage engine.
-      break;
-  };
+  https.end();
+  return;
+}
+#endif
+
+void loop() {
+  node.loop();
 }
 

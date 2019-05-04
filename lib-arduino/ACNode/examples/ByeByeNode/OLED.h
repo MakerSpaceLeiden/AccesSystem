@@ -14,7 +14,7 @@
     persun -- small person
     lamp
     machine
-    
+
 */
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -22,6 +22,9 @@
 
 #include <Fonts/FreeSans24pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
+
+#include <ACNode-private.h>
+#include <ACBase.h>
 
 static const unsigned char PROGMEM persun[] = {
   B00111000,
@@ -57,14 +60,14 @@ static const unsigned char PROGMEM machine[] = {
   B11111111,
 };
 
-
 #define SPEED         72 // pixels/second
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
+#define SCREEN_I2C_ADDR 0x3C
 
-class OLED {
+class OLED : public ACBase {
   private:
-    const uint8_t oled_sd1306_i2c_addr =  0x3C;
+    const uint8_t oled_sd1306_i2c_addr = SCREEN_I2C_ADDR;
     int _speed = SPEED;
     int16_t x = 0;
     int16_t y = 52; // slighty above the middle - as G's stick out.
@@ -75,12 +78,20 @@ class OLED {
     Adafruit_SSD1306 * _display;
 
   public:
+    const char * name() {
+      return "OLED";
+    }
+
     OLED() {};
 
-    void setup() {
+    void begin() {
       _display = new Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1 /* no reset */);
       _display->begin(SSD1306_SWITCHCAPVCC, oled_sd1306_i2c_addr);
       for (int i = 0; i < 12; i++) _icons[i] = NULL;
+    }
+
+    void report(JsonObject& report) {
+     report["oled_text"] = buff; 
     }
 
     void setSpeed(int speed) {
@@ -105,6 +116,10 @@ class OLED {
       _display->getTextBounds(buff, 0, 0, &bbx_text_x, &bbx_text_y, &w, &h);
       x = 0;
       loop(true);
+    }
+
+    void loop() {
+      loop(false);
     }
 
     void loop(bool force = false) {
