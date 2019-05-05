@@ -60,7 +60,7 @@ static const unsigned char PROGMEM machine[] = {
   B11111111,
 };
 
-#define SPEED         72 // pixels/second
+#define SPEED        144 // pixels/second
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define SCREEN_I2C_ADDR 0x3C

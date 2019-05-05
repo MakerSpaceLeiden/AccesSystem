@@ -71,8 +71,8 @@ void setup() {
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  BYEBYE = machinestate.addState("Thanks !", LED::LED_IDLE, 1 * 1000, machinestate.WAITINGFORCARD);
-  REJECTED = machinestate.addState("Euh?!", LED::LED_ERROR, 3 * 1000, machinestate.WAITINGFORCARD);
+  BYEBYE = machinestate.addState("Thanks & bye now !", LED::LED_IDLE, 5 * 1000, machinestate.WAITINGFORCARD);
+  REJECTED = machinestate.addState("Euh?!", LED::LED_ERROR, 5 * 1000, machinestate.WAITINGFORCARD);
 
   // Update the display whenever we enter into a new state.
   //
@@ -108,7 +108,7 @@ void setup() {
 
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t {
     node.request_approval(tag, "leave", NULL, false);
-    oled = "...";
+    machinestate = MachineState::CHECKINGCARD;
     swipeouts_count++;
     return ACBase::CMD_CLAIMED;
   });

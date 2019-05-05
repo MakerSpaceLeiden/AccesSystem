@@ -36,11 +36,9 @@ class MachineState : public ACBase {
       unsigned long timeoutTransitions;
       unsigned long autoReportCycle;
 
-      // Callbacks
       THandlerFunction_OnLoopCB onLoopCB;
       THandlerFunction_OnChangeCB onChangeCB;
       THandlerFunction_OnTimeoutCB onTimeoutCB;
-      // Should we have a prepeare report ?
     } state_t;
     state_t * _state2stateStruct[256];
 
@@ -155,7 +153,7 @@ class MachineState : public ACBase {
       });
       _initState(CHECKINGCARD,
       (state_t) {
-        "Checking",             LED::LED_IDLE,             10 * 1000, WAITINGFORCARD, 0,             0, 0,
+        "Checking card...",             LED::LED_IDLE,             10 * 1000, WAITINGFORCARD, 0,             0, 0,
         NULL, NULL, NULL
       });
 
