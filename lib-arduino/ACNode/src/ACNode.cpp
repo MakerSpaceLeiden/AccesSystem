@@ -255,7 +255,7 @@ char * ACNode::cloak(char * tag) {
             case ACSecurityHandler::PASS:
                 break;
             case ACSecurityHandler::OK:
-		Debug.printf("%s -> %s cloaked by %s\n", tag, q.tag, (*it)->name());
+		Debug.printf("%s -> %s cloaked by %s\n", "*****", q.tag, (*it)->name());
     		strncpy(tag, q.tag, MAX_MSG);
 		return tag;
                 break;
@@ -295,7 +295,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	};
 
 	Debug.printf("Requesting approval for %s at node %s on machine %s by tag %s\n", 
-		operation ? operation : "<null>", moi ? moi: "<null>", operation ? operation : "<null>", tag ? tag : "<null>");
+		operation ? operation : "<null>", moi ? moi: "<null>", operation ? operation : "<null>", tag ? "*****" : "<null>");
 
         char buff[MAX_MSG];
 	snprintf(buff,sizeof(buff),"%s %s %s %s", operation, moi, target, tmp);
