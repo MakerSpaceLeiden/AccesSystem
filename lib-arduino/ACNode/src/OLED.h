@@ -17,6 +17,9 @@
 
 */
 #include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
 #include <ACBase.h>
 
 #define OLED_DEFAULT_SPEED        144 // pixels/second
@@ -38,14 +41,14 @@ class OLED : public ACBase {
     char buff[128];
     Adafruit_SSD1306 * _display;
     const uint8_t _width,_height;
-    void oled_loop(bool force = false) {
+    void oled_loop(bool force = false);
 
   public:
     const char * name();
     OLED(
 	const uint8_t width = OLED_DEFAULT_SCREEN_WIDTH, 
 	const uint8_t height = OLED_DEFAULT_SCREEN_WIDTH
-	) : _width(width), _height(height);
+	) : _width(width), _height(height) {};
 
     void begin(
 	const uint8_t i2c_addr = OLED_DEFAULT_SCREEN_I2C_ADDR, 
@@ -53,9 +56,10 @@ class OLED : public ACBase {
     );
 
     void report(JsonObject& report);
+
     void setSpeed(int speed);
     void setIcon(int slot, const unsigned char *icon);
-    void setText(const char * s);
 
+    void setText(const char * s);
     void operator=(const char * str);
 };

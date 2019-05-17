@@ -18,22 +18,19 @@
 */
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Fonts/FreeSans24pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
+
 #include <OLED.h>
 
 const char * OLED::name() { return "OLED"; }
-OLED::OLED(
-	const uint8_t width = OLED_DEFAULT_SCREEN_WIDTH, 
-	const uint8_t height = OLED_DEFAULT_SCREEN_WIDTH
-	) : _width(width), _height(height) {};
 
-void OLED::begin(
-	const uint8_t i2c_addr = OLED_DEFAULT_SCREEN_I2C_ADDR, 
-	TwoWire * i2cbus= &Wire
-    ) {
+void OLED::begin( const uint8_t i2c_addr, TwoWire * i2cbus) 
+{
       _display = new Adafruit_SSD1306(_width, _height, i2cbus, -1 /* no reset */);
       _display->begin(SSD1306_SWITCHCAPVCC, i2c_addr);
       for (int i = 0; i < NICONS; i++) _icons[i] = NULL;
-    }
+}
 
 void OLED::report(JsonObject& report) {
      report["oled_text"] = buff; 
@@ -68,7 +65,7 @@ void OLED::operator=(const char * str) {
       setText(str);
     }
 
-void OLED::oled_loop(bool force = false) {
+void OLED::oled_loop(bool force) {
       int dx =  (millis() - _last) * _speed / 1000;
 
       if (!force && dx < 1)

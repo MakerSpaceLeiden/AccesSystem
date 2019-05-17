@@ -25,7 +25,7 @@
 #include "OLED.h"
 #include "MachineState.h"
 
-#include "acmerootcert.h"
+// #include "acmerootcert.h"
 
 #define MACHINE             "byebye"
 
@@ -193,4 +193,3 @@ void fetchAndUpdateState() {
 void loop() {
   node.loop();
 }
-
