@@ -17,20 +17,26 @@
 */
 // Wiring of Power Node v.1.1
 //
-#include <PowerNodeV11.h>
+// #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <ButtonDebounce.h>
 
-#define MACHINE             "test-extract" /* "my name" -- default is 'node-<macaddres>' */
-#define OFF_BUTTON          (SW2_BUTTON)
+#define MACHINE             "ExtractorfanNode" /* "my name" -- default is 'node-<macaddres>' */
+
+// Node MCU has a weird mapping...
+#define LED_GREEN   16 // D0 -- LED inside the on/off toggle switch
+#define LED_ORANGE  5  // D1 -- LED inside the orange, bottom, push button.
+#define RELAY       4  // D2 -- relay (220V, 10A on just the L)
+#define PUSHBUTTON  0  // D3 -- orange push button; 0=pressed, 1=released
+
 #define MAX_IDLE_TIME       (30 * 60 * 1000) // auto power off after 30 minutes of no demand.
 
-//#define OTA_PASSWD          "SomethingSecrit"
-
-// ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
+// NodeMCU on WiFi -- see the wiki.
+//
+ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-ACNode node = ACNode(MACHINE);
+// ACNode node = ACNode(MACHINE);
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);

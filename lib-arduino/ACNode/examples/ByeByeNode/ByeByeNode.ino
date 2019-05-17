@@ -16,14 +16,14 @@
 */
 // #include <PowerNodeV11.h> -- this is an olimex board.
 
-#include <ACNode.h>
-#include <RFID.h>
-#include "OLED.h"
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
-#include "state.h"
 
+#include <ACNode.h>
+#include <RFID.h>
+#include "OLED.h"
+#include "MachineState.h"
 
 #include "acmerootcert.h"
 
