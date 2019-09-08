@@ -82,6 +82,8 @@ machinestates_t machinestate = BOOTING;
 
 unsigned long powered_total = 0, powered_last;
 unsigned long running_total = 0, running_last;
+unsigned long mains_datagrams_seen = 0;
+unsigned long radio_bits_seen  = 0;
 
 MainSensorReceiver msr = MainSensorReceiver(
                            MAINSSENSOR,
@@ -95,7 +97,8 @@ MainSensorReceiver msr = MainSensorReceiver(
       break;
     default:
       Log.printf("Node %04x sent a value I do not understand.", node->id16);
-  }
+  };
+  mains_datagrams_seen++;
 });
 
 void setup() {
@@ -143,6 +146,9 @@ void setup() {
     report["acstate1"] = opto1.state();
     report["acstate2"] = opto2.state();
     report["acstate3"] = opto3.state();
+
+    report["radio_cbs"] = radio_bits_seen;
+    report["mains_datagrams"] = mains_datagrams_seen;
   });
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
@@ -165,9 +171,11 @@ void setup() {
   pinMode(MAINSSENSOR, INPUT);
   msr.setup();
   msr.begin();
+  
 #if 1
   msr.setRawcb([](rmt_data_t * items, size_t len) {
     Log.printf("CB: %d items\n", len);
+    radio_bits_seen++;
 #if 0
     for (int i = 0; i < len; i++) {
       if (items[i].duration0)
