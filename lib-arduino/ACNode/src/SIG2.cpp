@@ -103,7 +103,8 @@ void kickoff_RNG() {
   //    https://github.com/espressif/esp-idf/blob/master/components/esp32/hw_random.c
   //
 #ifdef ESP32
-  RNG.begin(RNG_APP_TAG);
+  // RNG.begin(RNG_APP_TAG);
+  RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
 #else
   // RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
   RNG.begin(RNG_APP_TAG);
