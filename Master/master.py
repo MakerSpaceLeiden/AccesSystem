@@ -28,6 +28,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
   opento = []
   allopento = [] 
   recents = {}
+  xscache = {}
 
   def __init__(self):
     super().__init__()
@@ -56,7 +57,9 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     self.parser.add('--bearer', action='store',
          help='Bearer secret file')
 
-    self.parser.add('--bearer_url', action='store',
+    self.parser.add('--unknown_url', action='store',
+         help='Bearer URL')
+    self.parser.add('--xscheck_url', action='store',
          help='Bearer URL')
 
     super().parseArguments()
@@ -160,7 +163,32 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     found = False
     v = {}
     extra_msg = ''
+    ckey = '{}/{}/{}'.format(target_machine, target_node, tag)
 
+    if self.cnf.bearer and self.cnf.xscheck_url:
+        try:
+          url = "{}/{}".format(self.cnf.xscheck_url, target_machine)
+          r = requests.post(url, data= { 'tag' : tag }, headers = { 'X-Bearer': self.cnf.bearer })
+          if r.status_code == 200:
+               d = r.json()
+               ok = d['access']
+               name = d['name']
+               v = { 'name': name, 'machine': target_machine, 'node': target_node }
+               if ckey in self.xscache.keys():
+                    del self.xscache[ ckey ]
+               if ok:
+                    self.xscache[ ckey ] = name
+          else:
+               self.logger.error("CRM http xs fetch gave a non-200 answer: {}".format(r.status_code))
+               self.logger.debug('URL:{} {} {}'.format(r.url, tag, self.cnf.bearer))
+        except Exception as e:
+            self.logger.info("rest checkDB failed: {}".format(e))
+
+            if ckey in self.xscache.keys():
+                ok = True
+                name = self.xscache[ ckey ]
+                self.logger.log("And using cached result to approve.")
+                v = { 'name': name, 'machine': target_machine, 'node': target_node }
     try:
           v = self.checkDB(target_machine,tag)
           if v:
@@ -182,8 +210,6 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     if not found:
       self.logger.info("Tag {} not found either DB{}; reporting (no deny sent).".format(tag,extra_msg))
       self.rat(msg, tag)
-      if self.cnf.bearer and self.cnf.bearer_url:
-          r = requests.post(self.cnf.bearer_url, data= { 'tag' : tag }, headers = { 'X-Bearer': self.cnf.bearer })
 
       return
 
@@ -196,9 +222,6 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
 
     self.logger.info("Member %s %s action '%s' '%s' on '%s'", v['name'], v['acl'], cmd, target_machine, target_node);
     self.logger.info('JSON={}'.format(json.dumps(v)))
-
-    if cmd == 'leave':
-        return
 
     try:
         msg = "{} {} {} {}".format(v['acl'], cmd, target_machine, msg['theirbeat'])
@@ -214,7 +237,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
        return
 
     dst = []
-    if self.cnf.allopento:
+    if len(self.cnf.allopento):
         dst.extend(self.cnf.allopento)
 
     # Temp hack (famous last words)
@@ -267,6 +290,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
            if not self.cnx:
              self.cnx = mysql.connector.connect(option_files='/usr/local/makerspaceleiden-crm/makerspaceleiden/my.cnf')
              self.cnx.autocommit = True
+             self.logger.info("Re-openend DB during tag fetch.");
 
            cursor = self.cnx.cursor()
            cursor.execute(SQL, (machine,tag))
@@ -333,6 +357,6 @@ except Exception as e:
         msg = "Tacktrace: " + traceback.format_exc()
         master.logger.critical(subject)
         print(msg)
-        master.send_email(msg, subject);
+        master.send_email(msg, subject)
 
 sys.exit(-1)

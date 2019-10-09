@@ -260,7 +260,7 @@ class ACNodeBase:
 
       return None
 
-    if cmd in self.commands:
+    if cmd in self.commands.keys():
         self.logger.debug("Handling command '{}' with {}:{}()".format(cmd,self.commands[cmd].__class__.__name__, self.commands[cmd].__name__))
         try:
             return self.commands[cmd](msg)
