@@ -116,8 +116,8 @@ class Beat(ACNodeBase.ACNodeBase):
     self.beatsseen+=1
 
     if msg['node'] == self.cnf.node:
-       if msg['delta'] > 5:
-          self.logger.critical("My own beat is returned with more than 5 seconds delay (or getting replayed)")
+       if msg['delta'] > 30:
+           self.logger.critical("My own beat is returned with {} seconds delay (or getting replayed)".format(msg['delta']))
        return
 
     if not self.cnf.follower or (msg['delta'] < self.cnf.leeway / 4):

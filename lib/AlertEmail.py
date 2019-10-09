@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.4
 #
 import sys
+import uuid
 
 import smtplib
 import time
@@ -42,32 +43,31 @@ class AlertEmail(ACNode):
 
     super().parseArguments()
 
-  def send_email(self,mailmsg,mailsubject, extra= None):
+  def send_email(self,mailmsg,mailsubject, dst = None):
     if not self.cnf.alertto:
         self.logger.debug("No alert email sent - not configured.")
         return
-  
+ 
     to = self.cnf.alertto
-    if extra:
-        to.extend(extra)
-
-    msg = MIMEText(mailmsg)
+    if dst:
+        to = dst
 
     COMMASPACE = ', '
 
-    msg['Subject'] = self.cnf.alertsubject + ' ' + mailsubject 
-    msg['From'] = 'ACNode ' + self.cnf.node + ' <' + self.cnf.alertfrom + '>'
-    msg['To'] = COMMASPACE.join(to)
-
     s = smtplib.SMTP(self.cnf.smtphost, self.cnf.smtpport)
-
     if self.cnf.smtpuser and self.cnf.smtppasswd:
        s.login(self.cnf.smtpuser, self.cnf.smtppasswd)
 
-    self.logger.debug("AlertEmail: {}: {}".format(msg['Subject'], msg['To']))
-
     # s.sendmail(self.cnf.alertfrom, self.cnf.alertto, msg.as_string())
-    s.send_message(msg)
+    for st in to:
+       msg = MIMEText(mailmsg)
+
+       msg['Subject'] = self.cnf.alertsubject + ' ' + mailsubject 
+       msg['From'] = 'ACNode ' + self.cnf.node + ' <' + self.cnf.alertfrom + '>'
+       msg['Message-ID'] = "{}-{}".format(str(uuid.uuid1()), self.cnf.alertfrom)
+       msg['To'] = st
+       s.send_message(msg) 
+
     s.quit()
 
 if __name__ == "__main__":
