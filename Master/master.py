@@ -20,8 +20,6 @@ import DrumbeatNode as DrumbeatNode
 import AlertEmail as AlertEmail
 import PingNode as PingNode
 
-import mysql.connector
-
 class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNode.PingNode):
   default_subject="[Master ACNode]"
   default_email = None
@@ -90,6 +88,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     # the nodes to do things like wipe a cache, sync time, etc.
     #
     if dstnode == self.cnf.master:
+     if self.cnf.secrets:
        for dstnode in self.cnf.secrets:
           self.announce(dstnode)
        return
@@ -268,79 +267,6 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
        return
 
     return super().cmd_beat(msg);
-
-  def checkDB(self, machine, tag):
-     # Both options are identical from an explain perspective at current DB settings.
-     #
-     SQL ="""select active, members_tag.owner_id, first_name,last_name,email,members_tag.id from acl_entitlement 
-            inner join acl_machine on acl_machine.node_machine_name = %s and acl_machine.requires_permit_id = acl_entitlement.permit_id 
-                    inner join members_tag on members_tag.tag = %s and acl_entitlement.holder_id = members_tag.owner_id 
-                            inner join members_user on members_user.id = members_tag.owner_id"""
-     SQL2 ="""select active, members_tag.owner_id, first_name,last_name,email, members_tag.id  from acl_entitlement 
-            inner join acl_machine on acl_machine.node_machine_name = %s and acl_machine.requires_permit_id = acl_entitlement.permit_id 
-                    inner join members_tag on members_tag.tag like %s and acl_entitlement.holder_id = members_tag.owner_id 
-                            inner join members_user on members_user.id = members_tag.owner_id"""
-
-     SQL3 = """select owner_id, first_name, last_name, email, members_tag.id from members_user, members_tag 
-                          where members_tag.tag = %s and members_tag.owner_id = members_user.id """
-
-     retry = 2
-     while retry >= 0:
-        try:
-           if not self.cnx:
-             self.cnx = mysql.connector.connect(option_files='/usr/local/makerspaceleiden-crm/makerspaceleiden/my.cnf')
-             self.cnx.autocommit = True
-             self.logger.info("Re-openend DB during tag fetch.");
-
-           cursor = self.cnx.cursor()
-           cursor.execute(SQL, (machine,tag))
-           for line in cursor.fetchall():
-             if line[0] == 1:
-                 self.recordTag(line[5])
-                 return { 'ok': True, 'userid': line[1], 'name': "{} {}".format(line[2],line[3]), 'email': line[4], 'machine': machine }
-
-           if len(tag.split('-')) <= 2:
-               return None
-
-           cursor = self.cnx.cursor()
-           cursor.execute(SQL2, (machine,tag+'%'))
-           for line in cursor.fetchall():
-             if line[0] == 1:
-                 self.recordTag(line[5])
-                 msg = "Tag {} swiped - needed a LIKE".format(tag)
-                 self.logger.error(msg)
-                 self.send_email(msg, "tag short issue")
-                 return { 'ok': False, 'userid': line[1], 'name': "{} {}".format(line[2],line[3]), 'email': line[4], 'machine': machine, 'first_name': line[2], 'last_name': line[3], 'type': 'event'  }
-
-           cursor = self.cnx.cursor()
-           cursor.execute(SQL3,[tag])
-           for line in cursor.fetchall():
-               self.recordTag(line[4])
-               self.send_email("{} {} denied XS to {}".format(line[1],line[2], machine),"Tag denied - potential leak")
-               return { 'ok': False, 'userid': line[0], 'name': "{} {}".format(line[1],line[2]), 'email': line[3], 'machine': machine, 'first_name': line[1], 'last_name': line[2], 'type': 'event'  }
-
-        except Exception as e:
-           self.cnx = None
-           self.logger.error("DB failure on tag fetch: {}".format(str(e)))
-           if not retry:
-                  raise
-        retry = retry - 1
-
-     return None
-
-  def recordTag(self,tagid):
-     UPD = """update members_tag set last_used = utc_timestamp where id = %s"""
-     self.logger.debug("Recording tag {} its timestamp".format(tagid))
-
-     try:
-           if not self.cnx:
-             self.cnx = mysql.connector.connect(option_files='/usr/local/makerspaceleiden-crm/makerspaceleiden/my.cnf')
-             self.cnx.autocommit = True
-
-           cursor = self.cnx.cursor()
-           cursor.execute(UPD,[int(tagid)])
-     except Exception as e:
-         self.logger.error("DB faillure on tag report: {}: {}".format(str(e),cursor.statement))
 
 master = Master()
 

@@ -26,8 +26,9 @@ class DrumbeatNode(ACNode.ACNode):
       self.last_time = time.time()
       self.send(self.cnf.node, "beat")
 
-      for node in self.cnf.secrets.keys():
-         self.send(node, "beat")
+      if self.cnf.secrets:
+        for node in self.cnf.secrets.keys():
+          self.send(node, "beat")
 
     super().loop()
 

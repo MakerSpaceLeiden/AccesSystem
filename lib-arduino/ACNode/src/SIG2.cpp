@@ -246,7 +246,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   // Annoyingly - not all implementations of base64 are careful
   // with the final = and == and trailing \0.
   //
-  if (abs(strlen(signature64) - B64L(ED59919_SIGLEN)) > 3) {
+  if (abs(((int)strlen(signature64)) - ((int)B64L(ED59919_SIGLEN))) > 3) {
     Debug.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",
                  strlen(signature64), B64L(ED59919_SIGLEN));
     return ACSecurityHandler::FAIL;
