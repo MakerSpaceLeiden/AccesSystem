@@ -14,7 +14,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#include <PowerNodeV11.h> -- this is an olimex board.
+#include <PowerNodeV11.h> // -- this is an olimex board.
 
 #include <WiFiClientSecure.h>
 #include <Wire.h>
@@ -23,7 +23,11 @@
 #include "MachineState.h"
 #include <ButtonDebounce.h>
 
-#define OTA_PASSWORD "Foo"
+#ifndef OTA_PASSWD
+#define OTA_PASSWD "Foo"
+#warning "Setting easy to guess/hardcoded OTA password."
+#endif
+
 // #define WIFI_NETWORK "Foo"
 // #define WIFI_PASSWD "Foo"
 
@@ -112,14 +116,21 @@ void setup() {
 
 void loop() {
   node.loop();
-  switch (machinestate.state()) {
-    case ACTIVE:
-      // Do something - like keep a relay powered
-      break;
-    case BORED:
-    case BUTTON_PRESSED:
-    default:
-      // keep that relay off or something.
-      break;
+  if (machinestate.state() == ACTIVE) {
+    // Do something - like keep a relay powered
+  }
+  else if (machinestate.state() == BORED) {
+    // nothing to do ... just waiting for a button press.
+  }
+  else if (machinestate.state() == BUTTON_PRESSED) {
+    Log.println("Someone pressed the button - activate the relay in 1 second");
+    // We do not need to do:
+    //    machine.setState(ACTIVE);
+    // here explicitly. Because the timeout on the BUTTON_PRESSED state goes
+    // automaticaly to ACTIVE after 1 second.
+  }
+  else {
+    // keep that relay off or something.
   }
 }
+

@@ -50,6 +50,7 @@ class MachineState : public ACBase {
 
   public:
     const char * label();
+    const char * label(uint8_t label);
     MachineState();
 
     machinestates_t state();

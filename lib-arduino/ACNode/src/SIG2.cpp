@@ -9,8 +9,7 @@
 #include <SHA256.h>
 
 #include <EEPROM.h>
-#include <CryptoLib/AES.h>
-#include <CryptoLib/AES256.h>
+#include <AES.h>
 #include <CBC.h>
 
 
@@ -102,13 +101,7 @@ void kickoff_RNG() {
   // Note that Wifi/BT should be on according to:
   //    https://github.com/espressif/esp-idf/blob/master/components/esp32/hw_random.c
   //
-#ifdef ESP32
-  // RNG.begin(RNG_APP_TAG);
-  RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
-#else
-  // RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
   RNG.begin(RNG_APP_TAG);
-#endif
 
   SHA256 sha256;
   sha256.reset();
