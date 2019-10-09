@@ -15,70 +15,55 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-// Wiring of Power Node v.1.1
+
+// NodeMCU based.
 //
-#include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <ButtonDebounce.h>
+#include "MachineState.h"
 
-#define MACHINE             "test-extract" /* "my name" -- default is 'node-<macaddres>' */
-#define OFF_BUTTON          (SW2_BUTTON)
+// See https://wiki.makerspaceleiden.nl/mediawiki/index.php/NodeAfzuiging
+
+#define MACHINE             "NodeAfzuiging" /* "my name" -- default is 'node-<macaddres>' */
+
+// Node MCU has a weird mapping...
+//
+#define LED_GREEN   16 // D0 -- LED inside the on/off toggle switch
+#define LED_ORANGE  5  // D1 -- LED inside the orange, bottom, push button.
+#define RELAY       4  // D2 -- relay (220V, 10A on just the L)
+#define PUSHBUTTON  0  // D3 -- orange push button; 0=pressed, 1=released
+
+#define RELAY_ENGAGED (LOW)
+
 #define MAX_IDLE_TIME       (30 * 60 * 1000) // auto power off after 30 minutes of no demand.
 
-//#define OTA_PASSWD          "SomethingSecrit"
-
-// ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
+// NodeMCU on WiFi -- see the wiki.
+//
+ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-ACNode node = ACNode(MACHINE);
+// ACNode node = ACNode(MACHINE);
 
-#ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
-#endif
 
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-ButtonDebounce offButton(OFF_BUTTON, 150 /* mSeconds */);
+ButtonDebounce offButton(PUSHBUTTON, 150 /* mSeconds */);
 
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 MqttLogStream mqttlogStream = MqttLogStream();
 
-typedef enum {
-  BOOTING, OUTOFORDER,      // device not functional.
-  REBOOT,                   // forcefull reboot
-  TRANSIENTERROR,           // hopefully goes away level error
-  NOCONN,                   // sort of fairly hopless (though we can cache RFIDs!)
-  WAITING,                  // waiting for a request.
-  RUNNING,                  // this is when the fan is on.
-} machinestates_t;
+MachineState machinestate = MachineState();
+MachineState::machinestates_t NOT_RUNNING, RUNNING;
 
-#define NEVER (0)
-
-struct {
-  const char * label;                   // name of this state
-  LED::led_state_t ledState;            // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
-  time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
-  machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
-} state[RUNNING + 1] =
-{
-  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT  },
-  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT  },
-  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT  },
-  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITING },
-  { "No network",           LED::LED_FLASH,         15 * 60 * 1000, REBOOT  }, // is this a good idea ?
-  { "Waiting",              LED::LED_IDLE,          NEVER       , WAITING },
-  { "Running",              LED::LED_ON,    MAX_IDLE_TIME       , WAITING },
-};
-
-unsigned long laststatechange = 0;
-static machinestates_t laststate = BOOTING;
-machinestates_t machinestate = BOOTING;
-
-unsigned long running_total = 0, running_last;
+// Counters
 unsigned long button_poweroff = 0;
-unsigned long idle_poweroff = 0;
+unsigned long button_poweron = 0;
 unsigned long net_poweroff = 0;
 unsigned long net_poweron = 0;
 unsigned long net_renew = 0;
+
+bool running = false;
 
 void setup() {
   Serial.begin(115200);
@@ -86,13 +71,7 @@ void setup() {
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 
   pinMode(RELAY_GPIO, OUTPUT);
-  digitalWrite(RELAY_GPIO, 1);
-
-  pinMode(SW1_BUTTON, INPUT_PULLUP);
-  pinMode(SW2_BUTTON, INPUT_PULLUP);
-
-  Serial.printf("Boot state: SW1:%d SW2:%d\n",
-                digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON));
+  digitalWrite(RELAY_GPIO, ! RELAY_ENGAGED);
 
   // the default is space.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
@@ -100,30 +79,37 @@ void setup() {
 
   // specify this when using your own `master'.
   //
-  node.set_master("test-master");
+  node.set_master("master");
 
-  node.set_report_period(10 * 1000);
+  NOT_RUNNING = machinestate.addState("Off (fan not runnning)", LED::LED_IDLE, 0, -1);
+  RUNNING = machinestate.addState("Fan Running", LED::LED_ON, 0, -1);
 
   node.onConnect([]() {
-    machinestate = WAITING;
+    if (machinestate.state() < NOT_RUNNING)
+      machinestate = NOT_RUNNING;
   });
+
   node.onDisconnect([]() {
-    machinestate = NOCONN;
+    if (machinestate.state() < NOT_RUNNING)
+      machinestate = NOT_RUNNING;
   });
+
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
-    machinestate = TRANSIENTERROR;
+    machinestate = MachineState::TRANSIENTERROR;
   });
 
   node.onValidatedCmd([](const char *cmd, const char * rest) -> ACBase::cmd_result_t  {
     if (!strcasecmp(cmd, "stop")) {
-      machinestate = WAITING;
+      machinestate = NOT_RUNNING;
+      running = false;
       net_poweroff++;
       return ACNode::CMD_CLAIMED;
     };
 
     if (!strcasecmp(cmd, "run")) {
-      if (machinestate != RUNNING) {
+      running = true;
+      if (machinestate.state() != RUNNING) {
         net_poweron++;
         machinestate = RUNNING;
       } else {
@@ -135,30 +121,33 @@ void setup() {
   });
 
   node.onReport([](JsonObject  & report) {
-    report["state"] = state[machinestate].label;
-
-    report["running_time"] = running_total + ((machinestate == RUNNING) ? ((millis() - running_last) / 1000) : 0);
-
-    report["idle_poweroff"] = idle_poweroff;
+    report["button_poweron"] = button_poweron;
     report["button_poweroff"] = button_poweroff;
 
     report["net_poweroff"] = net_poweroff;
     report["net_poweron"] = net_poweron;
     report["net_renew"] = net_renew;
 
-#ifdef OTA_PASSWD
-    report["ota"] = true;
-#else
-    report["ota"] = false;
-#endif
+    report["running"] = running;
+  });
+
+  offButton.setCallback([](int btn) {
+    if (btn == LOW)
+      running = !running;
+    if (running)
+      button_poweron++;
+    else
+      button_poweroff++;
   });
 
   // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
-#ifdef OTA_PASSWD
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+
   node.addHandler(&ota);
-#endif
 
   // node.set_debug(true);
   // node.set_debugAlive(true);
@@ -170,57 +159,5 @@ void loop() {
   node.loop();
   offButton.update();
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
-
-    if (machinestate == RUNNING && laststate < RUNNING) {
-      running_last = millis();
-    } else if (laststate == RUNNING && machinestate < RUNNING) {
-      running_total += (millis() - running_last) / 1000;
-    };
-    laststate = machinestate;
-    laststatechange = millis();
-  }
-
-  if (offButton.state() == LOW && machinestate >= RUNNING) {
-    if (machinestate == RUNNING) {
-      Log.printf("Machine switched OFF with the off-button.\n");
-      button_poweroff++;
-    } else {
-      Log.printf("Off button pressed (currently in state %s). Weird.\n",
-                 state[machinestate].label);
-    }
-    machinestate = WAITING;
-  }
-
-  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
-    laststate = machinestate;
-    machinestate = state[machinestate].failStateOnTimeout;
-    Debug.printf("Time-out; too long in state %s; swiching to %s\n",
-                 state[laststate].label, state[machinestate].label);
-  };
-
-  digitalWrite(RELAY_GPIO, (laststate == RUNNING) ? 1 : 0);
-
-  aartLed.set(state[machinestate].ledState);
-
-  switch (machinestate) {
-  case REBOOT:
-    node.delayedReboot();
-      break;
-
-    case WAITING:
-      break;
-
-    case RUNNING:
-      break;
-
-    case TRANSIENTERROR:
-    case OUTOFORDER:
-    case NOCONN:
-    case BOOTING:
-      break;
-  };
+  digitalWrite(RELAY_GPIO, running ? RELAY_ENGAGED : !RELAY_ENGAGED);
 }

@@ -7,6 +7,7 @@
 #include <ACNode-private.h>
 #include <ACBase.h>
 #include <MFRC522.h>
+#include <Wire.h>
 
 // SPI based RFID reader
 #ifndef RFID_MOSI_PIN

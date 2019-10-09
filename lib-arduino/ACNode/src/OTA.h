@@ -10,6 +10,7 @@ class OTA: public ACBase
     OTA(const char * password);
     void loop();
     void begin();
+    void report(JsonObject& report);
   protected:
 	const char * _ota_password;
 };

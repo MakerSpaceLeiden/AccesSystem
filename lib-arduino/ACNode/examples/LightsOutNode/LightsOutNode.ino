@@ -15,13 +15,21 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#define AART_LED           (04) // Large LED on middle front.
-#define OPTO1              (35) // Two diode PC417 that checks if there is AC.
-#define OPTO2              (33) // Two diode PC417 that checks if there is AC.
-#define OPTO3              (32) // Two diode PC417 that checks if there is AC.
+// Olimex ESP32 base PoE
+// https://www.olimex.com/Products/IoT/ESP32/ESP32-POE/open-source-hardware
+// https://wiki.makerspaceleiden.nl/mediawiki/index.php/NodeLightsOut
+//
+#define AART_LED           ((gpio_num_t) 04) // Large LED on middle front.
+
+#define MAINSSENSOR        ((gpio_num_t) 05) // 433Mhz receiver; see https://wiki.makerspaceleiden.nl/mediawiki/index.php/MainsSensor
+
+#define OPTO1              ((gpio_num_t) 35) // Two diode PC817 that checks if there is AC. No capacitor/diode. Simple 100Hz.
+#define OPTO2              ((gpio_num_t) 33) // Two diode PC817 that checks if there is AC.
+#define OPTO3              ((gpio_num_t) 32) // Two diode PC817 that checks if there is AC.
 
 #include <ACNode.h>
 #include <OptoDebounce.h>           // https://github.com/dirkx/OptocouplerDebouncer.git
+#include <mainsSensor.h>            // https://github.com/MakerSpaceLeiden/mainsSensor
 
 #define MACHINE             "lights"
 
@@ -39,7 +47,7 @@ OTA ota = OTA(OTA_PASSWD);
 
 // Various logging options (in addition to Serial).
 MqttLogStream mqttlogStream = MqttLogStream();
-
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -74,6 +82,24 @@ machinestates_t machinestate = BOOTING;
 
 unsigned long powered_total = 0, powered_last;
 unsigned long running_total = 0, running_last;
+unsigned long mains_datagrams_seen = 0;
+unsigned long radio_bits_seen  = 0;
+
+MainSensorReceiver msr = MainSensorReceiver(
+                           MAINSSENSOR,
+[](mainsnode_datagram_t * node) {
+  switch (node->state) {
+    case MAINSNODE_STATE_ON:
+      Log.printf("Node %04x is on", node->id16);
+      break;
+    case MAINSNODE_STATE_OFF:
+      Log.printf("Node %04x is OFF", node->id16);
+      break;
+    default:
+      Log.printf("Node %04x sent a value I do not understand.", node->id16);
+  };
+  mains_datagrams_seen++;
+});
 
 void setup() {
   Serial.begin(115200);
@@ -120,9 +146,17 @@ void setup() {
     report["acstate1"] = opto1.state();
     report["acstate2"] = opto2.state();
     report["acstate3"] = opto3.state();
+
+    report["radio_cbs"] = radio_bits_seen;
+    report["mains_datagrams"] = mains_datagrams_seen;
   });
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
@@ -130,10 +164,43 @@ void setup() {
   // node.set_debug(true);
   // node.set_debugAlive(true);
   node.begin(BOARD_OLIMEX);
+
+
+  // No pullup - we're wired to a voltage divider to turn the 5v IO of the antenna unit to our 3v3.
+  //
+  pinMode(MAINSSENSOR, INPUT);
+  msr.setup();
+  msr.begin();
+  
+#if 1
+  msr.setRawcb([](rmt_data_t * items, size_t len) {
+    Log.printf("CB: %d items\n", len);
+    radio_bits_seen++;
+#if 0
+    for (int i = 0; i < len; i++) {
+      if (items[i].duration0)
+        Log.printf("%d: L=%d %8d # %12.2f nSecs\n", i * 2,
+                   items[i].level0, items[i].duration0, msr.nanoseconds(items[i].duration0));
+      if (items[i].duration1)
+        Log.printf("%d: L=%d %8d # %12.2f nSecs\n", i * 2 + 1,
+                   items[i].level1, items[i].duration1, msr.nanoseconds(items[i].duration1));
+    };
+#endif
+  });
+#endif
+
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
 
 void loop() {
+  if (millis() > 10000) {
+    static int lb = -1, x;
+    int la = digitalRead(MAINSSENSOR);
+    if (la != lb) {
+      if (x++ < 100) Log.printf("%d\n", la ? 1 : 0); lb = la;
+    };
+  };
+
   node.loop();
   opto1.loop();
   opto2.loop();
@@ -167,8 +234,8 @@ void loop() {
 
   aartLed.set(state[machinestate].ledState);
 
-  // This is a bit odd - you'd expect them to be identical. But it is not.
-  // So we must have miswired something. But what ?!
+  // This is a bit odd - you'd expect them to be identical. But it is not. They are on
+  // two different phases though - and one wire has an odd colour. Not investigated.
   //
   // "acstate1":true,"acstate2":false,"acstate3":false}
   // "acstate1":false,"acstate2":true,"acstate3":true}

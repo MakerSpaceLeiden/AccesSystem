@@ -1,0 +1,34 @@
+
+static const unsigned char PROGMEM persun[] = {
+  B00111000,
+  B00100100,
+  B00100100,
+  B00011000,
+  B01111110,
+  B10011001,
+  B00011000,
+  B00100100,
+  B01100110,
+};
+
+static const unsigned char PROGMEM lamp[] = {
+  B00111100,
+  B01000010,
+  B01000010,
+  B01000010,
+  B00111100,
+  B00100100,
+  B00100100,
+  B00011000,
+};
+
+static const unsigned char PROGMEM machine[] = {
+  B11110000,
+  B11110000,
+  B11110000,
+  B11110000,
+  B01110000,
+  B00110000,
+  B00010000,
+  B11111111,
+};
