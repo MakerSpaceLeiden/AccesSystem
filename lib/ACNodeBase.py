@@ -215,7 +215,11 @@ class ACNodeBase:
 
     # if it is not me
     if msg['node'] != self.cnf.node:
-         self.logger.info("Announce of {} {}".format(msg['node'],msg['payload']))
+         try:
+            (cmd, ip, rest ) = msg['payload'].split(' ')[:3]
+            self.logger.info("Announce of {}@{}".format(msg['node'],ip))
+         except ValueError:
+            self.logger.critical("INVALID Announce of {} - payload: {}".format(msg['node'],msg['payload']))
     else:
        self.logger.debug("Ignoring my own restart/announce message.")
 
@@ -277,7 +281,7 @@ class ACNodeBase:
             return None
 
     # self.logger.debug("No mapping for {} - deferring <{}> for handling by {}".format(cmd, msg['payload'],self.__class__.__name__))
-    self.logger.critical("Command {} ignored (and also not handled by {})".format(cmd ,self.__class__.__name__))
+    self.logger.critical("Command {} on {} ignored (and also not handled by {})".format(cmd,message.topic,self.__class__.__name__))
     return None
 
   # Capture SIGINT for cleanup when the script is aborted

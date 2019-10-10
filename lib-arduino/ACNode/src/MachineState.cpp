@@ -193,7 +193,6 @@
     uint8_t MachineState::addState(state_t aState) {
       for (uint8_t i = 1; i < 255; i++)
         if (_state2stateStruct[i] == NULL) {
-	  state_t * s = &aState;
           _initState(i, &aState);
           return i;
         };

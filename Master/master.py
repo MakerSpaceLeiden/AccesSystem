@@ -36,7 +36,6 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     self.commands[ 'open' ] = self.cmd_approve
     self.commands[ 'energize' ] = self.cmd_approve
     self.commands[ 'lastused' ] = self.cmd_lastused
-    # self.commands[ 'beat' ] = self.cmd_beat
     self.commands[ 'leave' ] = self.cmd_approve
 
     # self.commands[ 'event' ] = self.cmd_event

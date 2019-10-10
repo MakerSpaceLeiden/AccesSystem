@@ -111,6 +111,10 @@ public:
     void set_mqtt_prefix(const char *p);
     void set_mqtt_log(const char *p);
 
+#ifdef HAS_SIG2
+    void add_trusted_node(const char *node);
+#endif
+
     void set_moi(const char *p);
     void set_machine(const char *p);
     void set_master(const char *p);

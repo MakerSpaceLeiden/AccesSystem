@@ -616,3 +616,10 @@ void ACNode::delayedReboot() {
    last = millis();
    warn_counter ++;
 }
+
+#ifdef HAS_SIG2
+void ACNode::add_trusted_node(const char *node) {
+	sig2.add_trusted_node(node);
+}
+#endif
+

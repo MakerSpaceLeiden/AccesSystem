@@ -33,6 +33,7 @@ class TrustOnFirstContact(Beat.Beat):
   def __init__(self):
     super().__init__()
     self.commands[ 'welcome' ] = self.cmd_welcome
+    self.commands[ 'pubkey' ] = self.cmd_pubkey
 
   def parseArguments(self):
     self.parser.add('--privatekey','-K',
@@ -327,6 +328,17 @@ class TrustOnFirstContact(Beat.Beat):
 
   def cmd_announce(self,msg):
     return super().cmd_announce(msg)
+
+  def cmd_pubkey(self,msg):
+    cmd, nonce, node = self.split_payload(msg) or (None, None, None)
+
+    if self.pubkeys and node in self.pubkeys.keys():
+         self.logger.debug("Sending public key of {} to node {} on request.".format(node, msg['node'])); 
+         b64pubkey = base64.b64encode(self.pubkeys[ node ].to_bytes()).decode('ASCII')
+         self.send(msg['node'], 'trust {} {} {}'.format(nonce, node, b64pubkey))
+         return
+
+    self.logger.critical("Request for a pubkey of {} that I do not have.".format(node))
 
 # Allow this class to auto instanciate if
 # we run it on its own.
