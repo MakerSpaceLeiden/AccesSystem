@@ -348,44 +348,49 @@ void ACNode::loop() {
 	if (millis() - last > _report_period) {
 		last = millis();
 
-		DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);
-		JsonObject& out = jsonBuffer.createObject();
-		out[ "node" ] = moi;
-		out[ "machine" ] = machine;
+		// DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);
+		// JsonObject& out = jsonBuffer.createObject();
 
-		out[ "maxMqtt" ] = MAX_MSG;
+        DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(30) + 500);
+
+		jsonDoc[ "node" ] = moi;
+		jsonDoc[ "machine" ] = machine;
+
+		jsonDoc[ "maxMqtt" ] = MAX_MSG;
 
 		char chipstr[30]; strncpy(chipstr,chipId().c_str(),sizeof(chipstr));
-		out[ "id" ] = chipstr;
+		jsonDoc[ "id" ] = chipstr;
 		char ipstr[30]; strncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
-                out[ "ip" ] = ipstr;
-                out[ "net" ] = _wired ? "UTP" : "WiFi";
+                jsonDoc[ "ip" ] = ipstr;
+                jsonDoc[ "net" ] = _wired ? "UTP" : "WiFi";
  		char macstr[30]; strncpy(macstr, macAddressString().c_str(),sizeof(macstr));
-  		out[ "mac" ] = macstr;
+  		jsonDoc[ "mac" ] = macstr;
 
-		out[ "beat" ] = beatCounter;
+		jsonDoc[ "beat" ] = beatCounter;
 
 		if (beatCounter > 1542275849 && _start_beat == 0)
 			_start_beat  = beatCounter;
 		else 
 		if (_start_beat)
-			out[ "alive-uptime" ] = beatCounter - _start_beat;
+			jsonDoc[ "alive-uptime" ] = beatCounter - _start_beat;
 
-		out[ "approve" ] = _approve;
-		out[ "deny" ] = _deny;
-		out[ "requests" ] = _reqs;
+		jsonDoc[ "approve" ] = _approve;
+		jsonDoc[ "deny" ] = _deny;
+		jsonDoc[ "requests" ] = _reqs;
 #ifdef ESP32
-		out[ "cache_hit" ] =  cacheHit;
-		out[ "cache_miss" ] =  cacheMiss;
+		jsonDoc[ "cache_hit" ] =  cacheHit;
+		jsonDoc[ "cache_miss" ] =  cacheMiss;
 #endif
 
-		out[ "mqtt_reconnects" ] = _mqtt_reconnects;
+		jsonDoc[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
-		out["loop_rate"] = loopRate;
+		jsonDoc["loop_rate"] = loopRate;
 #ifdef ESP32
-           	out["coreTemp"]  = coreTemp(); 
+           	jsonDoc["coreTemp"]  = coreTemp(); 
 #endif
-		out["heap_free"] = ESP.getFreeHeap();	
+		jsonDoc["heap_free"] = ESP.getFreeHeap();	
+
+        JsonObject out = jsonDoc.to<JsonObject>();
 
 		std::list<ACBase *>::iterator it;
        		for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
@@ -394,8 +399,11 @@ void ACNode::loop() {
 		if (_report_callback) 
 			_report_callback(out);	
 
-		char buff[MAX_MSG];
-		out.printTo(buff,sizeof(buff));
+        String buff;
+        serializeJson(jsonDoc, buff);
+        if (buff.length() > MAX_MSG) {
+            buff = buff.substring(0, MAX_MSG);
+        }
 		Log.println(buff);
         }
     }
@@ -616,10 +624,3 @@ void ACNode::delayedReboot() {
    last = millis();
    warn_counter ++;
 }
-
-#ifdef HAS_SIG2
-void ACNode::add_trusted_node(const char *node) {
-	sig2.add_trusted_node(node);
-}
-#endif
-
