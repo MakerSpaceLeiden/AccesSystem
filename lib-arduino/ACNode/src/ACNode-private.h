@@ -213,7 +213,9 @@ public:
     // it from a C callback in the mqtt subsystem.
     //
     void process(const char * topic, const char * payload);
+   
     
+    PubSubClient _client;
 private:
     bool _debug_alive;
     THandlerFunction_Error _error_callback;
@@ -225,7 +227,6 @@ private:
 
     beat_t _lastSwipe;    
     WiFiClient _espClient;
-    PubSubClient _client;
     
     void configureMQTT();
     void reconnectMQTT();

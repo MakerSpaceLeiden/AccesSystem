@@ -184,8 +184,11 @@ void SIG2::loop() {
     return;
   };
 
-  if (!_acnode->isConnected())
+  if (!_acnode->isConnected()) {
+    // force re-connecting, etc post reconnect.
+    if (init_done > 4) init_done = 4;
     return;
+  };
 
   if (init_done > 4)
     return;
@@ -628,6 +631,12 @@ void SIG2::request_trust(int i) {
 
 	Debug.printf("Requesting trust for <%s>\n", trust[i].node);
     	_acnode->send(payload);
+
+        char topic[MAX_TOPIC];
+        snprintf(topic, sizeof(topic), "%s/%s/%s", 
+		_acnode->mqtt_topic_prefix, _acnode->moi, trust[i].node);
+        _acnode->_client.subscribe(topic);
+	Debug.printf("Subscribing to %s for the trusted messages.>\n", topic);
 };
 
 SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
