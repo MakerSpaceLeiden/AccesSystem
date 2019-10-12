@@ -2,7 +2,7 @@ To run in test mode
 
 1) optional - create environment.
 
-Option - create a virtual environment to separate this from all other python code and library installs
+Option - create a virtual environment to separate this from all other python code and library installs; and not needing any root powers:
 
    python3 -mvenv venv
    source venv/bin/activate
@@ -10,6 +10,10 @@ Option - create a virtual environment to separate this from all other python cod
 2) Ensure the requirements are installed:
 
    pip install -r requirements.txt
+
+of als je niet in een, als bovenstaand, virtual 'venv' installeerd;
+
+   sudo pip install -r requirements.txt
 
 If you very much rely on macports, brew, or other packages that
 puts things like gmp(.h) in non standard locations; then prefix
