@@ -2,4 +2,4 @@ config.json
 *.log
 seed.priv
 tofu.db*
-
+trustdb.txt
