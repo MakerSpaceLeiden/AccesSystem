@@ -32,15 +32,15 @@
       return "no-label-set";
     };
 
-    MachineState::machinestates_t MachineState::state() {
+    MachineState::machinestate_t MachineState::state() {
       return machinestate;
     }
 
-    void MachineState::setState(machinestates_t s) {
+    void MachineState::setState(machinestate_t s) {
       machinestate = s;
     }
 
-    void MachineState::operator=(machinestates_t s) {
+    void MachineState::operator=(machinestate_t s) {
       machinestate = s;
     }
 
@@ -127,7 +127,7 @@
       // register reboot 'late' -- so we know we're through as much init complexity
       // and surprises as possible.
       //
-      setOnLoopCallback(REBOOT, [](MachineState::machinestates_t s) -> void {
+      setOnLoopCallback(REBOOT, [](MachineState::machinestate_t s) -> void {
         _acnode->delayedReboot();
       });
     };
@@ -199,3 +199,24 @@
       Log.println("BUG -- More than 254 active states ?");
       return 255;
     };
+
+    void MachineState::defineState(uint8_t state,
+                const char * label,
+                LED::led_state_t ledState,
+                time_t timeout,
+                machinestate_t nextstate,
+                unsigned long timeInState,
+                unsigned long timeoutTransitions,
+                unsigned long autoReportCycle,
+                THandlerFunction_OnLoopCB onLoopCB,
+                THandlerFunction_OnChangeCB onChangeCB,
+                THandlerFunction_OnTimeoutCB onTimeoutCB
+    ) {
+        if (state <0 || state >=254 || _state2stateStruct[state]) {
+            Log.printf("BUG -- inpossible state (%d:%s)\n", state, label);
+            return;
+        };
+	state_t aState = { label, ledState, timeout, nextstate, timeInState,timeoutTransitions,autoReportCycle, onLoopCB,onChangeCB,onTimeoutCB };
+        _initState(state , &aState);
+    }
+

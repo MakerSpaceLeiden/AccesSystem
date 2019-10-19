@@ -50,7 +50,7 @@ MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 MachineState machinestate = MachineState();
-MachineState::machinestates_t BUTTON_PRESSED, ACTIVE, BORED;
+enum { BUTTON_PRESSED = MachineState::START_PRIVATE_STATES, ACTIVE, BORED };
 
 unsigned long button_count = 0;
 
@@ -65,13 +65,13 @@ void setup() {
   node.set_mqtt_prefix("test");
   node.set_master("master");
 
-  BORED = machinestate.addState("Done being active", LED::LED_ERROR, 5 * 1000, MachineState::WAITINGFORCARD);
-  ACTIVE = machinestate.addState("Very active now for 5 seconds", LED::LED_ERROR, 5 * 1000, BORED);
-  BUTTON_PRESSED = machinestate.addState("Going active", LED::LED_IDLE, 1 * 1000, ACTIVE);
+  machinestate.defineState(BORED, "Done being active", LED::LED_ERROR, 5 * 1000, MachineState::WAITINGFORCARD);
+  machinestate.defineState(ACTIVE, "Very active now for 5 seconds", LED::LED_ERROR, 5 * 1000, BORED);
+  machinestate.defineState(BUTTON_PRESSED, "Going active", LED::LED_IDLE, 1 * 1000, ACTIVE);
 
   // Update the display whenever we enter into a new state.
   //
-  // machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestates_t last, MachineState::machinestates_t current) -> void {
+  // machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestates_t current) -> void {
   //  Debug.println(...
   // });
 
@@ -116,21 +116,16 @@ void setup() {
 
 void loop() {
   node.loop();
-  if (machinestate.state() == ACTIVE) {
-    // Do something - like keep a relay powered
-  }
-  else if (machinestate.state() == BORED) {
-    // nothing to do ... just waiting for a button press.
-  }
-  else if (machinestate.state() == BUTTON_PRESSED) {
-    Log.println("Someone pressed the button - activate the relay in 1 second");
-    // We do not need to do:
-    //    machine.setState(ACTIVE);
-    // here explicitly. Because the timeout on the BUTTON_PRESSED state goes
-    // automaticaly to ACTIVE after 1 second.
-  }
-  else {
-    // keep that relay off or something.
+  switch (machinestate.state()) {
+    case ACTIVE:
+      // Do something - like keep a relay powered
+      break;
+    case BORED:
+      break;
+    case BUTTON_PRESSED:
+      break;
+    default:
+      break;
+
   }
 }
-
