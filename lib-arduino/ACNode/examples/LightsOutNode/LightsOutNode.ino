@@ -21,7 +21,7 @@
 //
 #define AART_LED           ((gpio_num_t) 04) // Large LED on middle front.
 
-#define MAINSSENSOR        ((gpio_num_t) 34) // 433Mhz receiver; see https://wiki.makerspaceleiden.nl/mediawiki/index.php/MainsSensor
+#define MAINSSENSOR        ((gpio_num_t) 13) // 433Mhz receiver; see https://wiki.makerspaceleiden.nl/mediawiki/index.php/MainsSensor
 
 #define OPTO1              ((gpio_num_t) 35) // Two diode PC817 that checks if there is AC. No capacitor/diode. Simple 100Hz.
 #define OPTO2              ((gpio_num_t) 33) // Two diode PC817 that checks if there is AC.
@@ -41,6 +41,8 @@ OptoDebounce opto3(OPTO3);
 LED aartLed = LED(AART_LED, true); // LED is inverted.
 
 ACNode node = ACNode(MACHINE); // PoE Wired, Olimex baord.
+
+#include "/Users/dirkx/.passwd.h"
 
 OTA ota = OTA(OTA_PASSWD);
 
@@ -168,41 +170,44 @@ void setup() {
   // No pullup - we're wired to a voltage divider to turn the 5v IO of the antenna unit to our 3v3.
   //
   pinMode(MAINSSENSOR, INPUT);
-  msr.setup(200 /* 200 micro seconds for a half bit */);
-  msr.setCallback([](mainsnode_datagram_t * node) {
+  // msr.setup(200 /* 200 micro seconds for a half bit */);
+  msr.setup(338, 220); // Esperimentally found.
+  msr.setDebug(&Debug);
+  msr.setCache(false);
+
+  msr.setCallback([](mainsnode_datagram_t * dgram) {
     static int ok = 0;
     unsigned long secs = 1 + millis() / 1000;
     ok++;
     Log.printf("%06lu:%02lu:%02lu %4.1f%% :\t",
-                  secs / 3600, (secs / 60) % 60, secs % 60,  ok * 100. / secs);
+               secs / 3600, (secs / 60) % 60, secs % 60,  ok * 100. / secs);
 
-    switch (node->state) {
+
+    switch (dgram->state) {
       case MAINSNODE_STATE_ON:
-        Log.printf("mainsSensorNode %04x is on\n", htons(node->id16));
+        Log.printf("mainsSensorNode %04x is on\n", htons(dgram->id16));
         break;
       case MAINSNODE_STATE_OFF:
-        Log.printf("mainsSensorNode %04x is OFF\n", htons(node->id16));
+        Log.printf("mainsSensorNode %04x is OFF\n", htons(dgram->id16));
         break;
       case MAINSNODE_STATE_DEAD:
-        Log.printf("Node %04x has gone off air\n", htons(node->id16));
+        Log.printf("Node %04x has gone off air\n", htons(dgram->id16));
         break;
       default:
-        Log.printf("mainsSensorNode %04x sent a value %x I do not understand.\n", htons(node->id16), node->state);
+        Log.printf("mainsSensorNode %04x sent a value %x I do not understand.\n", htons(dgram->id16), dgram->state);
     }
+    {
+      char buff[1024];
+      snprintf(buff, sizeof(buff), "update 0x%X 0x%X", htons(dgram->id16), dgram->state);
+      node.send("mainsSensors/raw", buff);
+    };
+    mains_datagrams_seen++;
   });
   msr.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
 
 void loop() {
-  if (millis() > 10000) {
-    static int lb = -1, x;
-    int la = digitalRead(MAINSSENSOR);
-    if (la != lb) {
-      if (x++ < 100) Log.printf("%d\n", la ? 1 : 0); lb = la;
-    };
-  };
-
   node.loop();
   opto1.loop();
   opto2.loop();
