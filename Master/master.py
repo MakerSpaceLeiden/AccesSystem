@@ -176,6 +176,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
                     del self.xscache[ ckey ]
                if ok:
                     self.xscache[ ckey ] = name
+               self.logger.debug("REST based {} for {} on {}@{}".format(ok, name, target_machine, target_node))
           else:
                self.logger.error("CRM http xs fetch gave a non-200 answer: {}".format(r.status_code))
                self.logger.debug('URL:{} {} {}'.format(r.url, tag, self.cnf.bearer))
@@ -187,15 +188,9 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
                 name = self.xscache[ ckey ]
                 self.logger.log("And using cached result to approve.")
                 v = { 'name': name, 'machine': target_machine, 'node': target_node }
-    try:
-          v = self.checkDB(target_machine,tag)
-          if v:
-             ok = v['ok']
-    except Exception as e:
-          extra_msg = ' but know that the Mysql database gave an error ({})'.format(str(e))
 
     if v:
-          found = True
+        found = True
     elif tag in self.userdb:
         email = self.userdb[tag]['email'];
         name = self.userdb[tag]['name'];
@@ -208,7 +203,16 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     if not found:
       self.logger.info("Tag {} not found either DB{}; reporting (no deny sent).".format(tag,extra_msg))
       self.rat(msg, tag)
-
+      try:
+          url = "{}".format(self.cnf.unknown_url)
+          r = requests.post(url, data= { 'tag' : tag }, headers = { 'X-Bearer': self.cnf.bearer })
+          if r.status_code == 200:
+              self.logger.debug("rest reported unknwon tag {}".format(tag))
+          else:
+              self.logger.info("Rest reporting of unknwon tag {} failed: {}".format(tag, r.status_code))
+              self.logger.debug('URL:{} {} {}'.format(r.url, tag, self.cnf.bearer))
+      except Exception as e:
+          self.logger.info("rest report unknown tag {} failed: {}".format(tag, e))
       return
 
     if ok:
