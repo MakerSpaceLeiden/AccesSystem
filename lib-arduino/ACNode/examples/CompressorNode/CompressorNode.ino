@@ -82,7 +82,7 @@ void setup() {
 
   aartLed.set(LED::LED_ERROR);
 
-  // the default is space.makerspaceleiden.nl, prefix test
+  // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
 

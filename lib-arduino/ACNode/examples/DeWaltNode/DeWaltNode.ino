@@ -88,7 +88,7 @@ void setup() {
   pinMode(RED_LED_GPIO, OUTPUT);
   digitalWrite(RED_LED_GPIO, 1);
 
-  // the default is space.makerspaceleiden.nl, prefix test
+  // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
 
