@@ -148,7 +148,6 @@ void ACNode::send_helo(char * token) {
                 return;
                 break;
         }
-	Debug.printf("**** called %s -> %s (%d)\n", (*it)->name(), req->payload, r);
     }
     // at least someone should have touched it.
     if (canBeSent) {

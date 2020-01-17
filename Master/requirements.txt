@@ -1,0 +1,8 @@
+requests
+daemon
+setproctitle
+configargparse
+paho-mqtt
+python-axolotl-curve25519 
+ed25519
+pycrypto

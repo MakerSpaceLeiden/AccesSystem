@@ -33,6 +33,7 @@ class TrustOnFirstContact(Beat.Beat):
   def __init__(self):
     super().__init__()
     self.commands[ 'welcome' ] = self.cmd_welcome
+    self.commands[ 'pubkey' ] = self.cmd_pubkey
 
   def parseArguments(self):
     self.parser.add('--privatekey','-K',
@@ -203,13 +204,10 @@ class TrustOnFirstContact(Beat.Beat):
     nonce = None
     if cmd == 'announce' or cmd == 'welcome':
             try:
-                # if cmd == 'welcome':
-                    cmd, ip, pubkey, seskey, nonce  = clean_payload.split(" ")
-                #else:
-                #    cmd, ip, pubkey, seskey = clean_payload.split(" ")
+                cmd, ip, pubkey, seskey, nonce  = clean_payload.split(" ")
 
             except Exception as e:
-                self.logger.error("Error parsing announce. Ignored. "+str(e))
+                self.logger.error("Error parsing/splitting {}: {}. Ignoring. ".format(cmd, str(e)))
                 return None
 
             publickey = base64.b64decode(pubkey)
@@ -226,9 +224,6 @@ class TrustOnFirstContact(Beat.Beat):
             if len(seskey) != 32:
                     self.logger.error("Ignoring malformed session public key of node {}".format(msg['node']))
                     return None
-
-            if msg['client'] == self.cnf.node:
-                    self.logger.debug("Ignoring the message - as it is my own (name).")
 
             if msg['node'] in self.pubkeys:
                 if self.pubkeys[msg['node']] != publickey:
@@ -272,7 +267,7 @@ class TrustOnFirstContact(Beat.Beat):
         if (seskey): 
             session_key = curve.calculateAgreement(self.session_priv, seskey)
             self.sharedkey[ msg['node'] ] = hashlib.sha256(session_key).digest()
-            if (nonce):
+            if (nonce and msg['node'] !=  self.cnf.node):
                     self.send_tofu('welcome', msg['node'], nonce)
 
         self.logger.debug("(Re)calculated shared secret with node {}.".format(msg['node']))
@@ -290,10 +285,12 @@ class TrustOnFirstContact(Beat.Beat):
             self.logger.debug('EXCEPTION IN ({}, LINE {} "{}"): {}'.format(filename, lineno, line.strip(), exc_obj))
    return msg
 
-  def send_tofu(self, prefix, dstnode, nonce = ""):
+  def send_tofu(self, prefix, dstnode, nonce = None):
     bp = self.cnf.publickey.to_bytes();
     bp = base64.b64encode(bp).decode('ASCII')
     sp = base64.b64encode(self.session_pub).decode('ASCII')
+    if not nonce:
+          nonce = base64.b64encode(Random.new().read(32)).decode('ASCII')
     if nonce: nonce = " " + nonce
 
     return self.send(dstnode, prefix + " " + socket.gethostbyname(socket.gethostname()) + " " + bp + " " + sp + nonce)
@@ -331,6 +328,17 @@ class TrustOnFirstContact(Beat.Beat):
 
   def cmd_announce(self,msg):
     return super().cmd_announce(msg)
+
+  def cmd_pubkey(self,msg):
+    cmd, nonce, node = self.split_payload(msg) or (None, None, None)
+
+    if self.pubkeys and node in self.pubkeys.keys():
+         self.logger.debug("Sending public key of {} to node {} on request.".format(node, msg['node'])); 
+         b64pubkey = base64.b64encode(self.pubkeys[ node ].to_bytes()).decode('ASCII')
+         self.send(msg['node'], 'trust {} {} {}'.format(nonce, node, b64pubkey))
+         return
+
+    self.logger.critical("Request for a pubkey of {} that I do not have.".format(node))
 
 # Allow this class to auto instanciate if
 # we run it on its own.

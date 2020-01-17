@@ -24,8 +24,11 @@ static String uid2path(const char * tag) {
 void prepareCache(bool wipe) {
   Serial.println(wipe ? "Resetting cache" : "Cache preparing.");
   if (!SPIFFS.begin()) {
-    Serial.println("SPIFFS mount after formatting failed.");
-    return;
+    Serial.println("Mount failed - trying to reformat");
+    if (!SPIFFS.format() || !SPIFFS.begin()) {
+      Serial.println("SPIFFS mount after re-formatting also failed. Giving up. No caching.");
+      return;
+    };
   };
 
   if (wipe) for (int i = 0; i < 255; i++) {

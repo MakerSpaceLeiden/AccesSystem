@@ -9,10 +9,10 @@
 #include <SHA256.h>
 
 #include <EEPROM.h>
-#include <CryptoLib/AES.h>
-#include <CryptoLib/AES256.h>
+#include <AES.h>
 #include <CBC.h>
 
+#include <unordered_map>
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
 
@@ -89,11 +89,19 @@ uint8_t node_publicsession[CURVE259919_KEYLEN];
 uint8_t node_privatesession[CURVE259919_KEYLEN];
 uint8_t sessionkey[CURVE259919_SESSIONLEN];
 
+// Keys upon whcih trust can be registed. the requested field is used for a nonce; but can be used as an age.
+typedef struct { char node[MAX_NAME]; uint8_t pubkey[CURVE259919_KEYLEN]; unsigned long requested; } trust_t;
+#define MAX_TRUST_N (8)
+trust_t trust[ MAX_TRUST_N ];
+int nTrusted = 0;
+
 static int init_done = 0;
 
 bool sig2_active() {
   return (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS && init_done >= 2);
 }
+
+uint8_t runtime_seed[ 32 ];
 
 void kickoff_RNG() {
   // Attempt to get a half decent seed soon after boot. We ought to pospone all operations
@@ -102,13 +110,7 @@ void kickoff_RNG() {
   // Note that Wifi/BT should be on according to:
   //    https://github.com/espressif/esp-idf/blob/master/components/esp32/hw_random.c
   //
-#ifdef ESP32
-  // RNG.begin(RNG_APP_TAG);
-  RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
-#else
-  // RNG.begin(RNG_APP_TAG,EEPROM_RND_OFFSET);
   RNG.begin(RNG_APP_TAG);
-#endif
 
   SHA256 sha256;
   sha256.reset();
@@ -127,6 +129,8 @@ void kickoff_RNG() {
   sha256.finalize(result, sizeof(result));
   RNG.stir(result, sizeof(result), 100);
 
+  RNG.rand(runtime_seed,sizeof(runtime_seed));
+  
   RNG.setAutoSaveTime(60);
 }
 void load_eeprom() {
@@ -154,11 +158,10 @@ void SIG2::begin() {
   load_eeprom();
 
   if (eeprom.version != EEPROM_VERSION) {
-    Log.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
+    Serial.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
     wipe_eeprom();
   }
   Serial.println("Got a valid eeprom.");
-
   Beat::begin();
 }
 
@@ -181,12 +184,14 @@ void SIG2::loop() {
     return;
   };
 
-  if (!_acnode->isConnected())
+  if (!_acnode->isConnected()) {
+    // force re-connecting, etc post reconnect.
+    if (init_done > 4) init_done = 4;
     return;
+  };
 
-  if (init_done > 3)
+  if (init_done > 4)
     return;
-  
 
   if (init_done == 1) {
     Debug.println("Generating Curve25519 session keypair");
@@ -219,13 +224,29 @@ void SIG2::loop() {
     _acnode->send_helo();
    return;
   };
-}
+  // transition from 3->4 is once we are slaved.
+  // 
+  if (init_done == 4) {
+    for(int i = 0; i < nTrusted; i++)
+	request_trust(i);
+    init_done  = 5;
+    return;
+  };
+} 
 
 // Note - we're not siging the topic.
 //
 ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   size_t len = strlen(req->payload);
   char buff[MAX_MSG];
+
+  char * sender = rindex(req->topic,'/');
+  if (!sender) {
+	Log.println("No sender in topic. giving up.");
+	return ACSecurityHandler::FAIL;
+  };
+  sender++; // Skip '/'.
+  bool sendIsMaster = !strcmp(_acnode->master, sender);
 
   // We only accept things starting with SIG/2*<space>hex<space>
   if (len < 72 || strncmp(req->payload, "SIG/2.", 6) != 0) 
@@ -253,7 +274,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   // Annoyingly - not all implementations of base64 are careful
   // with the final = and == and trailing \0.
   //
-  if (abs(strlen(signature64) - B64L(ED59919_SIGLEN)) > 3) {
+  if (abs(((int)strlen(signature64)) - ((int)B64L(ED59919_SIGLEN))) > 3) {
     Debug.printf("Failing SIG/2 sigature - wrong length signature64 (%d,%d)\n",
                  strlen(signature64), B64L(ED59919_SIGLEN));
     return ACSecurityHandler::FAIL;
@@ -265,12 +286,13 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     return ACSecurityHandler::FAIL;
   };
 
-  // Option 1 (caninical) - a (correctly) signed message with a known key.
+  // Option 1 (caninical) - a (correctly) signed message with a known key; signed by the master.
   // Option 2 - a (correctly) signed message with an unknwon key and still pre-TOFU
   //            we need to check against the key passed rather than the one we know.
   // Option 3 - a (correctly) signed message with an unknwon key - which is not the same as the TOFU key
+  // Option 3 -- as above; but not coming from the master but from a node we trust and have the pubkey of.
   // Option 4 - a (incorrectly) signed message. Regardless of TOFU state.
-
+  //
   char master_publicsignkey_b64[B64L(CURVE259919_KEYLEN )];
   char master_publicencryptkey_b64[B64L(CURVE259919_KEYLEN)];
 
@@ -296,7 +318,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   p = q;
   while (p && *p == ' ') p++;
 
-  if (strcmp(req->cmd, "welcome") == 0  || strcmp(req->cmd, "announce") == 0) {
+  if (sendIsMaster && (strcmp(req->cmd, "welcome") == 0  || strcmp(req->cmd, "announce") == 0)) {
     newsession = true;
 
     SEP(host_ip, "IP address", ACSecurityHandler::FAIL);
@@ -315,8 +337,8 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     };
     if (strcmp(req->cmd, "welcome") == 0) {
       SEP(nonce, "Nonce extraction", ACSecurityHandler::FAIL);
-
-      Debug.printf("Nonce %s = %s\n", _nonce, nonce);
+  
+      Debug.printf("Mynonce %s = nonce %s\n", _nonce, nonce);
       if (!strcmp(_nonce, nonce))
         nonceOk = true;
     };
@@ -335,6 +357,15 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
       //
       signkey = pubsign_tmp;
     }
+  } else 
+  if (!sendIsMaster && nTrusted) {
+    // needs to be re-written - too many easy to miss code paths that may have vulnerabilities/bypasses.
+    for(int i = 0; i < nTrusted; i++) 
+	if (strcmp(sender, trust[i].node) == 0) {
+		signkey = trust[i].pubkey;
+		Debug.printf("Allowing this message to be signed by node %s\n", sender);
+		break;
+	};
   };
   if (signkey == NULL && tofu) {
     Trace.println("Using existing master keys to verify.");
@@ -360,9 +391,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     Trace.println("Beat ok.");
   }
   else if (strcmp(req->cmd, "announce") == 0) {
-    Debug.printf("Beat too far off (%lu) - sending nonced welcome <%s>\n",
-                 delta, _nonce);
-
+    Debug.printf("Beat too far off (%lu) - sending nonced welcome\n", delta);
     _acnode->send_helo();
     return ACSecurityHandler::FAIL;
   }
@@ -372,7 +401,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     return ACSecurityHandler::FAIL;
   };
 
-  if (!tofu && nonceOk) {
+  if (!tofu && nonceOk && sendIsMaster) {
     Log.println("TOFU for Ed25519 key of master, stored in persistent store.");
     memcpy(eeprom.master_publicsignkey, signkey, sizeof(eeprom.master_publicsignkey));
 
@@ -406,19 +435,18 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     sha256.update((unsigned char*)&sessionkey, sizeof(sessionkey));
     sha256.finalize(sessionkey, sizeof(sessionkey));
 
-#if 0
-    unsigned char key_b64[128];
-    encode_base64(sessionkey, sizeof(sessionkey), key_b64);
-    Serial.print("RAW session key: "); Serial.println((char *)key_b64);
-    encode_base64(sessionkey, sizeof(sessionkey), key_b64);
-    Serial.print("HASHed session key: "); Serial.println((char *)key_b64);
-#endif
-
     encode_base64(pubsign_tmp, sizeof(pubsign_tmp), (unsigned char *)master_publicsignkey_b64);
     encode_base64(pubencr_tmp, sizeof(pubencr_tmp), (unsigned char *)master_publicencryptkey_b64);
 
     Log.printf("(Re)calculated session key - slaved to master public signkey %s and masterpublic encrypt key %s\n",
                master_publicsignkey_b64, master_publicencryptkey_b64);
+
+    // Only accept pubkeys on poweron; not on simple server restarts.
+    // So that a temp-fault/hack at the server does not mean wrong
+    // keys in all nodes.
+    //
+    if (init_done < 4)
+        init_done = 4;
 
     eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
   };
@@ -429,8 +457,6 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
 };
 
 SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
-  Serial.println("SIG2::secure");
-
   char msg[MAX_MSG];
 
   acauth_result_t r = Beat::secure(req);
@@ -519,19 +545,104 @@ SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
     return CMD_CLAIMED;
   }
   if (!strncmp("announce", req->cmd, 8)) {
-    Debug.println("Sending from handlecmd in SIG2");
-
     /// I think we can drop this one.
     _acnode->send_helo();
     return CMD_CLAIMED;
   }
+  if (!strncmp("trust", req->cmd, 5)) {
+	char buff[ MAX_MSG ];
+	strncpy(buff, req->rest, sizeof(buff));
+	char * p = buff;
+
+        SEP(nonce , "Trust failed - no nonce", CMD_CLAIMED);
+        SEP(node, "Trust failed - no node name", CMD_CLAIMED);
+        SEP(b64pubkey, "Trust failed - no pubkey", CMD_CLAIMED);
+
+        if (strlen(node) >= MAX_NAME) {
+        	Log.println("Trust failed - invalid node name");
+		return CMD_CLAIMED;
+	};
+
+        if (strlen(b64pubkey) >= B64L(CURVE259919_KEYLEN)) {
+        	Log.println( "Trust failed - invalid pub key");
+		return CMD_CLAIMED;
+	};
+
+        // Is this a node name we are interested in ?
+	//
+        int i  = 0;
+        for(i = 0; i < nTrusted; i++) if (!strcmp(node, trust[ i ].node)) break;
+	if (i == nTrusted) {
+		Log.println("Trust failed - not a node we'er interested in.");
+		return CMD_CLAIMED;
+	};
+
+        char mynonce[ B64L(HASH_LENGTH) ];
+        char seed[32];
+        snprintf(seed,sizeof(seed),"%lu-%s",trust[i].requested,trust[i].node);
+        populate_nonce(seed, mynonce); 
+
+        if (strcmp(nonce,mynonce)) {
+		Log.println("Trust failed - not my (last) nonce");
+		return CMD_CLAIMED;
+	}
+
+        B64DE(b64pubkey, trust[ i].pubkey, "Trust failed - key decode", CMD_CLAIMED);
+
+        Log.printf("Got trust in <%s> - public key stored.\n", node);
+
+	// Update the timer - so block some sort of reply.
+	//
+        trust[i].requested = 1+millis();
+
+	return CMD_CLAIMED;
+  }
   return Beat::handle_cmd(req);
 }
+
+void SIG2::add_trusted_node(const char *node) {
+        if (nTrusted >= MAX_TRUST_N) {
+        	Log.println("Hit hardcoded limit on number of nodes I can trust.");
+		return;
+        };
+        if(strlen(node) >= sizeof(trust[ nTrusted ].node)) {
+		Log.println("Name to trust too long. Ignoring.");
+		return;
+	};
+        strncpy(trust[ nTrusted ].node, node, sizeof(trust[ nTrusted ].node));
+	bzero(trust[nTrusted].pubkey,sizeof(trust[nTrusted].pubkey));
+
+        if (init_done > 4)
+		request_trust(nTrusted);
+
+	nTrusted++;
+}
+
+void SIG2::request_trust(int i) {
+	trust[i].requested = millis();
+
+        char mynonce[ B64L(HASH_LENGTH) ];
+        char seed[32];
+        snprintf(seed,sizeof(seed),"%lu-%s",trust[i].requested,trust[i].node);
+        populate_nonce(seed, mynonce); 
+
+        char payload[MAX_MSG];
+	snprintf(payload, sizeof(payload), "pubkey %s %s", mynonce, trust[i].node);
+
+	Debug.printf("Requesting trust for <%s>\n", trust[i].node);
+    	_acnode->send(payload);
+
+        char topic[MAX_TOPIC];
+        snprintf(topic, sizeof(topic), "%s/%s/%s", 
+		_acnode->mqtt_topic_prefix, _acnode->moi, trust[i].node);
+        _acnode->_client.subscribe(topic);
+	Debug.printf("Subscribing to %s for the trusted messages.>\n", topic);
+};
 
 SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
   if (!sig2_active()) {
     Debug.printf("Not sending %s from _send_helo() - not yet active.\n", req->payload);
-    return FAIL;
+    return ACSecurityHandler::DECLINE;
   };
 
   IPAddress myIp = _acnode->localIP();
@@ -554,24 +665,32 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
 
   // Add a nonce - so we can time-point the reply.
   //
-  uint8_t nonce_raw[ HASH_LENGTH ];
-  RNG.rand(nonce_raw, sizeof(nonce_raw));
-  SHA256 sha256;
-  sha256.reset();
-  sha256.update(node_publicsign, sizeof(node_publicsign));
-  sha256.update(node_publicsession, sizeof(node_publicsession));
-  sha256.update(nonce_raw, sizeof(nonce_raw));
-  sha256.finalize(nonce_raw, sizeof(nonce_raw));
+  populate_nonce(NULL,_nonce);
 
-  // We know that this fits - see header of SIG2.h
-  //
-  encode_base64(nonce_raw, sizeof(nonce_raw),  (unsigned char *)_nonce);
-
-  // Append the noce.
   strncat(buff, " ", sizeof(buff));
   strncat(buff, _nonce, sizeof(buff));
 
   strncpy(req->payload, buff, sizeof(req->payload));
   return OK;
 }
+
+void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]) {
+  uint8_t nonce_raw[ HASH_LENGTH ];
+  SHA256 sha256;
+  sha256.reset();
+  sha256.update(runtime_seed, sizeof(runtime_seed));
+  sha256.update(node_publicsign, sizeof(node_publicsign));
+  sha256.update(node_publicsession, sizeof(node_publicsession));
+  if (seedOrNull)
+	sha256.update(seedOrNull, strlen(seedOrNull));
+  else {
+	RNG.rand(nonce_raw, sizeof(nonce_raw));
+  	sha256.update(nonce_raw, sizeof(nonce_raw));
+  };
+  sha256.finalize(nonce_raw, sizeof(nonce_raw));
+
+  // We know that this fits - see header of SIG2.h
+  //
+  encode_base64(nonce_raw, sizeof(nonce_raw),  (unsigned char *)nonce);
+};
 

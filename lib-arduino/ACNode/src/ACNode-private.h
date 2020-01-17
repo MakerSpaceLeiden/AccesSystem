@@ -111,6 +111,10 @@ public:
     void set_mqtt_prefix(const char *p);
     void set_mqtt_log(const char *p);
 
+#ifdef HAS_SIG2
+    void add_trusted_node(const char *node);
+#endif
+
     void set_moi(const char *p);
     void set_machine(const char *p);
     void set_master(const char *p);
@@ -209,7 +213,9 @@ public:
     // it from a C callback in the mqtt subsystem.
     //
     void process(const char * topic, const char * payload);
+   
     
+    PubSubClient _client;
 private:
     bool _debug_alive;
     THandlerFunction_Error _error_callback;
@@ -221,7 +227,6 @@ private:
 
     beat_t _lastSwipe;    
     WiFiClient _espClient;
-    PubSubClient _client;
     
     void configureMQTT();
     void reconnectMQTT();
