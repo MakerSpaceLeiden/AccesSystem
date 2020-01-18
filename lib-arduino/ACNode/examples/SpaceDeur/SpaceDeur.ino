@@ -266,7 +266,7 @@ void grote_schakelaar_loop() {
   static unsigned long lst = 0; 
   static int last_grote_schakelaar = -2;
   
-  if (digitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar && lst = 0) {
+  if (digitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar && lst == 0) {
     last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
     lst = millis();
   };
