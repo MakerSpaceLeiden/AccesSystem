@@ -51,8 +51,6 @@
 #define GROTE_SCHAKELAAR_IS_OPEN     (LOW)
 #define GROTE_SCHAKELAAR_TOPIC      "makerspace/groteschakelaar"
 
-int last_grote_schakelaar = 2;
-
 #define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
 ACNode node = ACNode(MACHINE);
@@ -267,8 +265,8 @@ void grote_schakelaar_loop() {
   // debounce
   static unsigned long lst = 0; 
 
-  if (digitalRead(GROTE_SCHAKELAAR) != last_grote_schakelaar && lst = 0) {
-    last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR);
+  if (digitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar && lst = 0) {
+    last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
     lst = millis();
   };
 
@@ -283,6 +281,7 @@ void grote_schakelaar_loop() {
       Log.println("Grote schakelaar: Space is now closed.");
       node.send(GROTE_SCHAKELAAR_TOPIC, "0");
     };
+    lst = 0;
   }
 }
 
