@@ -94,6 +94,7 @@ Use the Library Manager (Menu: **Tools | Manage Libraries…** ) of the Arduino 
 - **Adafruit SSD1306 by Adafruit (versie 1.3.0)**
 - **ArduinoJson by Benoit Blanchon (versie 6.12.0)**
 - **PubSubClient by Nick O&#39;Leary (versie 2.7.0)**
+- **AccelStepper by Mike McCauley, (versie 1.59.0)**
 
 To speed up your search, add the name of the library, in the input box next to: **Filter your search…** Next press **Install**.
 
