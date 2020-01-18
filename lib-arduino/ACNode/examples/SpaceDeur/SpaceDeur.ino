@@ -48,8 +48,8 @@
 
 // Introduced by alex - 2020-01-8
 #define GROTE_SCHAKELAAR_SENSOR       (34)
-#define GROTE_SCHAKELAAR_IS_OPEN     (LOW)
-#define GROTE_SCHAKELAAR_TOPIC      "makerspace/groteschakelaar"
+#define GROTE_SCHAKELAAR_IS_OPEN      (HIGH)
+#define GROTE_SCHAKELAAR_TOPIC        "makerspace/groteschakelaar"
 
 #define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
@@ -264,7 +264,8 @@ void buzzer_loop() {
 void grote_schakelaar_loop() {
   // debounce
   static unsigned long lst = 0; 
-
+  static int last_grote_schakelaar = -2;
+  
   if (digitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar && lst = 0) {
     last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
     lst = millis();
@@ -274,7 +275,7 @@ void grote_schakelaar_loop() {
   //
   if (lst && millis() - lst > 100) {
     // stable for over 100 milliseconds; so we trust this value;
-    if (last_grote_schakelaar == GROTE_SCHAKELAAR_OPEN) {
+    if (last_grote_schakelaar == GROTE_SCHAKELAAR_IS_OPEN) {
       Log.println("Grote schakelaar: Space is now open.");
       node.send(GROTE_SCHAKELAAR_TOPIC, "1");
     } else {
