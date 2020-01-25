@@ -322,11 +322,8 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     newsession = true;
 
     SEP(host_ip, "IP address", ACSecurityHandler::FAIL);
-    // Debug.printf(" ** host_ip=%s\n", host_ip);
     SEP(master_publicsignkey_b64, "B64 public signing key", ACSecurityHandler::FAIL);
-    // Debug.printf(" ** master_publicsignkey_b64=%s\n", master_publicsignkey_b64);
     SEP(master_publicencryptkey_b64, "B64 public encryption key", ACSecurityHandler::FAIL);
-    // Debug.printf(" ** master_publicencryptkey_b64=%s\n", master_publicencryptkey_b64);
 
     B64DE(master_publicsignkey_b64, pubsign_tmp, "Ed25519 public key", ACSecurityHandler::FAIL);
     B64DE(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key", ACSecurityHandler::FAIL);
@@ -338,7 +335,6 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     if (strcmp(req->cmd, "welcome") == 0) {
       SEP(nonce, "Nonce extraction", ACSecurityHandler::FAIL);
   
-      Debug.printf("Mynonce %s = nonce %s\n", _nonce, nonce);
       if (!strcmp(_nonce, nonce))
         nonceOk = true;
     };
@@ -379,7 +375,6 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   resetWatchdog();
   if (!Ed25519::verify(signature, signkey, req->rest, strlen(req->rest))) {
     Log.println("Invalid Ed25519 signature on message -rejecting.");
-    Debug.printf(" ** Payload is <%s>\n", req->rest);
     return ACSecurityHandler::FAIL;
   };
 
@@ -450,8 +445,6 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
 
     eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
   };
-
-  // Debug.printf("==> Final %s\n", req->rest);
 
   return  Beat::verify(req);
 };

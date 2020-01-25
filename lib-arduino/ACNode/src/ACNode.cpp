@@ -255,7 +255,6 @@ char * ACNode::cloak(char * tag) {
             case ACSecurityHandler::PASS:
                 break;
             case ACSecurityHandler::OK:
-		Debug.printf("%s -> %s cloaked by %s\n", "*****", q.tag, (*it)->name());
     		strncpy(tag, q.tag, MAX_MSG);
 		return tag;
                 break;
