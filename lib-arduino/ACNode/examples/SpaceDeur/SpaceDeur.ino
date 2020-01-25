@@ -264,7 +264,7 @@ void buzzer_loop() {
 void grote_schakelaar_loop() {
   // debounce
   static unsigned long lst = 0; 
-  static int last_grote_schakelaar = -2;
+  static int last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
   
   if (digitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar && lst == 0) {
     last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
