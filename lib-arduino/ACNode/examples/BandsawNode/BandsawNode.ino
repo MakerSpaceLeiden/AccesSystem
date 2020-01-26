@@ -225,16 +225,14 @@ void setup() {
 #ifdef SYSLOG_PORT
   syslogStream.setPort(SYSLOG_PORT);
 #endif
+  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 #endif
 
   // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
-  // We only sent the very low level debugging to syslog.
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-
-#if 0
+#if 1
   // As the PoE devices have their own grounding - the cannot readily be connected
   // to with a sericd Peral cable.  This allows for a telnet instead.
   auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);

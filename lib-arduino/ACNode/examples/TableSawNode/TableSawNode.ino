@@ -57,6 +57,7 @@ OTA ota = OTA(OTA_PASSWD);
 LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
 
 MqttLogStream mqttlogStream = MqttLogStream();
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -231,13 +232,18 @@ void setup() {
   reader.set_debug(true);
 
   node.addHandler(&reader);
+  
   // default syslog port and destination (gateway address or broadcast address).
-  //
+  // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
   // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
   // Debug.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
+  
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+  
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
