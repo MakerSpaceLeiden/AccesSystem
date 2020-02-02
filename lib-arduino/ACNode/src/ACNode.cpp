@@ -285,23 +285,37 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	if (_approved_callback && useCacheOk && checkCache(_lasttag)) {
                 _approved_callback(machine);
 	};
+       
+	char * tmp = (char *)malloc(MAX_MSG);
+        char * buff = (char *)malloc(MAX_MSG);
+	if (!tmp || !buff) {
+		Log.println("Out of memory during cloacking");
+		goto _return_request_approval;
+		return;
+	};
 
-	char tmp[MAX_MSG];
-	strncpy(tmp, tag, sizeof(tmp));
+        // We need to copy this - as cloak will overwrite this in place.
+        // todo - redesing to be more embedded friendly.
+	strncpy(tmp, tag, sizeof(MAX_MSG));
 	if (!(cloak(tmp))) {
 		Log.println("Coud not cloak the tag, approval request not sent");
+		goto _return_request_approval;
 		return;
 	};
 
 	Debug.printf("Requesting approval for %s at node %s on machine %s by tag %s\n", 
 		operation ? operation : "<null>", moi ? moi: "<null>", operation ? operation : "<null>", tag ? "*****" : "<null>");
 
-        char buff[MAX_MSG];
-	snprintf(buff,sizeof(buff),"%s %s %s %s", operation, moi, target, tmp);
+	snprintf(buff,sizeof(MAX_MSG),"%s %s %s %s", operation, moi, target, tmp);
 
         _lastSwipe = beatCounter;
         _reqs++;
 	send(NULL,buff);
+
+_return_request_approval:
+	if (tmp) free(tmp);
+        if (buff) free(buff);
+	return;
 };
 
 float loopRate = 0;
