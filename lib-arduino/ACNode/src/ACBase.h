@@ -30,8 +30,10 @@ public:
     char version[MAX_TOKEN_LEN];
     char beat[MAX_TOKEN_LEN];
     char cmd[MAX_TOKEN_LEN];
-    char rest[MAX_MSG];
     char tag[MAX_TOKEN_LEN];
+    char rest[MAX_MSG];
+
+    char tmp[MAX_MSG];
 };
 
 class ACBase {

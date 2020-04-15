@@ -212,7 +212,7 @@
                 THandlerFunction_OnChangeCB onChangeCB,
                 THandlerFunction_OnTimeoutCB onTimeoutCB
     ) {
-        if (state <0 || state >=254 || _state2stateStruct[state]) {
+        if (state >=254 || _state2stateStruct[state]) {
             Log.printf("BUG -- inpossible state (%d:%s)\n", state, label);
             return;
         };

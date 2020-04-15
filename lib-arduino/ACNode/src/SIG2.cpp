@@ -238,7 +238,6 @@ void SIG2::loop() {
 //
 ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   size_t len = strlen(req->payload);
-  char buff[MAX_MSG];
 
   char * sender = rindex(req->topic,'/');
   if (!sender) {
@@ -252,13 +251,13 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   if (len < 72 || strncmp(req->payload, "SIG/2.", 6) != 0) 
     return ACSecurityHandler::DECLINE;
 
-  if (len > sizeof(buff) - 1) {
+  if (len > sizeof(req->tmp) - 1) {
     Debug.println("Failing SIG/2 sigature - far too long");
     return FAIL;
   };
 
-  strncpy(buff, req->payload, sizeof(buff));
-  char * p = buff;
+  strncpy(req->tmp, req->payload, sizeof(req->tmp));
+  char * p = req->tmp;
 
   SEP(version, "SIG2Verify failed - no version", ACSecurityHandler::FAIL);
   strncpy(req->version, version, sizeof(req->version));
@@ -322,11 +321,8 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     newsession = true;
 
     SEP(host_ip, "IP address", ACSecurityHandler::FAIL);
-    // Debug.printf(" ** host_ip=%s\n", host_ip);
     SEP(master_publicsignkey_b64, "B64 public signing key", ACSecurityHandler::FAIL);
-    // Debug.printf(" ** master_publicsignkey_b64=%s\n", master_publicsignkey_b64);
     SEP(master_publicencryptkey_b64, "B64 public encryption key", ACSecurityHandler::FAIL);
-    // Debug.printf(" ** master_publicencryptkey_b64=%s\n", master_publicencryptkey_b64);
 
     B64DE(master_publicsignkey_b64, pubsign_tmp, "Ed25519 public key", ACSecurityHandler::FAIL);
     B64DE(master_publicencryptkey_b64, pubencr_tmp, "Curve25519 public key", ACSecurityHandler::FAIL);
@@ -338,7 +334,6 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     if (strcmp(req->cmd, "welcome") == 0) {
       SEP(nonce, "Nonce extraction", ACSecurityHandler::FAIL);
   
-      Debug.printf("Mynonce %s = nonce %s\n", _nonce, nonce);
       if (!strcmp(_nonce, nonce))
         nonceOk = true;
     };
@@ -379,7 +374,6 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   resetWatchdog();
   if (!Ed25519::verify(signature, signkey, req->rest, strlen(req->rest))) {
     Log.println("Invalid Ed25519 signature on message -rejecting.");
-    Debug.printf(" ** Payload is <%s>\n", req->rest);
     return ACSecurityHandler::FAIL;
   };
 
@@ -451,13 +445,10 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     eeprom.flags |= CRYPTO_HAS_MASTER_TOFU;
   };
 
-  // Debug.printf("==> Final %s\n", req->rest);
-
   return  Beat::verify(req);
 };
 
 SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
-  char msg[MAX_MSG];
 
   acauth_result_t r = Beat::secure(req);
   if (r == FAIL || r == OK)
@@ -475,15 +466,13 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
 
   strncpy(req->version, "SIG/2.0", sizeof(req->version));
-  snprintf(msg, sizeof(msg), "%s %s %s", req->version, sigb64, req->payload);
+  snprintf(req->tmp, sizeof(req->payload), "%s %s %s", req->version, sigb64, req->payload);
+  strncpy(req->payload, req->tmp, sizeof(req->payload));
 
-  strncpy(req->payload, msg, sizeof(req->payload));
   return OK;
 };
 
 SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
-  char tag_encoded[MAX_MSG];
-
   if (!sig2_active())
     return ACSecurityHandler::FAIL;
 
@@ -532,10 +521,7 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   Serial.print("Cypher="); Serial.println((char *)output_b64);
 #endif
 
-  snprintf(tag_encoded, sizeof(tag_encoded), "%s.%s", iv_b64, output_b64);
-
-  strncpy(req->tag, tag_encoded, sizeof(req->tag));
-
+  snprintf(req->tag, sizeof(req->tag), "%s.%s", iv_b64, output_b64);
   return OK;
 };
 
@@ -550,9 +536,8 @@ SIG2::cmd_result_t SIG2::handle_cmd(ACRequest * req)
     return CMD_CLAIMED;
   }
   if (!strncmp("trust", req->cmd, 5)) {
-	char buff[ MAX_MSG ];
-	strncpy(buff, req->rest, sizeof(buff));
-	char * p = buff;
+	strncpy(req->tmp, req->rest, sizeof(req->tmp));
+	char * p = req->tmp;
 
         SEP(nonce , "Trust failed - no nonce", CMD_CLAIMED);
         SEP(node, "Trust failed - no node name", CMD_CLAIMED);
@@ -626,7 +611,7 @@ void SIG2::request_trust(int i) {
         snprintf(seed,sizeof(seed),"%lu-%s",trust[i].requested,trust[i].node);
         populate_nonce(seed, mynonce); 
 
-        char payload[MAX_MSG];
+        char payload[ 6 + 1 + B64L(HASH_LENGTH) + 1 + MAX_NAME + 1];
 	snprintf(payload, sizeof(payload), "pubkey %s %s", mynonce, trust[i].node);
 
 	Debug.printf("Requesting trust for <%s>\n", trust[i].node);
@@ -636,6 +621,7 @@ void SIG2::request_trust(int i) {
         snprintf(topic, sizeof(topic), "%s/%s/%s", 
 		_acnode->mqtt_topic_prefix, _acnode->moi, trust[i].node);
         _acnode->_client.subscribe(topic);
+
 	Debug.printf("Subscribing to %s for the trusted messages.>\n", topic);
 };
 

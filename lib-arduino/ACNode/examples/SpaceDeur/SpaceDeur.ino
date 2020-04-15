@@ -19,6 +19,10 @@
 #include <RFID.h>   // SPI version
 #include <AccelStepper.h>
 
+#ifndef ESP32
+#error "The space deur is an ESP32 based Olimex!"
+#endif
+
 #define MACHINE             "spacedeur"
 
 // Stepper motor-Pololu / A4988
@@ -226,11 +230,9 @@ void setup() {
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
-#if 1
   auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
   Log.addPrintStream(t);
   Debug.addPrintStream(t);
-#endif
 
   // node.set_debug(true);
   // node.set_debugAlive(true);
@@ -264,7 +266,7 @@ void buzzer_loop() {
 void grote_schakelaar_loop() {
   // debounce
   static unsigned long lst = 0; 
-  static int last_grote_schakelaar = -2;
+  static int last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
   
   if (digitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar && lst == 0) {
     last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);

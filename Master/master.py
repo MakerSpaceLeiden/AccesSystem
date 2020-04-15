@@ -15,7 +15,7 @@ sys.path.append('.')
 import db
 import re
 
-sys.path.append('../lib')
+sys.path.append('../lib-python')
 import DrumbeatNode as DrumbeatNode
 import AlertEmail as AlertEmail
 import PingNode as PingNode
