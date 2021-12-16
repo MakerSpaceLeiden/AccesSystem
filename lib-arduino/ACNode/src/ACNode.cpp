@@ -361,10 +361,7 @@ void ACNode::loop() {
 	if (millis() - last > _report_period) {
 		last = millis();
 
-		// DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);
-		// JsonObject& out = jsonBuffer.createObject();
-
-        DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(30) + 500);
+                 DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(30) + 500);
 
 		jsonDoc[ "node" ] = moi;
 		jsonDoc[ "machine" ] = machine;

@@ -53,7 +53,7 @@ MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 MachineState machinestate = MachineState();
-MachineState::machinestates_t BYEBYE, REJECTED;
+MachineState::machinestate_t BYEBYE, REJECTED;
 
 unsigned long swipeouts_count = 0;
 
@@ -71,12 +71,12 @@ void setup() {
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  BYEBYE = machinestate.addState("Thanks & bye now !", LED::LED_IDLE, 5 * 1000, machinestate.WAITINGFORCARD);
-  REJECTED = machinestate.addState("Euh?!", LED::LED_ERROR, 5 * 1000, machinestate.WAITINGFORCARD);
+  BYEBYE = machinestate.addState((const char*)"Thanks & bye now !", LED::LED_IDLE, (time_t)(5 * 1000), machinestate.WAITINGFORCARD);
+  REJECTED = machinestate.addState((const char*)"Euh?!", LED::LED_ERROR, (time_t)(5 * 1000), machinestate.WAITINGFORCARD);
 
   // Update the display whenever we enter into a new state.
   //
-  machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestates_t last, MachineState::machinestates_t current) -> void {
+  machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     oled = machinestate.label();
   });
 
@@ -113,7 +113,7 @@ void setup() {
     return ACBase::CMD_CLAIMED;
   });
 
-  // This reports things such as FW version of the card; which can 'wedge' it. So we
+  // This reports things such as FW ver/on/psion of the card; which can 'wedge' it. So we
   // disable it unless we absolutely positively need that information.
   //
   reader.set_debug(false);
@@ -173,16 +173,6 @@ void fetchAndUpdateState() {
     return;
   }
 
-  /* {
-     "machines" : [
-        "Main room lights", "Woodlathe"
-     ],
-     "members" : [
-        "Peter", "Petra,
-     ],
-     "lights" : []
-    }
-  */
   oled.setText(payload.c_str());
 
   https.end();

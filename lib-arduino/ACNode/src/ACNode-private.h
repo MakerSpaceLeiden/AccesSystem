@@ -1,5 +1,5 @@
-#ifndef _H_ACNODE
-#define _H_ACNODE
+#ifndef _H_ACNODE_PRIVATE
+#define _H_ACNODE_PRIVATE
 
 // #include <OlimexBoard.h>         
 #include <PowerNodeV11.h>
