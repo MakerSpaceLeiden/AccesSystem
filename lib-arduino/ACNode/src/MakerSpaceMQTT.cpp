@@ -25,7 +25,11 @@ void ACNode::send(const char * topic, const char * payload, bool _raw) {
     if (topic == NULL) {
         snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, ACNode::moi);
         topic = _topic;
-    };
+    }
+    else if (index(topic,'/') == NULL) {
+        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, ACNode::moi, topic);
+        topic = _topic;
+    }
 
 //    Serial.printf("send('%s','%s',%d)\n", topic ? topic : "<null>", payload ? payload : "<null>" , _raw);
 

@@ -153,7 +153,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
         WiFi.mode(WIFI_STA);
     } else
     if (_ssid) {
-        Serial.printf("Starting up wifi (hardcoded SSID <%s>,<%s>)\n", _ssid,_ssid_passwd);
+        Serial.printf("Starting up wifi (hardcoded SSID <%s>)\n", _ssid);
         WiFi.begin(_ssid, _ssid_passwd);
     } else {
         Serial.println("Staring wifi auto connect.");
@@ -296,7 +296,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 
         // We need to copy this - as cloak will overwrite this in place.
         // todo - redesing to be more embedded friendly.
-	strncpy(tmp, tag, sizeof(MAX_MSG));
+	strncpy(tmp, tag, sizeof(tmp));
 	if (!(cloak(tmp))) {
 		Log.println("Coud not cloak the tag, approval request not sent");
 		goto _return_request_approval;
@@ -306,7 +306,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	Debug.printf("Requesting approval for %s at node %s on machine %s by tag %s\n", 
 		operation ? operation : "<null>", moi ? moi: "<null>", operation ? operation : "<null>", tag ? "*****" : "<null>");
 
-	snprintf(buff,sizeof(MAX_MSG),"%s %s %s %s", operation, moi, target, tmp);
+	snprintf(buff,sizeof(buff),"%s %s %s %s", operation, moi, target, tmp);
 
         _lastSwipe = beatCounter;
         _reqs++;
