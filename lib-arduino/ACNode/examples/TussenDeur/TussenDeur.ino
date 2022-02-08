@@ -17,6 +17,7 @@
 #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
+#include <base64.hpp>   
 
 #define MACHINE             "tussendeur"
 
@@ -35,7 +36,9 @@ LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
-#ifdef OTA_PASSWD
+#ifndef OTA_PASSWD
+#error "Are you sure you want this ?!"
+#else
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
