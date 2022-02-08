@@ -31,7 +31,13 @@ void prepareCache(bool wipe) {
     };
   };
 
-  if (wipe) for (int i = 0; i < 255; i++) {
+  if (wipe) 
+	wipeCache();
+  Serial.println("Cache ready.");
+};
+
+void wipeCache() { 
+  for (int i = 0; i < 255; i++) {
     String dirName = CACHE_DIR_PREFIX + String(i,HEX);
     if (!SPIFFS.exists(dirName)) 
     	SPIFFS.mkdir(dirName);
@@ -48,9 +54,8 @@ void prepareCache(bool wipe) {
       };
       dir.close();
   };
-
-  Serial.println("Cache ready.");
-};
+  Log.println("Cache wiped");
+}
 
 void setCache(const char * tag, bool ok, unsigned long beatCounter) {
   String path = uid2path(tag) + ".lastOK";
@@ -63,15 +68,33 @@ void setCache(const char * tag, bool ok, unsigned long beatCounter) {
   }
 };
 
-bool checkCache(const char * tag) {
+bool checkCache(const char * tag, unsigned long nowBeatCounter) {
   String path = uid2path(tag) + ".lastOK";
   bool present = SPIFFS.exists(path);
-  if (present) cacheHit++; else cacheMiss++;
-  return present;
+
+  if (!present) {
+	cacheMiss++;
+	return false;
+  };
+  cacheHit++; 
+
+  File f = SPIFFS.open(path, "r");
+  String l = f.readString();
+  unsigned long b = strtoul(l.c_str(), NULL, 10);
+  f.close();
+
+  if (b && nowBeatCounter - b < MAX_CACHE_AGE)
+	return true;
+
+  SPIFFS.remove(path);
+  Log.printf("Purging cache entry.\n");
+  return false;
 };
+
 #else
 void prepareCache(bool wipe) { return; }
 void setCache(const char * tag, bool ok, unsigned long beatCounter) { return; };
 bool checkCache(const char * tag) { return false; };
+void wipeCache() { return; };
 #endif
 

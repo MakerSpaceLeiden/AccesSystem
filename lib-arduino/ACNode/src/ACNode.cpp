@@ -282,7 +282,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
         strncpy(_lasttag, tag, sizeof(_lasttag));
         // Shortcircuit if permitted. Otherwise do the real thing. Note that our cache is primitive
         // just tags - not commands or node/devices.
-	if (_approved_callback && useCacheOk && checkCache(_lasttag)) {
+	if (_approved_callback && useCacheOk && checkCache(_lasttag, beatCounter)) {
                 _approved_callback(machine);
 	};
        
@@ -456,6 +456,11 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
         snprintf(buff, sizeof(buff), "ack %s %s %d.%d.%d.%d", master, moi, myIp[0], myIp[1], myIp[2], myIp[3]);
         send(NULL, buff);
 	Debug.println("replied on the pick with an ack.");
+        return ACNode::CMD_CLAIMED;
+    }
+    if (!strcmp("clearcache", req->cmd)) {
+	Log.println("Command received to clear the cache");
+        wipeCache();
         return ACNode::CMD_CLAIMED;
     }
     bool app = ((strcasecmp("approved",req->cmd)==0) || (strcasecmp("open",req->cmd)==0));
