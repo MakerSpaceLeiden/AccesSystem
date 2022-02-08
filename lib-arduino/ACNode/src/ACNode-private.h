@@ -17,7 +17,7 @@
 #include <PubSubClient.h>        // https://github.com/knolleary/
 #include <SPI.h>
 
-#include <base64.hpp>
+#include <base64.h>
 #include <Crypto.h>
 #include <SHA256.h>
 

@@ -79,15 +79,17 @@ bool checkCache(const char * tag, unsigned long nowBeatCounter) {
   cacheHit++; 
 
   File f = SPIFFS.open(path, "r");
+  String l;
+
   if (!f) {
     Log.printf("Though cache file exists, it could not be opened.\n");
     goto ex;
   }
 
-  String l = f.readString();
+  l = f.readString();
   f.close();
 
-  if (l.length() > 3) {
+  if (l && l.length() > 3) {
     unsigned long b = strtoul(l.c_str(), NULL, 10);
 
     if (b && nowBeatCounter - b < MAX_CACHE_AGE)

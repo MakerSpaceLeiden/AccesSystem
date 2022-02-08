@@ -1,5 +1,7 @@
 #ifndef _CACHE_H
 #define _CACHE_H
+#include <ACNode.h>
+
 
 // up to 48 hours of caching.
 //

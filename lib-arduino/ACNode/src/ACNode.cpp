@@ -296,7 +296,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 
         // We need to copy this - as cloak will overwrite this in place.
         // todo - redesing to be more embedded friendly.
-	strncpy(tmp, tag, sizeof(tmp));
+	strncpy(tmp, tag, MAX_MSG);
 	if (!(cloak(tmp))) {
 		Log.println("Coud not cloak the tag, approval request not sent");
 		goto _return_request_approval;
@@ -306,7 +306,8 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	Debug.printf("Requesting approval for %s at node %s on machine %s by tag %s\n", 
 		operation ? operation : "<null>", moi ? moi: "<null>", operation ? operation : "<null>", tag ? "*****" : "<null>");
 
-	snprintf(buff,sizeof(buff),"%s %s %s %s", operation, moi, target, tmp);
+	snprintf(buff,MAX_MSG,"%s %s %s %s", operation, moi, target, tmp);
+	Debug.printf("Posting (b=%d, m=%d)  <%s>\n", MAX_MSG, MQTT_MAX_PACKET_SIZE, buff);
 
         _lastSwipe = beatCounter;
         _reqs++;
@@ -632,7 +633,7 @@ void ACNode::delayedReboot() {
    };
 
    char buff[255];
-   snprintf(buff,sizeof(buff),"Countdown to forced reboot: %d", 5 - warn_counter);
+   snprintf(buff,MAX_MSG,"Countdown to forced reboot: %d", 5 - warn_counter);
 
    Log.println(buff);
 
