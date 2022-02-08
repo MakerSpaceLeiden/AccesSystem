@@ -101,10 +101,16 @@ ex:
   return false;
 };
 
+void unsetCache(const char * tag) {
+  String path = uid2path(tag) + ".lastOK";
+  SPIFFS.remove(path);
+}
+
 #else
 void prepareCache(bool wipe) { return; }
 void setCache(const char * tag, bool ok, unsigned long beatCounter) { return; };
 bool checkCache(const char * tag) { return false; };
 void wipeCache() { return; };
+void unsetCache(const char * tag) { return; };
 #endif
 

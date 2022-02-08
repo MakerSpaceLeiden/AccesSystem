@@ -458,12 +458,20 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
         send(NULL, buff);
 	Debug.println("replied on the pick with an ack.");
         return ACNode::CMD_CLAIMED;
-    }
+    };
     if (!strcmp("clearcache", req->cmd)) {
 	Log.println("Command received to clear the cache");
         wipeCache();
         return ACNode::CMD_CLAIMED;
     }
+    if (!strcmp("unauthorize", req->cmd)) {
+         char tmp[MAX_MSG], *p = tmp;
+         strncpy(tmp, req->rest, sizeof(tmp));
+         SEP(tag, "No tag in unauthorize command", ACNode::CMD_CLAIMED)
+         unsetCache(req->rest);
+         return ACNode::CMD_CLAIMED;
+    };
+
     bool app = ((strcasecmp("approved",req->cmd)==0) || (strcasecmp("open",req->cmd)==0));
     bool den = (strcasecmp("denied", req->cmd) == 0);
     // if (den) { den = false; app = true; };
@@ -490,15 +498,16 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
           return ACNode::CMD_CLAIMED;
       };
 
-      setCache(_lasttag, app, (unsigned long) beatCounter);
 
       if (app) {
+         setCache(_lasttag, app, (unsigned long) beatCounter);
          Log.printf("Received OK to power on %s\n", machine);
          if (_approved_callback) {
 		_approved_callback(machine);
         	return ACNode::CMD_CLAIMED;
          };
      } else {
+         unsetCache(_lasttag);
          Log.printf("Received a DENID to power on %s\n", machine);
          if (_denied_callback) {
 		_denied_callback(machine);
