@@ -96,7 +96,7 @@ void RFID::loop() {
        //
        if (strncmp(lasttag, tag, sizeof(lasttag)) || millis() - lastswipe > 3000) {
     	      lastswipe = millis();
-	      strncpy(lasttag, tag, sizeof(tag));
+	      strncpy(lasttag, tag, sizeof(lasttag));
 
 	      if (!_swipe_cb || (_swipe_cb(lasttag) != ACNode::CMD_CLAIMED)) {
  	      	   // Simple approval request; default is to 'energise' the contactor on 'machine'.
