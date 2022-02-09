@@ -704,6 +704,6 @@ void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]
   // We know that this fits - see header of SIG2.h
   //
   size_t olen = 0;
-  mbedtls_base64_encode((unsigned char *)nonce, sizeof(nonce), &olen, nonce_raw, sizeof(nonce_raw));
+  mbedtls_base64_encode((unsigned char *)nonce, B64L(HASH_LENGTH), &olen, nonce_raw, sizeof(nonce_raw));
 };
 
