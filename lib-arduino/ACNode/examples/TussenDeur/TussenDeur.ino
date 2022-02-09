@@ -32,8 +32,6 @@ ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-MqttLogStream mqttlogStream = MqttLogStream();
-TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 #ifndef OTA_PASSWD
 #error "Are you sure you want this ?! as it will disable OTA programming"
@@ -138,14 +136,6 @@ void setup() {
   node.addHandler(&reader);
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
-#endif
-
-  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
-#if 1
-  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-  Log.addPrintStream(t);
-  Debug.addPrintStream(t);
 #endif
 
   // node.set_debug(true);

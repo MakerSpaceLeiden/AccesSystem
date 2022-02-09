@@ -114,9 +114,9 @@ Change the value next to   **MQTT\_MAX\_PACKET\_SIZE** from **128** to **1290** 
 
 Save this file and close Notepad++
 
-The following libraries cannot be installed with the Arduino Library manager. To install these libraries:
+The following libraries cannot be installed with the Arduino Library manager. 
 
-Open each of the following urls&#39;s in a webbrowser, click in the window shown on the **Clone or download** button and then on the **Download ZIP** button, save the ZIP file in a directory of your own choice. Copy the content of all these ZIP files to the Windows directory **Documenten\Arduino\libraries**.
+To install these libraries manually - open each of the following urls&#39;s in a webbrowser, click in the window shown on the **Clone or download** button and then on the **Download ZIP** button, save the ZIP file in a directory of your own choice. Copy the content of all these ZIP files to the Windows directory **Documenten\Arduino\libraries**.
 
 [**https://github.com/dirkx/OptocouplerDebouncer**](https://github.com/dirkx/OptocouplerDebouncer)
 
@@ -124,13 +124,13 @@ Open each of the following urls&#39;s in a webbrowser, click in the window shown
 
 [**https://github.com/dirkx/ButtonDebounce**](https://github.com/dirkx/ButtonDebounce)
 
-[**https://github.com/dirkx/base64\_arduino.git**](https://github.com/dirkx/base64_arduino.git)
-
 [**https://github.com/dirkx/rfid.git**](https://github.com/dirkx/rfid.git)
+
+[**https://github.com/MakerSpaceLeiden/tee-log.git**]
 
 [**https://github.com/prphntm63/WIFIMANAGER-ESP32**](https://github.com/prphntm63/WIFIMANAGER-ESP32)
 
-Do the same fort the following link, but unpack the ZIP file e.g. in the directory where the ZIP file is downloaded to.
+Do the same for the following link, but unpack the ZIP file e.g. in the directory where the ZIP file is downloaded to.
 
 [**https://github.com/dirkx/AccesSystem**](https://github.com/dirkx/AccesSystem) ** **
 

@@ -6,8 +6,6 @@
 // limits in MQTT callback and elsewhere.
 //
 ACNode * _acnode;
-ACLog Log;
-ACLog Debug;
 
 #ifdef HAS_MSL
 MSL msl = MSL();    // protocol doors (private LAN)
@@ -35,11 +33,30 @@ static double coreTemp() {
 }
 #endif
 
+#include <TelnetSerialStream.h>
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
+
+#include <WebSerialStream.h>
+WebSerialStream  webSerialStream = WebSerialStream();
+
+#include <MqttlogStream.h>
+
+MqttStream  * mqttlogStream;
+
+#ifdef SYSLOG_HOST
+#include <SyslogStream.h>
+SyslogStream syslogStream = SyslogStream();
+#endif
+
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
-void ACNode::set_mqtt_host(const char *p) { strncpy(mqtt_server,p, sizeof(mqtt_server)); };
+void ACNode::set_mqtt_host(const char *p) { 
+	strncpy(mqtt_server,p, sizeof(mqtt_server)); 
+};
 void ACNode::set_mqtt_port(uint16_t p)  { mqtt_port = p; };
-void ACNode::set_mqtt_prefix(const char *p)  { strncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix)); };
+void ACNode::set_mqtt_prefix(const char *p)  { 
+	strncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix)); 
+}
 void ACNode::set_mqtt_log(const char *p)  { strncpy(logpath,p, sizeof(logpath)); };
 void ACNode::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
 void ACNode::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
@@ -57,6 +74,15 @@ void ACNode::pop() {
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
     strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
+
+    // It is safe to start logging early - as these won't emit anyting until
+    // the network is known to be up.
+    //
+    Log.addPrintStream(std::make_shared<TelnetSerialStream>(telnetSerialStream));
+    Log.addPrintStream(std::make_shared<WebSerialStream>(webSerialStream));
+#ifdef SYSLOG_HOST
+    Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+#endif
 };
 
 ACNode::ACNode(const char * m, bool wired, acnode_proto_t proto) : 
@@ -82,6 +108,12 @@ void send(const char * topic, const char * payload) {
 }
 
 void ACNode::set_debugAlive(bool debug) { _debug_alive = debug; }
+
+void ACNode::set_log_destinations(unsigned int destinations) {
+// LOG_SERIAL     LOG_TELNET    LOG_SYSLOG   LOG_WEBBROWSER  LOG_MQTT     
+}
+void ACNode::set_debug_destinations(unsigned int destinations) {
+}
 
 bool ACNode::isConnected() {
 #ifdef ESP32
@@ -110,6 +142,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
 
     if (!*moi)  
 	strncpy(moi, machine, sizeof(moi));
+
 
 #if 0
     if (_debug)
@@ -187,16 +220,27 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
    
     Log.print(moi); Log.print(" "); Log.println(localIP());
  
-    Log.begin();
-    Debug.begin(); 
 
     _espClient = WiFiClient();
     _client = PubSubClient(_espClient);
-    
+
+    // todo: lifecycle stuff 
+    mqttlogStream = new MqttStream(&_espClient);
+    Log.addPrintStream(std::make_shared<MqttStream>(*mqttlogStream));
+
+    char buff[256];
+    snprintf(buff, sizeof(buff), "%s/logs/%s", mqtt_topic_prefix, moi);
+    mqttlogStream->setTopic(buff);
+    mqttlogStream->setServer(mqtt_server);
+
+
 #ifdef CONFIGAP
     configBegin();
 #endif
     configureMQTT();
+
+    Log.begin();
+    Debug.begin(); 
  
     switch(_proto) {
     case PROTO_MSL:
