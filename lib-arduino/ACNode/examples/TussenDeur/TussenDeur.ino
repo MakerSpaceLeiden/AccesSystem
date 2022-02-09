@@ -17,7 +17,6 @@
 #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
-#include <base64.hpp>   
 
 #define MACHINE             "tussendeur"
 
@@ -37,7 +36,7 @@ MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 #ifndef OTA_PASSWD
-#error "Are you sure you want this ?!"
+#error "Are you sure you want this ?! as it will disable OTA programming"
 #else
 OTA ota = OTA(OTA_PASSWD);
 #endif

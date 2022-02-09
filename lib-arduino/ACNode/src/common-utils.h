@@ -1,33 +1,22 @@
 #ifndef _H_COMMONS
 #define _H_COMMONS
+#include <mbedtls/base64.h>
+#include <string.h>
 
-unsigned char binary_to_base64(unsigned char v);
-unsigned char base64_to_binary(unsigned char c);
-unsigned int encode_base64_length(unsigned int input_length);
-unsigned int decode_base64_length(unsigned char input[]);
-unsigned int decode_base64_length(unsigned char input[], unsigned int input_length);
-unsigned int encode_base64(unsigned char input[], unsigned int input_length, unsigned char output[]);
-unsigned int decode_base64(unsigned char input[], unsigned char output[]);
-unsigned int decode_base64(unsigned char input[], unsigned int input_length, unsigned char output[]);
-unsigned char binary_to_base64(unsigned char v) ;
-unsigned char base64_to_binary(unsigned char c) ;
-unsigned int encode_base64_length(unsigned int input_length) ;
-unsigned int decode_base64_length(unsigned char input[]) ;
-unsigned int decode_base64_length(unsigned char input[], unsigned int input_length) ;
-unsigned int encode_base64(unsigned char input[], unsigned int input_length, unsigned char output[]) ;
-unsigned int decode_base64(unsigned char input[], unsigned char output[]) ;
-unsigned int decode_base64(unsigned char input[], unsigned int input_length, unsigned char output[]) ;
-
+size_t decode_base64_length(unsigned char * base64str);
 
 #define B64L(n) ((((4 * n / 3) + 3) & ~3)+1)
 
 #define B64DE(base64str, bin, what, errorOnReturn) { \
-if (decode_base64_length((unsigned char *)base64str) != sizeof(bin)) { \
-Debug.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", \
-        sizeof(bin), decode_base64_length((unsigned char *)base64str), base64str); \
-return errorOnReturn; \
-}; \
-decode_base64((unsigned char *)base64str, bin); \
+     if (decode_base64_length((unsigned char *)(base64str)) != sizeof((bin))) { \
+            Debug.printf("Wrong length " what " (expected %d, got %d/%s) - ignoring\n", \
+                       sizeof((bin)), decode_base64_length((unsigned char *)(base64str)), (base64str)); \
+            return (errorOnReturn); \
+     }; \
+    size_t olen = 0; \
+    /* make sure we're not passed pointers - but bonafida blocks  - as mbed_tls wants size. */ \
+    assert(sizeof(bin)>8); assert(sizeof(base64str)>8); \
+    mbedtls_base64_decode(bin,sizeof(bin),&olen,(unsigned char *)(base64str),strlen(base64str)); \
 }
 
 #define B64D(base64str, bin, what) { B64DE(base64str, bin, what, false); }
