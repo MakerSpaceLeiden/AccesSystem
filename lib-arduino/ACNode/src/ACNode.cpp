@@ -183,6 +183,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
 #endif
     
     if (_wired) {
+        Serial.println("Wired mode");
         WiFi.mode(WIFI_STA);
     } else
     if (_ssid) {
@@ -203,7 +204,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     Serial.print("Connecting..");
     while (!isConnected() && (millis() - start < del * 1000)) {
         delay(500);
-	Serial.print(",");
+	Serial.print(".");
     };
     Serial.println("Connected.");
     
