@@ -28,7 +28,7 @@
 
 #define AARTLED_GPIO      (16)
 
-#define BUZZ_TIME (8 * 1000) // Buzz 8 seconds.
+#define BUZZ_TIME (8) // Buzz 8 seconds.
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
@@ -60,13 +60,13 @@ void setup() {
   //
   BUZZING = machinestate.addState((const char*)"Approved",
                                   LED::LED_IDLE,
-                                  (time_t)(BUZZ_TIME), // stay in this state for BUZZ_TIME seconds
+                                  (time_t)(BUZZ_TIME * 1000), // stay in this state for BUZZ_TIME seconds
                                   machinestate.WAITINGFORCARD // then go back to waiting for the next swipe.
                                  );
 
   REJECTED = machinestate.addState((const char*)"Denied",
                                    LED::LED_ERROR,
-                                   (time_t)(2),
+                                   (time_t)(2 * 1000),
                                    machinestate.WAITINGFORCARD
                                   );
 
