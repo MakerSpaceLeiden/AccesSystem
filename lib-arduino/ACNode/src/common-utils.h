@@ -15,7 +15,7 @@ size_t decode_base64_length(unsigned char * base64str);
      }; \
     size_t olen = 0; \
     /* make sure we're not passed pointers - but bonafida blocks  - as mbed_tls wants size. */ \
-    assert(sizeof(bin)>8); assert(sizeof(base64str)>8); \
+    assert(sizeof(bin)>8); \
     mbedtls_base64_decode(bin,sizeof(bin),&olen,(unsigned char *)(base64str),strlen(base64str)); \
 }
 
