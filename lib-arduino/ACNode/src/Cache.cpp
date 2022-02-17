@@ -98,6 +98,11 @@ bool checkCache(const char * tag, unsigned long nowBeatCounter) {
     goto ex;
   }
   b = strtoul(l.c_str(), NULL, 10);
+  if (b < 1581973038) {
+    Log.printf("Though cache file exists, the value in it seems bogus.\n");
+    goto ex;
+  }
+
   age = nowBeatCounter - b;
 
   if (b && age < MAX_CACHE_AGE) {
