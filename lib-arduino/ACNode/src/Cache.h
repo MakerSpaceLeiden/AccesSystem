@@ -5,7 +5,7 @@
 
 // up to 48 hours of caching.
 //
-#define MAX_CACHE_AGE	(2 * 24 * 3600 * 1000)
+#define MAX_CACHE_AGE (2 * 24 * 3600 /* seconds! */)
 extern unsigned long cacheMiss, cacheHit;
 
 void prepareCache(bool wipe);

@@ -63,7 +63,9 @@ void setCache(const char * tag, bool ok, unsigned long beatCounter) {
     File f = SPIFFS.open(path, "w");
     f.println(beatCounter);
     f.close();
+    Debug.printf("Created cache entry: as part of set\n");
   } else {
+    Debug.printf("Removed cache entry: as part of set\n");
     SPIFFS.remove(path);
   }
 };
@@ -74,11 +76,13 @@ bool checkCache(const char * tag, unsigned long nowBeatCounter) {
 
   if (!present) {
 	cacheMiss++;
+        Debug.printf("Returning cache miss\n");
 	return false;
   };
   cacheHit++; 
 
   File f = SPIFFS.open(path, "r");
+  unsigned long b = 0, age = 0;
   String l;
 
   if (!f) {
@@ -89,12 +93,19 @@ bool checkCache(const char * tag, unsigned long nowBeatCounter) {
   l = f.readString();
   f.close();
 
-  if (l && l.length() > 3) {
-    unsigned long b = strtoul(l.c_str(), NULL, 10);
+  if (!l || l.length() < 3) {
+    Log.printf("Though cache file exists, it seems bogus.\n");
+    goto ex;
+  }
+  b = strtoul(l.c_str(), NULL, 10);
+  age = nowBeatCounter - b;
 
-    if (b && nowBeatCounter - b < MAX_CACHE_AGE)
+  if (b && age < MAX_CACHE_AGE) {
+        Debug.printf("Returning cache hit - age %u seconds\n", nowBeatCounter - b);
 	return true;
   };
+  Debug.printf("Cache miss - Too old %u >= %u\n",age, MAX_CACHE_AGE);
+
 ex:
   SPIFFS.remove(path);
   Log.printf("Purging cache entry.\n");
