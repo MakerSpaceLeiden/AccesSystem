@@ -86,6 +86,7 @@ class MachineState : public ACBase {
   public:
     const char * label();
     const char * label(uint8_t label);
+    LED::led_state_t ledState() { return _state2stateStruct[machinestate]->ledState; }
     MachineState();
 
     machinestate_t state();

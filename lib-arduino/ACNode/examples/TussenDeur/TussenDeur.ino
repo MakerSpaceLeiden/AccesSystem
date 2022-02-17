@@ -16,9 +16,11 @@
 */
 #include <PowerNodeV11.h>
 #include <ACNode.h>
+#include <MachineState.h>
+
 #include <RFID.h>   // SPI version
 
-#define MACHINE             "tussendeur"
+#define MACHINE          "tussendeur"
 
 #define SOLENOID_GPIO     (4)
 #define SOLENOID_OFF      (LOW)
@@ -32,51 +34,15 @@ ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-
 #ifndef OTA_PASSWD
 #error "Are you sure you want this ?! as it will disable OTA programming"
 #else
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-typedef enum {
-  BOOTING, OUTOFORDER,      // device not functional.
-  REBOOT,                   // forcefull reboot
-  TRANSIENTERROR,           // hopefully goes away level error
-  NOCONN,                   // sort of fairly hopless (though we can cache RFIDs!)
-  WAITINGFORCARD,           // waiting for card.
-  CHECKINGCARD,
-  REJECTED,
-  BUZZING,                    // this is where we engage the solenoid.
-} machinestates_t;
-
-#define NEVER (0)
-
-struct {
-  const char * label;                   // name of this state
-  LED::led_state_t ledState;            // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
-  time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
-  machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
-  unsigned long timeInState;
-  unsigned long timeoutTransitions;
-  unsigned long autoReportCycle;
-} state[BUZZING + 1] =
-{
-  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
-  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT,         5 * 60 * 1000 },
-  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
-  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD, 5 * 60 * 1000 },
-  { "No network",           LED::LED_FLASH,                NEVER, NOCONN,         0 },
-  { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD, 0 },
-  { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD, 0 },
-  { "Rejected",             LED::LED_ERROR,             2 * 1000, WAITINGFORCARD, 0 },
-  { "Buzzing door",         LED::LED_ON,               BUZZ_TIME, WAITINGFORCARD, 0 },
-};
-
-
-unsigned long laststatechange = 0, lastReport = 0;
-static machinestates_t laststate = OUTOFORDER;
-machinestates_t machinestate = BOOTING;
+// Hardware specific states
+MachineState machinestate = MachineState();
+MachineState::machinestate_t BUZZING, REJECTED;
 
 unsigned long opening_door_count  = 0, door_denied_count = 0;
 
@@ -90,20 +56,39 @@ void setup() {
   pinMode(SOLENOID_GPIO, OUTPUT);
   digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 
+  // Add the states needed for this node.
+  //
+  BUZZING = machinestate.addState((const char*)"Approved",
+                                  LED::LED_IDLE,
+                                  (time_t)(BUZZ_TIME), // stay in this state for BUZZ_TIME seconds
+                                  machinestate.WAITINGFORCARD // then go back to waiting for the next swipe.
+                                 );
+
+  REJECTED = machinestate.addState((const char*)"Denied",
+                                   LED::LED_ERROR,
+                                   (time_t)(2),
+                                   machinestate.WAITINGFORCARD
+                                  );
+
+  machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    Log.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
+    aartLed.set(machinestate.ledState());
+  });
+
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
   node.onConnect([]() {
     Log.println("Connected");
-    machinestate = WAITINGFORCARD;
+    machinestate = MachineState::WAITINGFORCARD;
   });
   node.onDisconnect([]() {
     Log.println("Disconnected");
-    machinestate = NOCONN;
+    machinestate = MachineState::NOCONN;
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
-    machinestate = WAITINGFORCARD;
+    machinestate = MachineState::WAITINGFORCARD;
   });
   node.onApproval([](const char * machine) {
     machinestate = BUZZING;
@@ -113,14 +98,11 @@ void setup() {
     machinestate = REJECTED;
     door_denied_count ++;
   });
-
   node.onReport([](JsonObject  & report) {
-    report["state"] = state[machinestate].label;
+    report["state"] = machinestate.label();
     report["opening_door_count"] = opening_door_count;
     report["door_denied_count"] = door_denied_count;
-    report["state"] = state[machinestate].label;
     report["opens"] = opening_door_count;
-
 #ifdef OTA_PASSWD
     report["ota"] = true;
 #else
@@ -128,11 +110,11 @@ void setup() {
 #endif
   });
 
-
   // This reports things such as FW version of the card; which can 'wedge' it. So we
   // disable it unless we absolutely positively need that information.
   //
   reader.set_debug(false);
+
   node.addHandler(&reader);
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
@@ -147,53 +129,13 @@ void setup() {
 void loop() {
   node.loop();
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
+  // handle the open functon 'always'.
+  //
+  digitalWrite(SOLENOID_GPIO, (machinestate.state() == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
 
-    state[laststate].timeInState += (millis() - laststatechange) / 1000;
-    laststate = machinestate;
-    laststatechange = millis();
-    return;
-  }
-  if (state[machinestate].autoReportCycle && \
-      millis() - laststatechange > state[machinestate].autoReportCycle && \
-      millis() - lastReport > state[machinestate].autoReportCycle)
-  {
-    Log.printf("State: %s now for %lu seconds", state[laststate].label, (millis() - laststatechange) / 1000);
-    lastReport = millis();
-  };
-  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
-  {
-    state[machinestate].timeoutTransitions++;
-
-    laststate = machinestate;
-    machinestate = state[machinestate].failStateOnTimeout;
-
-    Log.printf("Time-out; transition from <%s> to <%s>\n",
-               state[laststate].label, state[machinestate].label);
-    return;
-  };
-
-  digitalWrite(SOLENOID_GPIO, (machinestate == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
-
-  switch (machinestate) {
-    case REBOOT:
+  switch (machinestate.state()) {
+    case MachineState::REBOOT:
       node.delayedReboot();
-      break;
-
-    case WAITINGFORCARD:
-    case CHECKINGCARD:
-    case REJECTED:
-    case BUZZING:
-      // all handled in above stage engine.
-      break;
-
-    case BOOTING:
-    case OUTOFORDER:
-    case TRANSIENTERROR:
-    case NOCONN:
       break;
   };
 }
