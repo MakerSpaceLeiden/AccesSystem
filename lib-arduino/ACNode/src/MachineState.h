@@ -94,6 +94,11 @@ class MachineState : public ACBase {
     void operator=(machinestate_t s);
     void setState(machinestate_t s);
 
+    bool operator <(machinestate_t s) { return s < machinestate; };
+    bool operator ==(machinestate_t s) { return s = machinestate; };
+    bool operator !=(machinestate_t s) { return s != machinestate; };
+    bool operator >(machinestate_t s) { return s > machinestate; };
+
     void setOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
 
     void setOnChangeCallback(machinestate_t state, THandlerFunction_OnChangeCB onChangeCB);

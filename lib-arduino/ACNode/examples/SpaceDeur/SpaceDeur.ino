@@ -17,6 +17,7 @@
 #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
+#include <MachineState.h>
 #include <AccelStepper.h>
 
 #ifndef ESP32
@@ -59,11 +60,6 @@
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
-// LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
-
-MqttLogStream mqttlogStream = MqttLogStream();
-TelnetSerialStream telnetSerialStream = TelnetSerialStream();
-
 
 // Simple overlay of the AccelStepper that configures for the A4988
 // driver of a 4 wire stepper-including the additional enable wire.
@@ -88,56 +84,20 @@ PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_ENABLE)
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
+#else
+#error "You propablly do not want to deploy without OTA"
 #endif
 
-typedef enum {
-  BOOTING, OUTOFORDER,      // device not functional.
-  REBOOT,                   // forcefull reboot
-  TRANSIENTERROR,           // hopefully goes away level error
-  NOCONN,                   // sort of fairly hopless (though we can cache RFIDs!)
-  WAITINGFORCARD,           // waiting for card.
-  CHECKINGCARD,
-  REJECTED,
-  START_OPEN,
-  OPENING,
-  OPEN,
-  START_CLOSE,
-  CLOSING,
-} machinestates_t;
+MachineState machinestate = MachineState();
+// Extra, hardware specific states
+MachineState::machinestate_t START_OPEN, OPENING, OPEN, START_CLOSE, CLOSING;
 
-#define NEVER (0)
-
-struct {
-  const char * label;                   // name of this state
-  LED::led_state_t ledState;            // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
-  time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
-  machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
-  unsigned long timeInState;
-  unsigned long timeoutTransitions;
-  unsigned long autoReportCycle;
-} state[CLOSING + 1] =
-{
-  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
-  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT,         5 * 60 * 1000 },
-  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT,         0 },
-  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD, 5 * 60 * 1000 },
-  { "No network",           LED::LED_FLASH,                NEVER, NOCONN,         0 },
-  { "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD, 0 },
-  { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD, 0 },
-  { "Rejected",             LED::LED_ERROR,             2 * 1000, WAITINGFORCARD, 0 },
-  { "Start opening door",   LED::LED_ON,           MAXMOVE_DELAY, START_CLOSE, 0 },
-  { "Opening door",         LED::LED_ON,           MAXMOVE_DELAY, START_CLOSE, 0 },
-  { "Door held open",       LED::LED_ON,         DOOR_OPEN_DELAY, START_CLOSE, 0 },
-  { "Start closing door",   LED::LED_ON,           MAXMOVE_DELAY, START_CLOSE, 0 },
-  { "Closing door",         LED::LED_ON,           MAXMOVE_DELAY, WAITINGFORCARD, 0 },
-};
 
 enum { SILENT, LEAVE, CHECK } buzz, lastbuzz;
 unsigned long lastbuzchange = 0;
 
 unsigned long laststatechange = 0, lastReport = 0;
-static machinestates_t laststate = OUTOFORDER;
-machinestates_t machinestate = BOOTING;
+// static machinestates_t laststate = OUTOFORDER;
 
 unsigned long opening_door_count  = 0, door_denied_count = 0, swipeouts_count = 0;
 
@@ -157,24 +117,39 @@ void setup() {
 
   pinMode(GROTE_SCHAKELAAR_SENSOR, INPUT_PULLUP);
 
+  // setup up the buzzer as a 2000 kHz PWM channel.
   ledcSetup(BUZ_CHANNEL, 2000, 8);
   ledcAttachPin(BUZZER_GPIO, BUZ_CHANNEL);
+
+  // add a sequential set of servo related states; first to set the right angle for open,
+  // then wait until it is there; then pause for DOOR_OPEN_DELAY; followed by a close,
+  // after which we return to waiting for the cards again.
+  //
+  START_OPEN = machinestate.addState("Start opening door", LED::LED_ON, MAXMOVE_DELAY, START_CLOSE);
+  OPENING = machinestate.addState( "Opening door", LED::LED_ON, MAXMOVE_DELAY, START_CLOSE);
+  OPEN = machinestate.addState( "Door held open", LED::LED_ON, DOOR_OPEN_DELAY, START_CLOSE);
+  START_CLOSE = machinestate.addState( "Start closing door", LED::LED_ON, MAXMOVE_DELAY, START_CLOSE);
+  CLOSING =  machinestate.addState( "Closing door", LED::LED_ON, MAXMOVE_DELAY, MachineState::WAITINGFORCARD);
+
+  machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    Log.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
+  });
 
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
   node.onConnect([]() {
     Log.println("Connected");
-    machinestate = WAITINGFORCARD;
+    machinestate = MachineState::WAITINGFORCARD;
   });
   node.onDisconnect([]() {
     Log.println("Disconnected");
-    machinestate = NOCONN;
+    machinestate = MachineState::NOCONN;
 
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
-    machinestate = WAITINGFORCARD;
+    machinestate = MachineState::WAITINGFORCARD;
   });
   node.onApproval([](const char * machine) {
     Debug.println("Got approve");
@@ -184,15 +159,16 @@ void setup() {
   });
   node.onDenied([](const char * machine) {
     Debug.println("Got denied");
-    machinestate = REJECTED;
+    machinestate = MachineState::WAITINGFORCARD;
     door_denied_count ++;
   });
 
   node.onReport([](JsonObject  & report) {
-    report["state"] = state[machinestate].label;
+    report["state"] = machinestate.label();
+
     report["opening_door_count"] = opening_door_count;
     report["door_denied_count"] = door_denied_count;
-    report["state"] = state[machinestate].label;
+
     report["opens"] = opening_door_count;
     report["swipeouts"] = swipeouts_count;
 
@@ -205,7 +181,7 @@ void setup() {
 
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t {
 
-    if (machinestate > CHECKINGCARD) {
+    if (machinestate > MachineState::CHECKINGCARD) {
       Debug.printf("Ignoring a normal swipe - as we're still in some open process.");
       return ACBase::CMD_CLAIMED;
     }
@@ -227,12 +203,6 @@ void setup() {
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
-
-  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
-  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-  Log.addPrintStream(t);
-  Debug.addPrintStream(t);
 
   // node.set_debug(true);
   // node.set_debugAlive(true);
@@ -265,9 +235,9 @@ void buzzer_loop() {
 
 void grote_schakelaar_loop() {
   // debounce
-  static unsigned long lst = 0; 
+  static unsigned long lst = 0;
   static int last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
-  
+
   if (digitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar && lst == 0) {
     last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
     lst = millis();
@@ -294,75 +264,33 @@ void loop() {
   buzzer_loop();
   grote_schakelaar_loop();
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
-
-    state[laststate].timeInState += (millis() - laststatechange) / 1000;
-    laststate = machinestate;
-    laststatechange = millis();
-    return;
+  if (machinestate == START_OPEN) {
+    stepper.enableOutputs();
+    stepper.moveTo(DOOR_OPEN); // set end poistion.
+    machinestate = OPENING;
   }
-
-  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
-  {
-    state[machinestate].timeoutTransitions++;
-
-    laststate = machinestate;
-    machinestate = state[machinestate].failStateOnTimeout;
-
-    Log.printf("Time-out; transition from <%s> to <%s>\n",
-               state[laststate].label, state[machinestate].label);
-    return;
-  };
-
-  if (state[machinestate].autoReportCycle && \
-      millis() - laststatechange > state[machinestate].autoReportCycle && \
-      millis() - lastReport > state[machinestate].autoReportCycle)
-  {
-    Log.printf("State: %s now for %lu seconds", state[laststate].label, (millis() - laststatechange) / 1000);
-    lastReport = millis();
-  };
-
-  switch (machinestate) {
-    case REBOOT:
-      node.delayedReboot();
-      break;
-
-    case WAITINGFORCARD:
-    case CHECKINGCARD:
-    case REJECTED:
-      // all handled in above stage engine.
-      break;
-    case START_OPEN:
-      stepper.enableOutputs();
-      stepper.moveTo(DOOR_OPEN);
-      machinestate = OPENING;
-      break;
-    case OPENING:
-      if (stepper.currentPosition() == DOOR_OPEN) { // no sensors.
-        machinestate = OPEN;
-      }
-      break;
-    case OPEN:
-      // keep the enableOutputs on - to hold the door. Will timeout.
-      break;
-    case START_CLOSE:
-      stepper.moveTo(DOOR_CLOSED);
-      machinestate = CLOSING;
-      break;
-    case CLOSING:
-      if (stepper.currentPosition() == DOOR_CLOSED) {
-        machinestate = WAITINGFORCARD;
-        stepper.disableOutputs();
-      };
-      break;
-
-    case BOOTING:
-    case OUTOFORDER:
-    case TRANSIENTERROR:
-    case NOCONN:
-      break;
+  else if (machinestate == OPENING) {
+    if (stepper.currentPosition() == DOOR_OPEN) { // no sensors - so wait until we hit the end position
+      machinestate = OPEN;
+    }
+  }
+  else if (machinestate ==  OPEN) {
+    // just wait - automatic timeout in the state engine.
+  }
+  else if (machinestate == START_CLOSE) {
+    stepper.moveTo(DOOR_CLOSED);
+    machinestate = CLOSING;
+  }
+  else if (machinestate == CLOSING) {
+    if (stepper.currentPosition() == DOOR_CLOSED) {
+      machinestate = MachineState::WAITINGFORCARD;
+      stepper.disableOutputs();
+    };
+  } else {
+    switch (machinestate.state()) {
+      case MachineState::REBOOT:
+        node.delayedReboot();
+        break;
+    };
   };
 }
