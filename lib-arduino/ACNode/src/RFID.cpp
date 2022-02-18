@@ -52,9 +52,9 @@ void RFID::begin() {
   if (true == _irqMode) {
 	_mfrc522->PCD_WriteRegister(_mfrc522->ComIEnReg, 0xA0 /* irq on read */);
 	cardScannedIrqSeen = false; 
-	Serial.println("MFRC522: IRQ mode.");
+	Log.println("MFRC522: IRQ mode.");
    } else {
-	Serial.println("MFRC522: Polling mode.");
+	Log.println("MFRC522: Polling mode.");
    };
 
    // Note: this seems to wedge certain cards.

@@ -10,6 +10,8 @@
 
 unsigned long cacheMiss = 0;
 unsigned long cacheHit = 0;
+unsigned long cachePurge = 0;
+unsigned long cacheUpdate= 0;
 
 static String uid2path(const char * tag) {
   String path = CACHE_DIR_PREFIX;
@@ -22,18 +24,18 @@ static String uid2path(const char * tag) {
 }
 
 void prepareCache(bool wipe) {
-  Serial.println(wipe ? "Resetting cache" : "Cache preparing.");
+  Log.println(wipe ? "Resetting cache" : "Cache preparing.");
   if (!SPIFFS.begin()) {
-    Serial.println("Mount failed - trying to reformat");
+    Log.println("Mount failed - trying to reformat");
     if (!SPIFFS.format() || !SPIFFS.begin()) {
-      Serial.println("SPIFFS mount after re-formatting also failed. Giving up. No caching.");
+      Log.println("SPIFFS mount after re-formatting also failed. Giving up. No caching.");
       return;
     };
   };
 
   if (wipe) 
 	wipeCache();
-  Serial.println("Cache ready.");
+  Log.println("Cache ready.");
 };
 
 void wipeCache() { 
@@ -64,9 +66,11 @@ void setCache(const char * tag, bool ok, unsigned long beatCounter) {
     f.println(beatCounter);
     f.close();
     Debug.printf("Created cache entry: as part of set\n");
+    cacheUpdate++;
   } else {
     Debug.printf("Removed cache entry: as part of set\n");
     SPIFFS.remove(path);
+    cachePurge++;
   }
 };
 
@@ -114,6 +118,7 @@ bool checkCache(const char * tag, unsigned long nowBeatCounter) {
 ex:
   SPIFFS.remove(path);
   Log.printf("Purging cache entry.\n");
+  cachePurge++;
   return false;
 };
 
