@@ -158,10 +158,10 @@ void SIG2::begin() {
   load_eeprom();
 
   if (eeprom.version != EEPROM_VERSION) {
-    Serial.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
+    Log.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
     wipe_eeprom();
   }
-  Serial.println("Got a valid eeprom.");
+  Log.println("Got a valid eeprom.");
   Beat::begin();
 }
 
@@ -440,7 +440,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
        Log.printf("Failed to base64 encode public keys.\n");
        return ACSecurityHandler::FAIL;
     };
-    Log.printf("(Re)calculated session key - slaved to master public signkey %s and masterpublic encrypt key %s\n",
+    Log.printf("(Re)calculated session key - slaved to master public signkey %s and master public encrypt key %s\n",
                master_publicsignkey_b64, master_publicencryptkey_b64);
 
     // Only accept pubkeys on poweron; not on simple server restarts.
@@ -659,28 +659,28 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
 
   // Add ED25519 signing/non-repudiation key
   //
-  strncat(buff, " ", sizeof(buff));
+  strncat(buff, " ", sizeof(buff)-1);
   if (0 != mbedtls_base64_encode((unsigned char *)b64, sizeof(b64), &olen, (unsigned char *)node_publicsign, sizeof(node_publicsign))) {
     Debug.printf("Failed to base64  encode publicsign\n");
     return ACSecurityHandler::FAIL;
   };
-  strncat(buff, b64, sizeof(buff));
+  strncat(buff, b64, sizeof(buff)-1);
 
   // Add Curve25519 session/confidentiality key
   //
-  strncat(buff, " ", sizeof(buff));
+  strncat(buff, " ", sizeof(buff)-1);
   if (0 != mbedtls_base64_encode((unsigned char *)b64, sizeof(b64), &olen, (unsigned char *)(node_publicsession), sizeof(node_publicsession))) {
     Debug.printf("Failed to base64  encode publicsign\n");
     return ACSecurityHandler::FAIL;
   }
-  strncat(buff, b64, sizeof(buff));
+  strncat(buff, b64, sizeof(buff)-1);
 
   // Add a nonce - so we can time-point the reply.
   //
   populate_nonce(NULL,_nonce);
 
-  strncat(buff, " ", sizeof(buff));
-  strncat(buff, _nonce, sizeof(buff));
+  strncat(buff, " ", sizeof(buff)-1);
+  strncat(buff, _nonce, sizeof(buff)-1);
 
   strncpy(req->payload, buff, sizeof(req->payload));
   return OK;
