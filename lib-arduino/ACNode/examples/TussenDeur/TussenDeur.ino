@@ -40,9 +40,9 @@ LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-// Hardware specific states
 MachineState machinestate = MachineState();
-MachineState::machinestate_t BUZZING, REJECTED;
+// Extra, hardware specific states
+MachineState::machinestate_t BUZZING;
 
 unsigned long opening_door_count  = 0, door_denied_count = 0;
 
@@ -63,12 +63,6 @@ void setup() {
                                   (time_t)(BUZZ_TIME * 1000), // stay in this state for BUZZ_TIME seconds
                                   machinestate.WAITINGFORCARD // then go back to waiting for the next swipe.
                                  );
-
-  REJECTED = machinestate.addState((const char*)"Denied",
-                                   LED::LED_ERROR,
-                                   (time_t)(2 * 1000),
-                                   machinestate.WAITINGFORCARD
-                                  );
 
   machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     Log.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
@@ -95,7 +89,7 @@ void setup() {
     opening_door_count++;
   });
   node.onDenied([](const char * machine) {
-    machinestate = REJECTED;
+    machinestate = MachineState::WAITINGFORCARD;
     door_denied_count ++;
   });
   node.onReport([](JsonObject  & report) {
@@ -110,18 +104,23 @@ void setup() {
 #endif
   });
 
-  // This reports things such as FW version of the card; which can 'wedge' it. So we
-  // disable it unless we absolutely positively need that information.
-  //
-  reader.set_debug(false);
 
   node.addHandler(&reader);
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
 
+  // This reports things such as FW version of the card; which can 'wedge' it. So we
+  // disable it unless we absolutely positively need that information.
+  //
+  reader.set_debug(false);
+  
+  // Enabling these will cause privacy sensitive information to appear
+  // in the logs - so best only used during development.
+  //
   // node.set_debug(true);
   // node.set_debugAlive(true);
+
   node.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
@@ -129,10 +128,17 @@ void setup() {
 void loop() {
   node.loop();
 
-  // handle the open functon 'always'.
+  // handle the open functon 'always'. Which boils down to
+  // turing the MOSFET that controils the solenoid of the lock
+  // on when we are in buzzing mode. Buzzing mode has a timeout
+  // of BUZZ_TIME - after which we return back to WAITINGFORCARD.
   //
   digitalWrite(SOLENOID_GPIO, (machinestate.state() == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
 
+  // Allmost all state is handled automatic with the defaults; except for
+  // the one were we get in such a weird one that we need to reboot in a
+  // last ditch attempt.
+  //
   switch (machinestate.state()) {
     case MachineState::REBOOT:
       node.delayedReboot();

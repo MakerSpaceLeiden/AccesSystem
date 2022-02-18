@@ -470,9 +470,11 @@ void ACNode::loop() {
     bool connectedstate = isConnected();
     if (lastconnectedstate != connectedstate) {
         if (connectedstate) {
-            _connect_callback();
+	    if (_connect_callback) 
+	            _connect_callback();
 	} else {
-            _disconnect_callback();
+	    if (_disconnect_callback) 
+            	_disconnect_callback();
 	};
         lastconnectedstate = connectedstate;
     };
