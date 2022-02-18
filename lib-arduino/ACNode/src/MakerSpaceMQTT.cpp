@@ -98,7 +98,7 @@ const char * ACNode::state2str(int state) {
 }
 
 void ACNode::reconnectMQTT() {
-    Log.printf("Conecting <%s> to %s:%d (MQTT State : %s)\n",
+    Log.printf("Connecting <%s> to %s:%d (MQTT State : %s)\n",
 		ACNode::moi, mqtt_server, mqtt_port, 
 		state2str(_client.state()));
     
@@ -107,7 +107,8 @@ void ACNode::reconnectMQTT() {
         Log.println(state2str(_client.state()));
 	return;
     }
-    
+    _client.loop();
+
     Debug.println("(re)connected ");
     _mqtt_reconnects ++;
  
@@ -221,6 +222,7 @@ void ACNode::mqttLoop() {
     if (!isUp()) {
         // report transient error ? Which ? And how often ?
         if (millis() - last_mqtt_connect_try > 10000 || last_mqtt_connect_try == 0) {
+            Log.printf("Reconnect as MQTT is no longer up\n");
             reconnectMQTT();
             last_mqtt_connect_try = millis();
         }

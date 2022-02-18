@@ -227,19 +227,18 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     _espClient = WiFiClient();
     _client = PubSubClient(_espClient);
 
-    // todo: lifecycle stuff 
-    mqttlogStream = new MqttStream(&_espClient);
-    Log.addPrintStream(std::make_shared<MqttStream>(*mqttlogStream));
-
     char buff[256];
     snprintf(buff, sizeof(buff), "%s/logs/%s", mqtt_topic_prefix, moi);
-    mqttlogStream->setTopic(buff);
-    mqttlogStream->setServer(mqtt_server);
+    mqttlogStream = new MqttStream(&_client, buff);
+
+    Log.addPrintStream(std::make_shared<MqttStream>(*mqttlogStream));
+    configureMQTT();
+    reconnectMQTT();
+    mqttLoop();
 
 #ifdef CONFIGAP
     configBegin();
 #endif
-    configureMQTT();
 
     Log.begin();
     Debug.begin(); 
