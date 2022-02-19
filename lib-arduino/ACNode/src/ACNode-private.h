@@ -15,9 +15,10 @@
 #endif
 
 #include <PubSubClient.h>        // https://github.com/knolleary/
+#include <TLog.h>
 #include <SPI.h>
 
-#include <base64.hpp>
+#include <base64.h>
 #include <Crypto.h>
 #include <SHA256.h>
 
@@ -39,6 +40,20 @@ extern char * strsepspace(char **p);
 
 // typedef unsigned long beat_t;
 // extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
+
+#define LOG_SERIAL	(1<<0)
+#define LOG_TELNET	(1<<1)
+#define LOG_SYSLOG	(1<<2)
+#define LOG_WEBBROWSER	(1<<3)
+#define LOG_MQTT	(1<<4)
+
+#ifndef LOG_DEST_DEFAULT
+#ifdef ESP32
+#define LOG_DEST_DEFAULT (LOG_SERIAL | LOG_TELNET | LOG_MQTT | LOG_SYSLOG | LOG_WEBBROWSER)
+#else
+#define LOG_DEST_DEFAULT (LOG_SERIAL | LOG_TELNET | LOG_MQTT)
+#endif
+#endif
 
 typedef enum {
     ACNODE_ERROR_FATAL,
@@ -63,40 +78,6 @@ typedef enum {
 #define HAS_SIG2
 
 typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
-
-// We should prolly split this in an aACLogger and a logging class
-class ACLog : public ACBase, public Print 
-{
-public:
-    void addPrintStream(const std::shared_ptr<ACLog> &_handler) {
-    	auto it = find(handlers.begin(), handlers.end(), _handler);
-        if ( handlers.end() == it) 
-        	handlers.push_back(_handler);
-    };
-    virtual void begin() {
-        for (auto it = handlers.begin(); it != handlers.end(); ++it) {
-            (*it)->begin();
-        }
-    };
-    virtual void loop() {
-        for (auto it = handlers.begin(); it != handlers.end(); ++it) {
-            (*it)->loop();
-        }
-    };
-    virtual void stop() {
-        for (auto it = handlers.begin(); it != handlers.end(); ++it) {
-            (*it)->stop();
-        }
-    };
-    size_t write(byte a) {
-        for (auto it = handlers.begin(); it != handlers.end(); ++it) {
-            (*it)->write(a);
-        }
-        return Serial.write(a);
-    }
-private:
-    std::vector<std::shared_ptr<ACLog> > handlers;
-};
 
 class ACNode : public ACBase {
 public:
@@ -197,6 +178,8 @@ public:
     char * cloak(char *tag);
     
     void set_debugAlive(bool debug);
+    void set_log_destinations(unsigned int destinations);
+    void set_debug_destinations(unsigned int destinations);
     bool isConnected(); // ethernet/wifi is up with valid IP.
     bool isUp(); // MQTT et.al also running.
     
@@ -217,7 +200,8 @@ public:
     
     PubSubClient _client;
 private:
-    bool _debug_alive;
+    unsigned int log_destinations = LOG_DEST_DEFAULT;
+    bool _debug_alive, _debug;
     THandlerFunction_Error _error_callback;
     THandlerFunction_Connect _connect_callback;
     THandlerFunction_Disconnect _disconnect_callback;
@@ -259,8 +243,6 @@ protected:
 // contain this leakage to just a few functions.
 //
 extern ACNode *_acnode;
-extern ACLog Log;
-extern ACLog Debug;
 
 extern void send(const char * topic, const char * payload);
 
@@ -272,9 +254,5 @@ extern const char ACNODE_CAPS[];
 
 #include <Beat.h>
 #include <OTA.h>
-
-#include <SyslogStream.h>
-#include <MqttLogStream.h>
-#include <TelnetSerialStream.h>
 
 #endif

@@ -52,9 +52,9 @@ void RFID::begin() {
   if (true == _irqMode) {
 	_mfrc522->PCD_WriteRegister(_mfrc522->ComIEnReg, 0xA0 /* irq on read */);
 	cardScannedIrqSeen = false; 
-	Serial.println("MFRC522: IRQ mode.");
+	Log.println("MFRC522: IRQ mode.");
    } else {
-	Serial.println("MFRC522: Polling mode.");
+	Log.println("MFRC522: Polling mode.");
    };
 
    // Note: this seems to wedge certain cards.
@@ -96,7 +96,7 @@ void RFID::loop() {
        //
        if (strncmp(lasttag, tag, sizeof(lasttag)) || millis() - lastswipe > 3000) {
     	      lastswipe = millis();
-	      strncpy(lasttag, tag, sizeof(tag));
+	      strncpy(lasttag, tag, sizeof(lasttag));
 
 	      if (!_swipe_cb || (_swipe_cb(lasttag) != ACNode::CMD_CLAIMED)) {
  	      	   // Simple approval request; default is to 'energise' the contactor on 'machine'.

@@ -86,12 +86,18 @@ class MachineState : public ACBase {
   public:
     const char * label();
     const char * label(uint8_t label);
+    LED::led_state_t ledState() { return _state2stateStruct[machinestate]->ledState; }
     MachineState();
 
     machinestate_t state();
 
     void operator=(machinestate_t s);
     void setState(machinestate_t s);
+
+    bool operator <(machinestate_t s) { return s < machinestate; };
+    bool operator ==(machinestate_t s) { return s = machinestate; };
+    bool operator !=(machinestate_t s) { return s != machinestate; };
+    bool operator >(machinestate_t s) { return s > machinestate; };
 
     void setOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
 
