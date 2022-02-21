@@ -16,8 +16,9 @@
 */
 #include <PowerNodeV11.h>
 #include <ACNode.h>
-#include <RFID.h>   // SPI version
 #include <MachineState.h>
+#include <RFID.h>   // SPI version
+
 #include <AccelStepper.h>
 
 #ifndef ESP32
@@ -60,6 +61,7 @@
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
+LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
 // Simple overlay of the AccelStepper that configures for the A4988
 // driver of a 4 wire stepper-including the additional enable wire.
@@ -106,6 +108,8 @@ void setup() {
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 
+  machinestate = MachineState::BOOTING;
+
   stepper.setMaxSpeed(STEPPER_MAXSPEED);  // divide by 3 to get rpm
   stepper.setAcceleration(STEPPER_ACCELL);
   stepper.moveTo(DOOR_CLOSED);
@@ -125,11 +129,11 @@ void setup() {
   // then wait until it is there; then pause for DOOR_OPEN_DELAY; followed by a close,
   // after which we return to waiting for the cards again.
   //
-  START_OPEN = machinestate.addState("Start opening door", LED::LED_ON, MAXMOVE_DELAY, START_CLOSE);
-  OPENING = machinestate.addState( "Opening door", LED::LED_ON, MAXMOVE_DELAY, START_CLOSE);
-  OPEN = machinestate.addState( "Door held open", LED::LED_ON, DOOR_OPEN_DELAY, START_CLOSE);
-  START_CLOSE = machinestate.addState( "Start closing door", LED::LED_ON, MAXMOVE_DELAY, START_CLOSE);
   CLOSING =  machinestate.addState( "Closing door", LED::LED_ON, MAXMOVE_DELAY, MachineState::WAITINGFORCARD);
+  START_CLOSE = machinestate.addState( "Start closing door", LED::LED_ON, MAXMOVE_DELAY, CLOSING);
+  OPEN = machinestate.addState( "Door held open", LED::LED_ON, DOOR_OPEN_DELAY, START_CLOSE);
+  OPENING = machinestate.addState( "Opening door", LED::LED_ON, MAXMOVE_DELAY, OPEN);
+  START_OPEN = machinestate.addState("Start opening door", LED::LED_ON, MAXMOVE_DELAY, OPENING);
 
   machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     Log.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
@@ -153,7 +157,7 @@ void setup() {
   });
   node.onApproval([](const char * machine) {
     Debug.println("Got approve");
-    if (machinestate < START_OPEN)
+    if (machinestate.state() < CLOSING)
       machinestate = START_OPEN;
     opening_door_count++;
   });
@@ -180,29 +184,34 @@ void setup() {
   });
 
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t {
+    Log.println("Swipe");
 
-    if (machinestate > MachineState::CHECKINGCARD) {
-      Debug.printf("Ignoring a normal swipe - as we're still in some open process.");
+    if (machinestate.state() > MachineState::CHECKINGCARD) {
+      Debug.printf("Ignoring a normal swipe - as we're still in some open process: %d/%s.",
+      machinestate.state(), machinestate.label());
       return ACBase::CMD_CLAIMED;
     }
 
     // We'r declining so that the core library handle sending
     // an approval request, keep state, and so on.
     //
-    Debug.printf("Detected a normal swipe.\n");
+    Log.printf("Detected a normal swipe.\n");
     buzz = CHECK;
+
     return ACBase::CMD_DECLINE;
   });
 
-
-  // This reports things such as FW version of the card; which can 'wedge' it. So we
-  // disable it unless we absolutely positively need that information.
-  //
-  reader.set_debug(false);
   node.addHandler(&reader);
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
+
+
+  node.addHandler(&machinestate);
+  // This reports things such as FW version of the card; which can 'wedge' it. So we
+  // disable it unless we absolutely positively need that information.
+  //
+  reader.set_debug(false);
 
   // node.set_debug(true);
   // node.set_debugAlive(true);
@@ -264,24 +273,32 @@ void loop() {
   buzzer_loop();
   grote_schakelaar_loop();
 
-  if (machinestate == START_OPEN) {
+#if 0
+  static unsigned long t = 0;
+  if (millis() - t > 5000) {
+    t = millis();
+    Log.printf("state: %d \n", machinestate.state());
+  };
+#endif
+
+  if (machinestate.state() == START_OPEN) {
     stepper.enableOutputs();
     stepper.moveTo(DOOR_OPEN); // set end poistion.
     machinestate = OPENING;
   }
-  else if (machinestate == OPENING) {
+  else if (machinestate.state() == OPENING) {
     if (stepper.currentPosition() == DOOR_OPEN) { // no sensors - so wait until we hit the end position
       machinestate = OPEN;
     }
   }
-  else if (machinestate ==  OPEN) {
+  else if (machinestate.state() ==  OPEN) {
     // just wait - automatic timeout in the state engine.
   }
-  else if (machinestate == START_CLOSE) {
+  else if (machinestate.state() == START_CLOSE) {
     stepper.moveTo(DOOR_CLOSED);
     machinestate = CLOSING;
   }
-  else if (machinestate == CLOSING) {
+  else if (machinestate.state() == CLOSING) {
     if (stepper.currentPosition() == DOOR_CLOSED) {
       machinestate = MachineState::WAITINGFORCARD;
       stepper.disableOutputs();
@@ -293,4 +310,5 @@ void loop() {
         break;
     };
   };
+
 }

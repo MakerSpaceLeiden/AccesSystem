@@ -120,6 +120,7 @@ void setup() {
   //
   // node.set_debug(true);
   // node.set_debugAlive(true);
+  node.addHandler(&machinestate);
 
   node.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
