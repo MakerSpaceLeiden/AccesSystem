@@ -61,7 +61,6 @@
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
 // Simple overlay of the AccelStepper that configures for the A4988
 // driver of a 4 wire stepper-including the additional enable wire.
@@ -83,7 +82,6 @@ PololuStepper::PololuStepper(uint8_t step_pin, uint8_t dir_pin, uint8_t enable_p
 
 PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_ENABLE);
 
-
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
 #else
@@ -94,8 +92,7 @@ MachineState machinestate = MachineState();
 // Extra, hardware specific states
 MachineState::machinestate_t START_OPEN, OPENING, OPEN, START_CLOSE, CLOSING;
 
-
-enum { SILENT, LEAVE, CHECK } buzz, lastbuzz;
+enum { SILENT, DENYBUZZ, CHECK } buzz, lastbuzz;
 unsigned long lastbuzchange = 0;
 
 unsigned long laststatechange = 0, lastReport = 0;
@@ -160,9 +157,11 @@ void setup() {
     if (machinestate.state() < CLOSING)
       machinestate = START_OPEN;
     opening_door_count++;
+    buzz = CHECK;
   });
   node.onDenied([](const char * machine) {
     Debug.println("Got denied");
+    buzz = DENYBUZZ
     machinestate = MachineState::WAITINGFORCARD;
     door_denied_count ++;
   });
@@ -196,7 +195,6 @@ void setup() {
     // an approval request, keep state, and so on.
     //
     Log.printf("Detected a normal swipe.\n");
-    buzz = CHECK;
 
     return ACBase::CMD_DECLINE;
   });
@@ -226,7 +224,7 @@ void buzzer_loop() {
         ledcSetup(BUZ_CHANNEL, 2000, 8);
         ledcWrite(BUZ_CHANNEL, 127);
         break;
-      case LEAVE:
+      case DENYBUZZ:
         ledcSetup(BUZ_CHANNEL, 1000, 8);
         ledcWrite(BUZ_CHANNEL, 127);
         break;
