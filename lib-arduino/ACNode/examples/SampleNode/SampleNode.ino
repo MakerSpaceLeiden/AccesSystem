@@ -14,7 +14,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-#include <PowerNodeV11.h> -- this is an olimex board.
+#include <PowerNodeV11.h> // -- this is an olimex board.
 
 #include <WiFiClientSecure.h>
 #include <Wire.h>
@@ -23,7 +23,11 @@
 #include "MachineState.h"
 #include <ButtonDebounce.h>
 
-#define OTA_PASSWORD "Foo"
+#ifndef OTA_PASSWD
+#define OTA_PASSWD "Foo"
+#warning "Setting easy to guess/hardcoded OTA password."
+#endif
+
 // #define WIFI_NETWORK "Foo"
 // #define WIFI_PASSWD "Foo"
 
@@ -46,7 +50,7 @@ MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 MachineState machinestate = MachineState();
-MachineState::machinestates_t BUTTON_PRESSED, ACTIVE, BORED;
+enum { BUTTON_PRESSED = MachineState::START_PRIVATE_STATES, ACTIVE, BORED };
 
 unsigned long button_count = 0;
 
@@ -61,13 +65,13 @@ void setup() {
   node.set_mqtt_prefix("test");
   node.set_master("master");
 
-  BORED = machinestate.addState("Done being active", LED::LED_ERROR, 5 * 1000, MachineState::WAITINGFORCARD);
-  ACTIVE = machinestate.addState("Very active now for 5 seconds", LED::LED_ERROR, 5 * 1000, BORED);
-  BUTTON_PRESSED = machinestate.addState("Going active", LED::LED_IDLE, 1 * 1000, ACTIVE);
+  machinestate.defineState(BORED, "Done being active", LED::LED_ERROR, 5 * 1000, MachineState::WAITINGFORCARD);
+  machinestate.defineState(ACTIVE, "Very active now for 5 seconds", LED::LED_ERROR, 5 * 1000, BORED);
+  machinestate.defineState(BUTTON_PRESSED, "Going active", LED::LED_IDLE, 1 * 1000, ACTIVE);
 
   // Update the display whenever we enter into a new state.
   //
-  // machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestates_t last, MachineState::machinestates_t current) -> void {
+  // machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestates_t current) -> void {
   //  Debug.println(...
   // });
 
@@ -117,9 +121,11 @@ void loop() {
       // Do something - like keep a relay powered
       break;
     case BORED:
-    case BUTTON_PRESSED:
-    default:
-      // keep that relay off or something.
       break;
+    case BUTTON_PRESSED:
+      break;
+    default:
+      break;
+
   }
 }

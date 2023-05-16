@@ -118,7 +118,7 @@ void setup() {
   Serial.printf("Boot state: SW1:%d SW2:%d INTERLOCK:%d\n",
                 digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON), digitalRead(INTERLOCK));
 
-  // the default is space.makerspaceleiden.nl, prefix test
+  // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
   node.set_mqtt_prefix("ac");
@@ -225,7 +225,7 @@ void setup() {
 
   // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  // Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
   // We only sent the very low level debugging to syslog.
   // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));

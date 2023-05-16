@@ -255,7 +255,6 @@ char * ACNode::cloak(char * tag) {
             case ACSecurityHandler::PASS:
                 break;
             case ACSecurityHandler::OK:
-		Debug.printf("%s -> %s cloaked by %s\n", "*****", q.tag, (*it)->name());
     		strncpy(tag, q.tag, MAX_MSG);
 		return tag;
                 break;
@@ -286,23 +285,37 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	if (_approved_callback && useCacheOk && checkCache(_lasttag)) {
                 _approved_callback(machine);
 	};
+       
+	char * tmp = (char *)malloc(MAX_MSG);
+        char * buff = (char *)malloc(MAX_MSG);
+	if (!tmp || !buff) {
+		Log.println("Out of memory during cloacking");
+		goto _return_request_approval;
+		return;
+	};
 
-	char tmp[MAX_MSG];
-	strncpy(tmp, tag, sizeof(tmp));
+        // We need to copy this - as cloak will overwrite this in place.
+        // todo - redesing to be more embedded friendly.
+	strncpy(tmp, tag, sizeof(MAX_MSG));
 	if (!(cloak(tmp))) {
 		Log.println("Coud not cloak the tag, approval request not sent");
+		goto _return_request_approval;
 		return;
 	};
 
 	Debug.printf("Requesting approval for %s at node %s on machine %s by tag %s\n", 
 		operation ? operation : "<null>", moi ? moi: "<null>", operation ? operation : "<null>", tag ? "*****" : "<null>");
 
-        char buff[MAX_MSG];
-	snprintf(buff,sizeof(buff),"%s %s %s %s", operation, moi, target, tmp);
+	snprintf(buff,sizeof(MAX_MSG),"%s %s %s %s", operation, moi, target, tmp);
 
         _lastSwipe = beatCounter;
         _reqs++;
 	send(NULL,buff);
+
+_return_request_approval:
+	if (tmp) free(tmp);
+        if (buff) free(buff);
+	return;
 };
 
 float loopRate = 0;
@@ -348,44 +361,49 @@ void ACNode::loop() {
 	if (millis() - last > _report_period) {
 		last = millis();
 
-		DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);
-		JsonObject& out = jsonBuffer.createObject();
-		out[ "node" ] = moi;
-		out[ "machine" ] = machine;
+		// DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);
+		// JsonObject& out = jsonBuffer.createObject();
 
-		out[ "maxMqtt" ] = MAX_MSG;
+        DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(30) + 500);
+
+		jsonDoc[ "node" ] = moi;
+		jsonDoc[ "machine" ] = machine;
+
+		jsonDoc[ "maxMqtt" ] = MAX_MSG;
 
 		char chipstr[30]; strncpy(chipstr,chipId().c_str(),sizeof(chipstr));
-		out[ "id" ] = chipstr;
+		jsonDoc[ "id" ] = chipstr;
 		char ipstr[30]; strncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
-                out[ "ip" ] = ipstr;
-                out[ "net" ] = _wired ? "UTP" : "WiFi";
+                jsonDoc[ "ip" ] = ipstr;
+                jsonDoc[ "net" ] = _wired ? "UTP" : "WiFi";
  		char macstr[30]; strncpy(macstr, macAddressString().c_str(),sizeof(macstr));
-  		out[ "mac" ] = macstr;
+  		jsonDoc[ "mac" ] = macstr;
 
-		out[ "beat" ] = beatCounter;
+		jsonDoc[ "beat" ] = beatCounter;
 
 		if (beatCounter > 1542275849 && _start_beat == 0)
 			_start_beat  = beatCounter;
 		else 
 		if (_start_beat)
-			out[ "alive-uptime" ] = beatCounter - _start_beat;
+			jsonDoc[ "alive-uptime" ] = beatCounter - _start_beat;
 
-		out[ "approve" ] = _approve;
-		out[ "deny" ] = _deny;
-		out[ "requests" ] = _reqs;
+		jsonDoc[ "approve" ] = _approve;
+		jsonDoc[ "deny" ] = _deny;
+		jsonDoc[ "requests" ] = _reqs;
 #ifdef ESP32
-		out[ "cache_hit" ] =  cacheHit;
-		out[ "cache_miss" ] =  cacheMiss;
+		jsonDoc[ "cache_hit" ] =  cacheHit;
+		jsonDoc[ "cache_miss" ] =  cacheMiss;
 #endif
 
-		out[ "mqtt_reconnects" ] = _mqtt_reconnects;
+		jsonDoc[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
-		out["loop_rate"] = loopRate;
+		jsonDoc["loop_rate"] = loopRate;
 #ifdef ESP32
-           	out["coreTemp"]  = coreTemp(); 
+           	jsonDoc["coreTemp"]  = coreTemp(); 
 #endif
-		out["heap_free"] = ESP.getFreeHeap();	
+		jsonDoc["heap_free"] = ESP.getFreeHeap();	
+
+        JsonObject out = jsonDoc.to<JsonObject>();
 
 		std::list<ACBase *>::iterator it;
        		for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
@@ -394,8 +412,11 @@ void ACNode::loop() {
 		if (_report_callback) 
 			_report_callback(out);	
 
-		char buff[MAX_MSG];
-		out.printTo(buff,sizeof(buff));
+        String buff;
+        serializeJson(jsonDoc, buff);
+        if (buff.length() > MAX_MSG) {
+            buff = buff.substring(0, MAX_MSG);
+        }
 		Log.println(buff);
         }
     }
@@ -616,3 +637,10 @@ void ACNode::delayedReboot() {
    last = millis();
    warn_counter ++;
 }
+
+ #ifdef HAS_SIG2
+ void ACNode::add_trusted_node(const char *node) {
+        sig2.add_trusted_node(node);
+ }
+ #endif
+

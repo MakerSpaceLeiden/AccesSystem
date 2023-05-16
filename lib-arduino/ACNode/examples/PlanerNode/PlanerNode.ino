@@ -118,7 +118,7 @@ void setup() {
 
   pinMode(CURRENT_GPIO, INPUT); // analog input.
 
-  // the default is space.makerspaceleiden.nl, prefix test
+  // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   node.set_mqtt_prefix("ac");
 
@@ -216,10 +216,9 @@ void setup() {
 
   // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
-  // We only sent the very low level debugging to syslog.
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  // Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
 #if 1
   // As the PoE devices have their own grounding - the cannot readily be connected
@@ -337,4 +336,3 @@ void loop() {
       break;
   };
 }
-

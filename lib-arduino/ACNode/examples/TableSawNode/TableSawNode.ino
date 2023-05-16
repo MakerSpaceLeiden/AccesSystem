@@ -57,6 +57,7 @@ OTA ota = OTA(OTA_PASSWD);
 LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
 
 MqttLogStream mqttlogStream = MqttLogStream();
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -134,7 +135,7 @@ void setup() {
   Serial.printf("Boot state: SW1:%d SW2:%d\n",
                 digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON));
 
-  // the default is space.makerspaceleiden.nl, prefix test
+  // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
   node.set_mqtt_prefix("ac");
@@ -231,13 +232,18 @@ void setup() {
   reader.set_debug(true);
 
   node.addHandler(&reader);
+  
   // default syslog port and destination (gateway address or broadcast address).
-  //
+  // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 
   // General normal log goes to MQTT and Syslog (UDP).
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
   // Debug.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
+  
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+  
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif

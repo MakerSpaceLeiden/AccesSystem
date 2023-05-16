@@ -19,6 +19,10 @@
 #include <RFID.h>   // SPI version
 #include <AccelStepper.h>
 
+#ifndef ESP32
+#error "The space deur is an ESP32 based Olimex!"
+#endif
+
 #define MACHINE             "spacedeur"
 
 // Stepper motor-Pololu / A4988
@@ -42,9 +46,14 @@
 
 // See https://mailman.makerspaceleiden.nl/mailman/private/deelnemers/2019-February/019837.html
 //
-#define DOOR_SENSOR       (34)
-#define DOOR_IS_OPEN      (LOW)
-// #define AARTLED_GPIO      (16) // weggehaald, maar 2019, Lucas
+// #define DOOR_SENSOR       (34)
+// #define DOOR_IS_OPEN      (LOW)
+// #define AARTLED_GPIO      (16) // weggehaald, maart 2019, Lucas
+
+// Introduced by alex - 2020-01-8
+#define GROTE_SCHAKELAAR_SENSOR       (34)
+#define GROTE_SCHAKELAAR_IS_OPEN      (HIGH)
+#define GROTE_SCHAKELAAR_TOPIC        "makerspace/groteschakelaar"
 
 #define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
@@ -146,7 +155,7 @@ void setup() {
   };
   stepper.disableOutputs();
 
-  pinMode(DOOR_SENSOR, INPUT_PULLUP);
+  pinMode(GROTE_SCHAKELAAR_SENSOR, INPUT_PULLUP);
 
   ledcSetup(BUZ_CHANNEL, 2000, 8);
   ledcAttachPin(BUZZER_GPIO, BUZ_CHANNEL);
@@ -196,25 +205,6 @@ void setup() {
 
   reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t {
 
-    // special case of the someone is leaving swipe; technically
-    // we sent this as an 'ok to leave' sort of request; so the privacy
-    // of the tag/user is preserved on the wire.
-    //
-    // We expect the door to not be in the opening process; but we do
-    // allow a swipe post opening - e.g. when some-one holds the door
-    // open als someone comes in.
-    //
-    if ((machinestate == WAITINGFORCARD || machinestate >= OPEN) && digitalRead(DOOR_SENSOR) == DOOR_IS_OPEN)
-    {
-      Debug.printf("Detected a leave; sent tag to master.\n");
-
-      node.request_approval(tag, "leave", NULL, false);
-      swipeouts_count++;
-      buzz = LEAVE;
-      return ACBase::CMD_CLAIMED;
-    }
-
-    // avoid swithing messing with the door open process
     if (machinestate > CHECKINGCARD) {
       Debug.printf("Ignoring a normal swipe - as we're still in some open process.");
       return ACBase::CMD_CLAIMED;
@@ -240,11 +230,9 @@ void setup() {
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
-#if 1
   auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
   Log.addPrintStream(t);
   Debug.addPrintStream(t);
-#endif
 
   // node.set_debug(true);
   // node.set_debugAlive(true);
@@ -275,10 +263,36 @@ void buzzer_loop() {
     buzz = SILENT;
 }
 
+void grote_schakelaar_loop() {
+  // debounce
+  static unsigned long lst = 0; 
+  static int last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
+  
+  if (digitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar && lst == 0) {
+    last_grote_schakelaar = digitalRead(GROTE_SCHAKELAAR_SENSOR);
+    lst = millis();
+  };
+
+  // Start trusting the value once it has been stable for 100 milli Seconds.
+  //
+  if (lst && millis() - lst > 100) {
+    // stable for over 100 milliseconds; so we trust this value;
+    if (last_grote_schakelaar == GROTE_SCHAKELAAR_IS_OPEN) {
+      Log.println("Grote schakelaar: Space is now open.");
+      node.send(GROTE_SCHAKELAAR_TOPIC, "1");
+    } else {
+      Log.println("Grote schakelaar: Space is now closed.");
+      node.send(GROTE_SCHAKELAAR_TOPIC, "0");
+    };
+    lst = 0;
+  }
+}
+
 void loop() {
   node.loop();
   stepper.run();
   buzzer_loop();
+  grote_schakelaar_loop();
 
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",

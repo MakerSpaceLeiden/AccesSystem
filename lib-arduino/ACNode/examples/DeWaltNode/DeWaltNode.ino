@@ -34,7 +34,7 @@
 
 
 OptoDebounce opto(OPTO);
-LED aartLed = LED(BLUE_LED,true); // LED is inverted.
+LED aartLed = LED(BLUE_LED, true); // LED is inverted.
 
 ACNode node = ACNode(MACHINE, WIFI_MAKERSPACE_NETWORK, WIFI_MAKERSPACE_PASSWD); // wireless, fixed wifi network.
 
@@ -44,7 +44,7 @@ OTA ota = OTA(OTA_PASSWD);
 
 // Various logging options (in addition to Serial).
 MqttLogStream mqttlogStream = MqttLogStream();
-
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -88,7 +88,7 @@ void setup() {
   pinMode(RED_LED_GPIO, OUTPUT);
   digitalWrite(RED_LED_GPIO, 1);
 
-  // the default is space.makerspaceleiden.nl, prefix test
+  // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
 
@@ -120,11 +120,16 @@ void setup() {
 #else
     report["ota"] = false;
 #endif
-  report["acstate"] = opto.state();
+    report["acstate"] = opto.state();
 
   });
 
   Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
@@ -142,7 +147,7 @@ void loop() {
 
   if (laststate != machinestate) {
     Log.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
+               state[laststate].label, state[machinestate].label);
 
     if (machinestate == POWERED && laststate < POWERED) {
       powered_last = millis();

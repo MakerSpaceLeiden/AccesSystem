@@ -47,7 +47,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n" __FILE__ " " __DATE__ " " __TIME__);
 
-  // the default is space.makerspaceleiden.nl, prefix test
+  // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
   node.set_master("test-master");

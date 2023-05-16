@@ -119,7 +119,7 @@ void setup() {
   Serial.printf("Boot state: SW1:%d SW2:%d\n",
                 digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON));
 
-  // the default is space.makerspaceleiden.nl, prefix test
+  // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
   // node.set_mqtt_prefix("test-1234");
 
