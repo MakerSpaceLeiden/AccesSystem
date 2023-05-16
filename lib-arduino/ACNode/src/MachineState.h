@@ -86,6 +86,7 @@ class MachineState : public ACBase {
   public:
     const char * label();
     const char * label(uint8_t label);
+    LED::led_state_t ledState() { return _state2stateStruct[machinestate]->ledState; }
     MachineState();
 
     machinestate_t state();
@@ -93,19 +94,24 @@ class MachineState : public ACBase {
     void operator=(machinestate_t s);
     void setState(machinestate_t s);
 
-    void setOnLoopCallback(uint8_t state, THandlerFunction_OnLoopCB onLoopCB);
+    bool operator <(machinestate_t s) { return s < machinestate; };
+    bool operator ==(machinestate_t s) { return s = machinestate; };
+    bool operator !=(machinestate_t s) { return s != machinestate; };
+    bool operator >(machinestate_t s) { return s > machinestate; };
 
-    void setOnChangeCallback(uint8_t state, THandlerFunction_OnChangeCB onChangeCB);
+    void setOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
 
-    void setOnTimeoutCallback(uint8_t state, THandlerFunction_OnTimeoutCB onTimeoutCB);
+    void setOnChangeCallback(machinestate_t state, THandlerFunction_OnChangeCB onChangeCB);
 
-    uint8_t addState(state_t aState);
+    void setOnTimeoutCallback(machinestate_t state, THandlerFunction_OnTimeoutCB onTimeoutCB);
 
-    uint8_t addState(const char * label, machinestate_t nextstate);
+    machinestate_t addState(state_t aState);
 
-    uint8_t addState(const char * label, time_t timeout, machinestate_t nextstate);
+    machinestate_t addState(const char * label, machinestate_t nextstate);
 
-    uint8_t addState(const char * label, LED::led_state_t ledState, 
+    machinestate_t addState(const char * label, time_t timeout, machinestate_t nextstate);
+
+    machinestate_t addState(const char * label, LED::led_state_t ledState, 
 		time_t timeout, machinestate_t nextstate);
 
     void defineState(machinestate_t state,

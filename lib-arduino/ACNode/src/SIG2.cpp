@@ -7,11 +7,11 @@
 #include <Ed25519.h>
 #include <RNG.h>
 #include <SHA256.h>
+#include <mbedtls/base64.h>
 
 #include <EEPROM.h>
 #include <AES.h>
 #include <CBC.h>
-
 #include <unordered_map>
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
@@ -158,10 +158,10 @@ void SIG2::begin() {
   load_eeprom();
 
   if (eeprom.version != EEPROM_VERSION) {
-    Serial.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
+    Log.printf("EEPROM Version %04x not understood -- clearing.\n", eeprom.version );
     wipe_eeprom();
   }
-  Serial.println("Got a valid eeprom.");
+  Log.println("Got a valid eeprom.");
   Beat::begin();
 }
 
@@ -429,10 +429,18 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     sha256.update((unsigned char*)&sessionkey, sizeof(sessionkey));
     sha256.finalize(sessionkey, sizeof(sessionkey));
 
-    encode_base64(pubsign_tmp, sizeof(pubsign_tmp), (unsigned char *)master_publicsignkey_b64);
-    encode_base64(pubencr_tmp, sizeof(pubencr_tmp), (unsigned char *)master_publicencryptkey_b64);
-
-    Log.printf("(Re)calculated session key - slaved to master public signkey %s and masterpublic encrypt key %s\n",
+    size_t olen;
+    if ((0 != mbedtls_base64_encode(
+	(unsigned char *)master_publicsignkey_b64, sizeof(master_publicsignkey_b64), &olen, 
+	pubsign_tmp, sizeof(pubsign_tmp))) ||
+        (0 != mbedtls_base64_encode(
+	(unsigned char *)master_publicencryptkey_b64, sizeof(master_publicencryptkey_b64), &olen,
+	pubencr_tmp, sizeof(pubencr_tmp)))
+    ) {
+       Log.printf("Failed to base64 encode public keys.\n");
+       return ACSecurityHandler::FAIL;
+    };
+    Log.printf("(Re)calculated session key - slaved to master public signkey %s and master public encrypt key %s\n",
                master_publicsignkey_b64, master_publicencryptkey_b64);
 
     // Only accept pubkeys on poweron; not on simple server restarts.
@@ -463,7 +471,11 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, req->payload, strlen(req->payload));
 
   char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
-  encode_base64(signature, sizeof(signature), (unsigned char *)sigb64);
+  size_t olen = 0;
+  if (0 != mbedtls_base64_encode((unsigned char *)sigb64,sizeof(sigb64),&olen,signature, sizeof(signature))) {
+       Log.printf("Failed to base64 encode signature\n");
+       return ACSecurityHandler::FAIL;
+  };
 
   strncpy(req->version, "SIG/2.0", sizeof(req->version));
   snprintf(req->tmp, sizeof(req->payload), "%s %s %s", req->version, sigb64, req->payload);
@@ -501,14 +513,21 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
 
   size_t paddedlen = len + pad;
   uint8_t input[ paddedlen ], output[ paddedlen ], output_b64[ paddedlen * 4 / 3 + 4  ], iv_b64[ 32 ];
+  size_t olen = 0;
+
   strcpy((char *)input, req->tag);
 
   for (int i = 0; i < pad; i++)
     input[len + i] = pad;
 
   cipher.encrypt(output, (uint8_t *)input, paddedlen);
-  encode_base64(iv, sizeof(iv), iv_b64);
-  encode_base64(output, paddedlen, output_b64);
+  if (
+       (0 != mbedtls_base64_encode(iv_b64,sizeof(iv_b64),&olen, iv, sizeof(iv))) ||
+       (0 != mbedtls_base64_encode( output_b64,sizeof(output_b64),&olen, output, paddedlen))
+  ) {
+    Log.println("Failed to base64 encode IV/output");
+    return FAIL;
+  };
 
 #if 0
   unsigned char key_b64[128];  encode_base64(sessionkey, sizeof(sessionkey), key_b64);
@@ -636,25 +655,32 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
   snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", req->payload, myIp[0], myIp[1], myIp[2], myIp[3]);
 
   char b64[128];
+  size_t olen = 0;
 
   // Add ED25519 signing/non-repudiation key
   //
-  strncat(buff, " ", sizeof(buff));
-  encode_base64((unsigned char *)node_publicsign, sizeof(node_publicsign), (unsigned char *)b64);
-  strncat(buff, b64, sizeof(buff));
+  strncat(buff, " ", sizeof(buff)-1);
+  if (0 != mbedtls_base64_encode((unsigned char *)b64, sizeof(b64), &olen, (unsigned char *)node_publicsign, sizeof(node_publicsign))) {
+    Debug.printf("Failed to base64  encode publicsign\n");
+    return ACSecurityHandler::FAIL;
+  };
+  strncat(buff, b64, sizeof(buff)-1);
 
   // Add Curve25519 session/confidentiality key
   //
-  strncat(buff, " ", sizeof(buff));
-  encode_base64((unsigned char *)(node_publicsession), sizeof(node_publicsession), (unsigned char *)b64);
-  strncat(buff, b64, sizeof(buff));
+  strncat(buff, " ", sizeof(buff)-1);
+  if (0 != mbedtls_base64_encode((unsigned char *)b64, sizeof(b64), &olen, (unsigned char *)(node_publicsession), sizeof(node_publicsession))) {
+    Debug.printf("Failed to base64  encode publicsign\n");
+    return ACSecurityHandler::FAIL;
+  }
+  strncat(buff, b64, sizeof(buff)-1);
 
   // Add a nonce - so we can time-point the reply.
   //
   populate_nonce(NULL,_nonce);
 
-  strncat(buff, " ", sizeof(buff));
-  strncat(buff, _nonce, sizeof(buff));
+  strncat(buff, " ", sizeof(buff)-1);
+  strncat(buff, _nonce, sizeof(buff)-1);
 
   strncpy(req->payload, buff, sizeof(req->payload));
   return OK;
@@ -677,6 +703,7 @@ void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]
 
   // We know that this fits - see header of SIG2.h
   //
-  encode_base64(nonce_raw, sizeof(nonce_raw),  (unsigned char *)nonce);
+  size_t olen = 0;
+  mbedtls_base64_encode((unsigned char *)nonce, B64L(HASH_LENGTH), &olen, nonce_raw, sizeof(nonce_raw));
 };
 

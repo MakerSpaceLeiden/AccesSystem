@@ -1,10 +1,15 @@
 #ifndef _CACHE_H
 #define _CACHE_H
+#include <ACNode.h>
 
-extern unsigned long cacheMiss, cacheHit;
+// up to 48 hours of caching.
+//
+#define MAX_CACHE_AGE (2 * 24 * 3600 /* seconds! */)
+extern unsigned long cacheMiss, cacheHit, cachePurge, cacheUpdate;
 
 void prepareCache(bool wipe);
 void setCache(const char * tag, bool ok, unsigned long beatCounter);
-bool checkCache(const char * tag);
-
+void unsetCache(const char * tag);
+bool checkCache(const char * tag, unsigned long nowBeatCounter);
+void wipeCache();
 #endif

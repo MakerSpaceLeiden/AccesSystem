@@ -6,8 +6,6 @@
 // limits in MQTT callback and elsewhere.
 //
 ACNode * _acnode;
-ACLog Log;
-ACLog Debug;
 
 #ifdef HAS_MSL
 MSL msl = MSL();    // protocol doors (private LAN)
@@ -35,11 +33,30 @@ static double coreTemp() {
 }
 #endif
 
+#include <TelnetSerialStream.h>
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
+
+#include <WebSerialStream.h>
+WebSerialStream  webSerialStream = WebSerialStream();
+
+#include <MqttlogStream.h>
+
+MqttStream  * mqttlogStream;
+
+#ifdef SYSLOG_HOST
+#include <SyslogStream.h>
+SyslogStream syslogStream = SyslogStream();
+#endif
+
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
-void ACNode::set_mqtt_host(const char *p) { strncpy(mqtt_server,p, sizeof(mqtt_server)); };
+void ACNode::set_mqtt_host(const char *p) { 
+	strncpy(mqtt_server,p, sizeof(mqtt_server)); 
+};
 void ACNode::set_mqtt_port(uint16_t p)  { mqtt_port = p; };
-void ACNode::set_mqtt_prefix(const char *p)  { strncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix)); };
+void ACNode::set_mqtt_prefix(const char *p)  { 
+	strncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix)); 
+}
 void ACNode::set_mqtt_log(const char *p)  { strncpy(logpath,p, sizeof(logpath)); };
 void ACNode::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
 void ACNode::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
@@ -57,6 +74,15 @@ void ACNode::pop() {
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
     strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
+
+    // It is safe to start logging early - as these won't emit anyting until
+    // the network is known to be up.
+    //
+    Log.addPrintStream(std::make_shared<TelnetSerialStream>(telnetSerialStream));
+    Log.addPrintStream(std::make_shared<WebSerialStream>(webSerialStream));
+#ifdef SYSLOG_HOST
+    Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+#endif
 };
 
 ACNode::ACNode(const char * m, bool wired, acnode_proto_t proto) : 
@@ -82,6 +108,12 @@ void send(const char * topic, const char * payload) {
 }
 
 void ACNode::set_debugAlive(bool debug) { _debug_alive = debug; }
+
+void ACNode::set_log_destinations(unsigned int destinations) {
+// LOG_SERIAL     LOG_TELNET    LOG_SYSLOG   LOG_WEBBROWSER  LOG_MQTT     
+}
+void ACNode::set_debug_destinations(unsigned int destinations) {
+}
 
 bool ACNode::isConnected() {
 #ifdef ESP32
@@ -110,6 +142,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
 
     if (!*moi)  
 	strncpy(moi, machine, sizeof(moi));
+
 
 #if 0
     if (_debug)
@@ -150,13 +183,14 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
 #endif
     
     if (_wired) {
+        Log.println("Wired mode");
         WiFi.mode(WIFI_STA);
     } else
     if (_ssid) {
-        Serial.printf("Starting up wifi (hardcoded SSID <%s>,<%s>)\n", _ssid,_ssid_passwd);
+        Log.printf("Starting up wifi (hardcoded SSID <%s>)\n", _ssid);
         WiFi.begin(_ssid, _ssid_passwd);
     } else {
-        Serial.println("Staring wifi auto connect.");
+        Log.println("Staring wifi auto connect.");
         WiFiManager wifiManager;
         wifiManager.autoConnect();
     };
@@ -167,12 +201,12 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     //
     const int del = 10; // seconds.
     unsigned long start = millis();
-    Serial.print("Connecting..");
+    Debug.print("Connecting..");
     while (!isConnected() && (millis() - start < del * 1000)) {
         delay(500);
-	Serial.print(",");
+	Debug.print(".");
     };
-    Serial.println("Connected.");
+    Debug.println("Connected.");
     
     if (!_wired && !isConnected()) {
         // Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
@@ -186,18 +220,29 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
         Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
    
     Log.print(moi); Log.print(" "); Log.println(localIP());
- 
-    Log.begin();
-    Debug.begin(); 
+
+    MDNS.begin(moi);
+    Log.println("MDNS Responder started");
 
     _espClient = WiFiClient();
     _client = PubSubClient(_espClient);
-    
+
+    char buff[256];
+    snprintf(buff, sizeof(buff), "%s/logs/%s", mqtt_topic_prefix, moi);
+    mqttlogStream = new MqttStream(&_client, buff);
+
+    Log.addPrintStream(std::make_shared<MqttStream>(*mqttlogStream));
+    configureMQTT();
+    reconnectMQTT();
+    mqttLoop();
+
 #ifdef CONFIGAP
     configBegin();
 #endif
-    configureMQTT();
- 
+
+    Log.begin();
+    Debug.begin(); 
+
     switch(_proto) {
     case PROTO_MSL:
 #ifdef HAS_MSL
@@ -241,6 +286,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
   };
 #endif
   prepareCache(false);  
+
 }
 
 char * ACNode::cloak(char * tag) {
@@ -282,7 +328,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
         strncpy(_lasttag, tag, sizeof(_lasttag));
         // Shortcircuit if permitted. Otherwise do the real thing. Note that our cache is primitive
         // just tags - not commands or node/devices.
-	if (_approved_callback && useCacheOk && checkCache(_lasttag)) {
+	if (_approved_callback && useCacheOk && checkCache(_lasttag, beatCounter)) {
                 _approved_callback(machine);
 	};
        
@@ -296,7 +342,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 
         // We need to copy this - as cloak will overwrite this in place.
         // todo - redesing to be more embedded friendly.
-	strncpy(tmp, tag, sizeof(MAX_MSG));
+	strncpy(tmp, tag, MAX_MSG);
 	if (!(cloak(tmp))) {
 		Log.println("Coud not cloak the tag, approval request not sent");
 		goto _return_request_approval;
@@ -306,7 +352,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
 	Debug.printf("Requesting approval for %s at node %s on machine %s by tag %s\n", 
 		operation ? operation : "<null>", moi ? moi: "<null>", operation ? operation : "<null>", tag ? "*****" : "<null>");
 
-	snprintf(buff,sizeof(MAX_MSG),"%s %s %s %s", operation, moi, target, tmp);
+	snprintf(buff,MAX_MSG,"%s %s %s %s", operation, moi, target, tmp);
 
         _lastSwipe = beatCounter;
         _reqs++;
@@ -361,49 +407,47 @@ void ACNode::loop() {
 	if (millis() - last > _report_period) {
 		last = millis();
 
-		// DynamicJsonBuffer  jsonBuffer(JSON_OBJECT_SIZE(30) + 500);
-		// JsonObject& out = jsonBuffer.createObject();
+                DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(30) + 500);
+                JsonObject out = jsonDoc.to<JsonObject>();
 
-        DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(30) + 500);
+		out[ "node" ] = moi;
+		out[ "machine" ] = machine;
 
-		jsonDoc[ "node" ] = moi;
-		jsonDoc[ "machine" ] = machine;
-
-		jsonDoc[ "maxMqtt" ] = MAX_MSG;
+		out[ "maxMqtt" ] = MAX_MSG;
 
 		char chipstr[30]; strncpy(chipstr,chipId().c_str(),sizeof(chipstr));
-		jsonDoc[ "id" ] = chipstr;
+		out[ "id" ] = chipstr;
 		char ipstr[30]; strncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
-                jsonDoc[ "ip" ] = ipstr;
-                jsonDoc[ "net" ] = _wired ? "UTP" : "WiFi";
+                out[ "ip" ] = ipstr;
+                out[ "net" ] = _wired ? "UTP" : "WiFi";
  		char macstr[30]; strncpy(macstr, macAddressString().c_str(),sizeof(macstr));
-  		jsonDoc[ "mac" ] = macstr;
+  		out[ "mac" ] = macstr;
 
-		jsonDoc[ "beat" ] = beatCounter;
+		out[ "beat" ] = beatCounter;
 
 		if (beatCounter > 1542275849 && _start_beat == 0)
 			_start_beat  = beatCounter;
 		else 
 		if (_start_beat)
-			jsonDoc[ "alive-uptime" ] = beatCounter - _start_beat;
+			out[ "alive-uptime" ] = beatCounter - _start_beat;
 
-		jsonDoc[ "approve" ] = _approve;
-		jsonDoc[ "deny" ] = _deny;
-		jsonDoc[ "requests" ] = _reqs;
+		out[ "approve" ] = _approve;
+		out[ "deny" ] = _deny;
+		out[ "requests" ] = _reqs;
 #ifdef ESP32
-		jsonDoc[ "cache_hit" ] =  cacheHit;
-		jsonDoc[ "cache_miss" ] =  cacheMiss;
+		out[ "cache_hit" ] =  cacheHit;
+		out[ "cache_miss" ] =  cacheMiss;
+		out[ "cache_purge" ] =  cachePurge;
+		out[ "cache_update" ] =  cacheUpdate;
 #endif
 
-		jsonDoc[ "mqtt_reconnects" ] = _mqtt_reconnects;
+		out[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
-		jsonDoc["loop_rate"] = loopRate;
+		out["loop_rate"] = loopRate;
 #ifdef ESP32
-           	jsonDoc["coreTemp"]  = coreTemp(); 
+           	out["coreTemp"]  = coreTemp(); 
 #endif
-		jsonDoc["heap_free"] = ESP.getFreeHeap();	
-
-        JsonObject out = jsonDoc.to<JsonObject>();
+		out["heap_free"] = ESP.getFreeHeap();	
 
 		std::list<ACBase *>::iterator it;
        		for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
@@ -427,9 +471,11 @@ void ACNode::loop() {
     bool connectedstate = isConnected();
     if (lastconnectedstate != connectedstate) {
         if (connectedstate) {
-            _connect_callback();
+	    if (_connect_callback) 
+	            _connect_callback();
 	} else {
-            _disconnect_callback();
+	    if (_disconnect_callback) 
+            	_disconnect_callback();
 	};
         lastconnectedstate = connectedstate;
     };
@@ -460,7 +506,20 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
         send(NULL, buff);
 	Debug.println("replied on the pick with an ack.");
         return ACNode::CMD_CLAIMED;
+    };
+    if (!strcmp("clearcache", req->cmd)) {
+	Log.println("Command received to clear the cache");
+        wipeCache();
+        return ACNode::CMD_CLAIMED;
     }
+    if (!strcmp("unauthorize", req->cmd)) {
+         char tmp[MAX_MSG], *p = tmp;
+         strncpy(tmp, req->rest, sizeof(tmp));
+         SEP(tag, "No tag in unauthorize command", ACNode::CMD_CLAIMED)
+         unsetCache(req->rest);
+         return ACNode::CMD_CLAIMED;
+    };
+
     bool app = ((strcasecmp("approved",req->cmd)==0) || (strcasecmp("open",req->cmd)==0));
     bool den = (strcasecmp("denied", req->cmd) == 0);
     // if (den) { den = false; app = true; };
@@ -487,15 +546,16 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
           return ACNode::CMD_CLAIMED;
       };
 
-      setCache(_lasttag, app, (unsigned long) beatCounter);
 
       if (app) {
+         setCache(_lasttag, app, (unsigned long) beatCounter);
          Log.printf("Received OK to power on %s\n", machine);
          if (_approved_callback) {
 		_approved_callback(machine);
         	return ACNode::CMD_CLAIMED;
          };
      } else {
+         unsetCache(_lasttag);
          Log.printf("Received a DENID to power on %s\n", machine);
          if (_denied_callback) {
 		_denied_callback(machine);
@@ -625,12 +685,12 @@ void ACNode::delayedReboot() {
        return;
 
    if (warn_counter > 5) {
-        Serial.println("Forced reboot NOW");
+        Log.println("Forced reboot NOW");
         ESP.restart();
    };
 
    char buff[255];
-   snprintf(buff,sizeof(buff),"Countdown to forced reboot: %d", 5 - warn_counter);
+   snprintf(buff,MAX_MSG,"Countdown to forced reboot: %d", 5 - warn_counter);
 
    Log.println(buff);
 

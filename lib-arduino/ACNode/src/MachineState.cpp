@@ -171,8 +171,9 @@
         laststate = machinestate;
         machinestate = _state2stateStruct[machinestate]->failStateOnTimeout;
 
-        Log.printf("Time-out; transition from <%s> to <%s>\n",
-                   label(laststate), label(machinestate));
+        Log.printf("Time-out; transition from %d<%s> to %d<%s>\n",
+		laststate, label(laststate), 
+		machinestate, label(machinestate));
         return;
       };
 
