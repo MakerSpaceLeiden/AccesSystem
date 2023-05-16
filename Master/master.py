@@ -104,7 +104,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
       return
 
     self.logger.info("Unknown tag {} reportedly used at {}".format(tag,msg['node']))
-    self.rat(msg,tag)
+    # self.rat(msg,tag)
 
   def rat(self,msg,tag):
     body = "An unknown tag ({}) was reportedly used at node {} around {}.".format(tag,msg['node'],time.asctime())
@@ -153,7 +153,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
 
       if not tag:
         self.logger.info("Tag not in DB; asking node to reveal it")
-        self.send(msg['node'],"revealtag")
+        # self.send(msg['node'],"revealtag")
         return
 
     acl = 'error'
@@ -163,6 +163,10 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     extra_msg = ''
     ckey = '{}/{}/{}'.format(target_machine, target_node, tag)
 
+    if not tag or tag == 'None':
+        self.logger.error("Got a None on {}. {}. {}. {}. {}. Ignoring.".format(cmd,target_node, target_machine, tag_encoded, tag))
+        return
+
     if self.cnf.bearer and self.cnf.xscheck_url:
         try:
           url = "{}/{}".format(self.cnf.xscheck_url, target_machine)
@@ -171,12 +175,12 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
                d = r.json()
                ok = d['access']
                name = d['name']
-               v = { 'name': name, 'machine': target_machine, 'node': target_node }
+               v = { 'name': name, 'machine': target_machine, 'node': target_node, 'userid': d['userid'] }
                if ckey in self.xscache.keys():
                     del self.xscache[ ckey ]
                if ok:
                     self.xscache[ ckey ] = name
-               self.logger.debug("REST based {} for {} on {}@{}".format(ok, name, target_machine, target_node))
+               self.logger.info("REST based {} for {} on {}@{} :: {}".format(ok, name, target_machine, target_node, json.dumps(d)))
           else:
                self.logger.error("CRM http xs fetch gave a non-200 answer: {}".format(r.status_code))
                self.logger.debug('URL:{} {} {}'.format(r.url, tag, self.cnf.bearer))
@@ -202,7 +206,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
 
     if not found:
       self.logger.info("Tag {} not found either DB{}; reporting (no deny sent).".format(tag,extra_msg))
-      self.rat(msg, tag)
+      # self.rat(msg, tag)
       try:
           url = "{}".format(self.cnf.unknown_url)
           r = requests.post(url, data= { 'tag' : tag }, headers = { 'X-Bearer': self.cnf.bearer })
@@ -234,7 +238,8 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
     if not ok:
        body = "{} (with tag {}) was denied on machine/door {}.\n\n\nYour friendly Spacebot".format(v['name'], tag, target_machine)
        subject = "Denied {} on {} @ MSL".format(v['name'], target_machine)
-       self.send_email(body,subject)
+       if target_machine != 'abene' and target_machine != 'grinder':
+           self.send_email(body,subject)
         # self.rat("{} denied on {}".format(v['name'], target_machine), tag)
        return
 

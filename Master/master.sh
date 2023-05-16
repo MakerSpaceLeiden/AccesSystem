@@ -1,4 +1,10 @@
 #!/bin/sh
+set -e
+cd /usr/local/AccesSystem/Master
+python3 ./master.py --config acnode-prod.ini --pidfile /var/db/master/master-prod.pid -vvcc  2>&1 | rotatelogs -n 30 /var/log/master/daily-log 86400
+exit 0
+
+
 
 # PROVIDE: master
 # REQUIRE: DAEMON

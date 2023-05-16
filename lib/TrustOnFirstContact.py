@@ -249,6 +249,15 @@ class TrustOnFirstContact(Beat.Beat):
     # Because we also (want to) have the signature cover the beat - to prevent replay.
     # Todo: consider a nonce.
     try:
+        try:
+             self.logger.debug("VERIFY@{}: <{}> with sig {} and key {}".format(
+                    msg['node'],
+                    base64.b64encode(signed_payload.encode('ASCII')), 
+                    b64sig, 
+                    base64.b64encode(publickey.to_bytes()))
+                    )
+        except Exception as e:
+             self.logger.warning("{} -- ignored.".format(str(e)))
         publickey.verify(b64sig, signed_payload.encode('ASCII'), encoding="base64")
         self.logger.debug("Good signature on " + signed_payload)
     except ed25519.BadSignatureError:
