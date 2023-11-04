@@ -12,10 +12,11 @@ import datetime
 import requests
 
 sys.path.append('.')
+sys.path.append('../lib-python')
+
 import db
 import re
 
-sys.path.append('../lib-python')
 import DrumbeatNode as DrumbeatNode
 import AlertEmail as AlertEmail
 import PingNode as PingNode
