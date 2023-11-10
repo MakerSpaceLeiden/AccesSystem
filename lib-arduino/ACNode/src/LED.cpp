@@ -1,4 +1,6 @@
 #include <ACNode-private.h>
+#include <ExpandedGPIO.h>
+
 #include "LED.h"
 
 // We cannot quite call objects from the ticker callback; so
@@ -7,7 +9,7 @@ static void flipPin(LED * led) { led->_update(); }
 
 LED::LED(const byte pin, const bool inverted) : _pin(pin) ,_inverted(inverted) {
         if (_pin != -1) {
-	   pinMode(_pin, OUTPUT);
+	   expandedpinMode(_pin, OUTPUT);
   	   _ticker = Ticker();
         }
 	_lastState = NEVERSET;
@@ -16,7 +18,7 @@ LED::LED(const byte pin, const bool inverted) : _pin(pin) ,_inverted(inverted) {
 
 void LED::_on() { _set(true); }
 void LED::_off() { _set(false); }
-void LED::_set(bool on) { digitalWrite(_pin, on ^ _inverted); }
+void LED::_set(bool on) { expandedDigitalWrite(_pin, on ^ _inverted); }
 
 //                       01234567012345670123456701234567
 #define PATTERN_IDLE   0b10000000000000000000000000000000

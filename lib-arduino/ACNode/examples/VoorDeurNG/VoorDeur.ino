@@ -17,17 +17,23 @@
 #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <RFID.h>   // SPI version
-#include <TLog.h>
-#include <MqttlogStream.h>
 
-#define MACHINE             "tablesawcabinet"
+#define MACHINE             "voordeur"
 
-#define LOCK_SOLENOID  (4)
-#define BUZZ_TIME (8 * 1000) // Buzz 8 seconds.
+#define SOLENOID_GPIO     (4)
+#define SOLENOID_OFF      (LOW)
+#define SOLENOID_ENGAGED  (HIGH)
+
+#define AARTLED_GPIO      (16)
+
+#define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
 ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
+
+MqttLogStream mqttlogStream = MqttLogStream();
+TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
@@ -41,7 +47,7 @@ typedef enum {
   WAITINGFORCARD,           // waiting for card.
   CHECKINGCARD,
   REJECTED,
-  BUZZING,                    // this is where we engage the LOCK_SOLENOID.
+  BUZZING,                    // this is where we engage the solenoid.
 } machinestates_t;
 
 #define NEVER (0)
@@ -81,14 +87,11 @@ void setup() {
 
   // Init the hardware and get it into a safe state.
   //
-  pinMode(LOCK_SOLENOID, OUTPUT);
-  digitalWrite(LOCK_SOLENOID, 0);
+  pinMode(SOLENOID_GPIO, OUTPUT);
+  digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 
-  // the default is spacebus.makerspaceleiden.nl, prefix test
-  // node.set_mqtt_host("mymqtt-server.athome.nl");
-  // node.set_mqtt_prefix("test-1234");
-  node.set_master("test-master");
-  node.set_report_period(10 * 1000);
+  node.set_mqtt_prefix("ac");
+  node.set_master("master");
 
   node.onConnect([]() {
     Log.println("Connected");
@@ -135,6 +138,14 @@ void setup() {
   node.addHandler(&ota);
 #endif
 
+  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
+
+#if 1
+  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+  Log.addPrintStream(t);
+  Debug.addPrintStream(t);
+#endif
+
   // node.set_debug(true);
   // node.set_debugAlive(true);
   node.begin();
@@ -143,6 +154,16 @@ void setup() {
 
 void loop() {
   node.loop();
+
+  if (laststate != machinestate) {
+    Debug.printf("Changed from state <%s> to state <%s>\n",
+                 state[laststate].label, state[machinestate].label);
+
+    state[laststate].timeInState += (millis() - laststatechange) / 1000;
+    laststate = machinestate;
+    laststatechange = millis();
+    return;
+  }
 
   if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
       (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds))
@@ -154,17 +175,9 @@ void loop() {
 
     Log.printf("Time-out; transition from <%s> to <%s>\n",
                state[laststate].label, state[machinestate].label);
+    return;
   };
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
-
-    state[laststate].timeInState += (millis() - laststatechange) / 1000;
-    laststate = machinestate;
-    laststatechange = millis();
-
-  }
   if (state[machinestate].autoReportCycle && \
       millis() - laststatechange > state[machinestate].autoReportCycle && \
       millis() - lastReport > state[machinestate].autoReportCycle)
@@ -173,7 +186,7 @@ void loop() {
     lastReport = millis();
   };
 
-  digitalWrite(LOCK_SOLENOID, machinestate == BUZZING);
+  digitalWrite(SOLENOID_GPIO, (machinestate == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
 
   switch (machinestate) {
     case REBOOT:
@@ -181,9 +194,12 @@ void loop() {
       break;
 
     case WAITINGFORCARD:
-    case CHECKINGCARD: 
+    case CHECKINGCARD:
     case REJECTED:
     case BUZZING:
+      // all handled in above stage engine.
+      break;
+
     case BOOTING:
     case OUTOFORDER:
     case TRANSIENTERROR:

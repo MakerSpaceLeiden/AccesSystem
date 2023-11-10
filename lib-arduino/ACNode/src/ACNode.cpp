@@ -449,6 +449,8 @@ void ACNode::loop() {
 #endif
 		out["heap_free"] = ESP.getFreeHeap();	
 
+		out["rfid"] = RFID.name():
+
 		std::list<ACBase *>::iterator it;
        		for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
         		(*it)->report(out);

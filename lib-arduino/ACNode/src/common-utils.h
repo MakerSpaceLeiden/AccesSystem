@@ -2,6 +2,7 @@
 #define _H_COMMONS
 #include <mbedtls/base64.h>
 #include <string.h>
+#include <ExpandedGPIO.h>
 
 size_t decode_base64_length(unsigned char * base64str);
 

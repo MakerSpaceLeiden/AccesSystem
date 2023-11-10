@@ -16,6 +16,7 @@
 
 #include <PubSubClient.h>        // https://github.com/knolleary/
 #include <TLog.h>
+#include <MqttlogStream.h>
 #include <SPI.h>
 
 #include <base64.h>
