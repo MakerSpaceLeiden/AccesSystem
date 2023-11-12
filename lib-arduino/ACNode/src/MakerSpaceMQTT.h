@@ -78,7 +78,7 @@
 
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 // MQTT limits - which are partly ESP chip rather than protocol specific.
-#define MAX_HOST       128
+#define MAX_HOST       64
 #define MAX_NAME       24
 #define MAX_TOPIC      ((MAX_NAME +1) * 3  + 1)
 #define MAX_MSG        (512)

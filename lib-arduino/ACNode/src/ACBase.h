@@ -23,7 +23,7 @@ public:
     };
     // raw data as/when received:
     char topic[MAX_TOKEN_LEN];
-    char payload[MAX_MSG - 256]; // minus any signatures, beats, etc.
+    char payload[MAX_MSG]; 
 
     // data as extracted from any payload.
     beat_t beatExtracted;

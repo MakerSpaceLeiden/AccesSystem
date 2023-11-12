@@ -513,7 +513,8 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   };
 
   strncpy(req->version, "SIG/2.0", sizeof(req->version));
-  snprintf(req->tmp, sizeof(req->tmp)-1, "%s %s %s", req->version, sigb64, req->payload);
+  if (snprintf(req->tmp, sizeof(req->tmp), "%s %s %s", req->version, sigb64, req->payload) < 0)
+	return FAIL;
   strncpy(req->payload, req->tmp, sizeof(req->payload));
 
   return OK;
@@ -680,7 +681,8 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
 
   IPAddress myIp = _acnode->localIP();
   char buff[MAX_MSG];
-  snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", req->payload, myIp[0], myIp[1], myIp[2], myIp[3]);
+  if (snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", req->payload, myIp[0], myIp[1], myIp[2], myIp[3]) < 0)
+	return FAIL;
 
   char b64[128];
   size_t olen = 0;

@@ -64,7 +64,8 @@ Beat::acauth_result_t Beat::secure(ACRequest * req) {
     char tmp[MAX_MSG];
     beat_t bc = beatCounter;
 
-    snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", bc, req->payload);
+    if (snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", bc, req->payload) < 0)
+	return FAIL;
     strncpy(req->payload, tmp, sizeof(req->payload));
     
     return PASS;

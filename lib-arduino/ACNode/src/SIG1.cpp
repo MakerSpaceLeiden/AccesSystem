@@ -127,7 +127,8 @@ SIG1::acauth_result_t SIG1::secure(ACRequest * req) {
     strncpy(beatAsString,req->payload, p - req->payload);
     
     const char * sig  = hmacAsHex(passwd, beatAsString, req->topic, p+1);
-    snprintf(msg, sizeof(msg), "%s %s %s", req->version, sig, req->payload);
+    if (snprintf(msg, sizeof(msg), "%s %s %s", req->version, sig, req->payload) < 0)
+	return FAIL;
     
     strncpy(req->payload, msg, sizeof(req->payload));
     return OK;
@@ -184,8 +185,9 @@ SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
 
 SIG1::acauth_result_t SIG1::helo(ACRequest * req) {
 	IPAddress myIp = _acnode->localIP();
-    	snprintf(req->payload, sizeof(req->payload), 
-		"announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
+    	if (snprintf(req->payload, sizeof(req->payload), 
+		"announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]) < 0)
+			return FAIL;
 
 	return OK;
 }
