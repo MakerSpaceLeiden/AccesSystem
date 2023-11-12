@@ -1,7 +1,7 @@
 #include <RFID_MFRC522.h>
 // https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf
 
-RFID_MFRC522::RFID(const byte sspin , const byte rstpin , const byte irqpin , const byte spiclk , const byte spimiso , const byte spimosi ) 
+RFID_MFRC522::RFID_MFRC522(const byte sspin , const byte rstpin , const byte irqpin , const byte spiclk , const byte spimiso , const byte spimosi ) 
 {
 #ifdef ESP32
   if (spiclk != 255 || spimiso != 255 || spimosi != 255)
@@ -16,7 +16,12 @@ RFID_MFRC522::RFID(const byte sspin , const byte rstpin , const byte irqpin , co
    RFID::registerCallback(irqpin);
 }
 
-RFID_MFRC522::RFID(TwoWire *i2cBus, const byte i2caddr, const byte rstpin, const byte irqpin) 
+RFID_MFRC522::~RFID_MFRC522() {
+   // delete _mfrc522;
+   // delete _spiDevice;
+}
+
+RFID_MFRC522::RFID_MFRC522(TwoWire *i2cBus, const byte i2caddr, const byte rstpin, const byte irqpin) 
 {
    _i2cDevice = new MFRC522_I2C(rstpin, i2caddr, *i2cBus);
    _mfrc522 = new MFRC522(_i2cDevice);

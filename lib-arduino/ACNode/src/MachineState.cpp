@@ -14,7 +14,7 @@
       state_t * s = (state_t *) malloc(sizeof(state_t));
 
       if (dflt)
-        bcopy(dflt, s, sizeof(state_t));
+        s = * dflt;
       else
         bzero(s, sizeof(state_t));
 

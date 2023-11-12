@@ -17,6 +17,8 @@
 #include <PubSubClient.h>        // https://github.com/knolleary/
 #include <TLog.h>
 #include <MqttlogStream.h>
+#include <TelnetSerialStream.h>
+#include <WebSerialStream.h>
 #include <SPI.h>
 
 #include <base64.h>
@@ -32,6 +34,7 @@
 #include <LED.h>
 
 #include <ArduinoJson.h>
+#include "RFID.h" // for the max tag size
 
 extern char * strsepspace(char **p);
 
@@ -233,7 +236,7 @@ protected:
     unsigned long _report_period;
     bool _wired;
     acnode_proto_t _proto;
-    char _lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
+    char _lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
 // stat counters
    unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
 };

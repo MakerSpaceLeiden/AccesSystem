@@ -95,7 +95,7 @@ class MachineState : public ACBase {
     void setState(machinestate_t s);
 
     bool operator <(machinestate_t s) { return s < machinestate; };
-    bool operator ==(machinestate_t s) { return s = machinestate; };
+    bool operator ==(machinestate_t s) { return s == machinestate; };
     bool operator !=(machinestate_t s) { return s != machinestate; };
     bool operator >(machinestate_t s) { return s > machinestate; };
 

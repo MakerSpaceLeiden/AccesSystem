@@ -32,7 +32,6 @@ ACNode node = ACNode(MACHINE);
 RFID reader = RFID();
 LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
 
-MqttLogStream mqttlogStream = MqttLogStream();
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
 
 #ifdef OTA_PASSWD
@@ -137,8 +136,6 @@ void setup() {
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
-
-  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
 
 #if 1
   auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);

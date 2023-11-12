@@ -9,9 +9,10 @@
 
 class RFID_PN532: public RFID {
   public:
-    const char * name() { return "RFID-PN532"; }
+    const char * name() { return _name; };
     
-    RFID(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN);
+    RFID_PN532(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN);
+    ~RFID_PN532();
 
     void begin();
     void loop();
@@ -20,10 +21,9 @@ class RFID_PN532: public RFID {
 
     typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
 
-    RFID& onSwipe(THandlerFunction_SwipeCB fn) 
-	{ _swipe_cb = fn; return *this; };
-  
   private:
     Adafruit_PN532 * _pn532;
+    const char PN352_NAME_FORMAT[32] =  "RFID-PN532-%d-v%d.%d"; // %d are unsigned bytes
+    char _name[32] = "RFID-PN532-XXX-vXXX.XXX"; // extra room for version number
 };
 #endif

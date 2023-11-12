@@ -110,10 +110,10 @@ bool checkCache(const char * tag, unsigned long nowBeatCounter) {
   age = nowBeatCounter - b;
 
   if (b && age < MAX_CACHE_AGE) {
-        Debug.printf("Returning cache hit - age %u seconds\n", nowBeatCounter - b);
+        Debug.printf("Returning cache hit - age %lu seconds\n", nowBeatCounter - b);
 	return true;
   };
-  Debug.printf("Cache miss - Too old %u >= %u\n",age, MAX_CACHE_AGE);
+  Debug.printf("Cache miss - Too old %lu >= %d\n",age, MAX_CACHE_AGE);
 
 ex:
   SPIFFS.remove(path);

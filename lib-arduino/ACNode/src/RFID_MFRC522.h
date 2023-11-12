@@ -36,10 +36,11 @@ class RFID_MFRC522 : public RFID {
   public:
     const char * name() { return "RFID-MFRC522"; }
     
-    RFID(const byte sspin = RFID_SELECT_PIN, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN, 
+    RFID_MFRC522(const byte sspin = RFID_SELECT_PIN, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN, 
 	 const byte spiclk = RFID_CLK_PIN, const byte spimiso = RFID_MISO_PIN, const byte spimosi = RFID_MOSI_PIN
     );
-    RFID(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN);
+    RFID_MFRC522(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN);
+    ~RFID_MFRC522();
 
     void begin();
     void loop();
@@ -48,9 +49,6 @@ class RFID_MFRC522 : public RFID {
 
     typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
 
-    RFID& onSwipe(THandlerFunction_SwipeCB fn) 
-	{ _swipe_cb = fn; return *this; };
-  
   private:
     MFRC522_SPI * _spiDevice;
     MFRC522_I2C * _i2cDevice;

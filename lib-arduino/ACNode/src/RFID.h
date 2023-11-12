@@ -8,13 +8,15 @@
 #include <ACBase.h>
 #include <Wire.h>
 
+// global variable for IRQ handler.
+extern volatile bool cardScannedIrqSeen;
+
 class RFID : public ACBase {
   public:
     RFID();
-    const size_t MAX_TAG_LEN = 48;
     const char * name() { return "RFID"; }
     
-    void processAndRateLimitCard(unsighed char * buff, size_t len);
+    void processAndRateLimitCard(unsigned char * buff, size_t len);
     void registerCallback(unsigned char irqpin);
 
     void begin();
@@ -27,10 +29,10 @@ class RFID : public ACBase {
     RFID& onSwipe(THandlerFunction_SwipeCB fn) 
 	{ _swipe_cb = fn; return *this; };
   
-  private:
+  protected:
     bool _irqMode = false;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
-    char lasttag[MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
+    char lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
     unsigned long lastswipe, _scan, _miss;
 };
 

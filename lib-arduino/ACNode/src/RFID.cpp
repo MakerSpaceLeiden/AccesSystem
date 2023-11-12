@@ -13,8 +13,8 @@ void RFID::registerCallback(unsigned char irqpin) {
 };
 
 
-void RFID::processAndRateLimitCard(unsighed char * buff, size_t len) {
-       char tag[MAX_TAG_LEN * 4] = { 0 };
+void RFID::processAndRateLimitCard(unsigned char * buff, size_t len) {
+       char tag[RFID_MAX_TAG_LEN * 4] = { 0 };
        for (int i = 0; i < len; i++) {
            char buff[5];
            snprintf(buff, sizeof(buff), "%s%d", i ? "-" : "", buff[i]);
@@ -40,5 +40,6 @@ void RFID::processAndRateLimitCard(unsighed char * buff, size_t len) {
 void RFID::report(JsonObject& report) {
 	report["rfid_scans"] = _scan;
 	report["rfid_misses"] = _miss;
+        report["rfid"] = name();
 }
 
