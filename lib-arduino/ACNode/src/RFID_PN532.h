@@ -9,17 +9,13 @@
 
 class RFID_PN532: public RFID {
   public:
-    const char * name() { return _name; };
-    
     RFID_PN532(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN);
-    ~RFID_PN532();
+//    ~RFID_PN532();
 
-    void begin();
+    const char * name() { return _name; };
+
+    void begin() ;
     void loop();
-
-    void report(JsonObject& report);
-
-    typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
 
   private:
     Adafruit_PN532 * _pn532;

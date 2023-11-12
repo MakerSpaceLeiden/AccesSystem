@@ -11,9 +11,7 @@ RFID_PN532::RFID_PN532(TwoWire *i2cBus, const byte i2caddr, const byte rstpin, c
    RFID::registerCallback(irqpin);
 }
 
-RFID_PN532::~RFID_PN532() {
-   delete _pn532;
-}
+// RFID_PN532::~RFID_PN532() { delete _pn532; }
 
 void RFID_PN532::begin() {
 
@@ -36,7 +34,7 @@ void RFID_PN532::loop() {
     uint8_t uidLength;                      
 
     if (true == _irqMode) {
-        iff (!cardScannedIrqSeen)
+        if (!cardScannedIrqSeen)
              return;
         cardScannedIrqSeen = false;
     };

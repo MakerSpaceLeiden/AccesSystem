@@ -14,9 +14,9 @@
       state_t * s = (state_t *) malloc(sizeof(state_t));
 
       if (dflt)
-        s = * dflt;
+        *s = *dflt;
       else
-        bzero(s, sizeof(state_t));
+        *s = {};
 
       _state2stateStruct[state] = s;
       return s;

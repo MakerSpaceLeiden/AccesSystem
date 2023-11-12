@@ -72,12 +72,16 @@
 #define MQTT_DEFAULT_PORT (1883)
 #endif
 
+#if MQTT_MAX_PACKET_SIZE < 512
+#error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
+#endif
+
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 // MQTT limits - which are partly ESP chip rather than protocol specific.
 #define MAX_HOST       128
 #define MAX_NAME       24
-#define MAX_TOPIC      64
-#define MAX_MSG        (MQTT_MAX_PACKET_SIZE - 32)
+#define MAX_TOPIC      ((MAX_NAME +1) * 3  + 1)
+#define MAX_MSG        (512)
 #define BEATFORMAT     "%012lu" // hard-coded - it is part of the HMAC */
 #define MAX_BEAT       16
 

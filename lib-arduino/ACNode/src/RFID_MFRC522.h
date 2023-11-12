@@ -45,10 +45,6 @@ class RFID_MFRC522 : public RFID {
     void begin();
     void loop();
 
-    void report(JsonObject& report);
-
-    typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
-
   private:
     MFRC522_SPI * _spiDevice;
     MFRC522_I2C * _i2cDevice;

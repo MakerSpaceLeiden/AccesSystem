@@ -61,7 +61,7 @@ Beat::cmd_result_t Beat::handle_cmd(ACRequest * req) {
 }
 
 Beat::acauth_result_t Beat::secure(ACRequest * req) {
-    char tmp[sizeof(req->payload)];
+    char tmp[MAX_MSG];
     beat_t bc = beatCounter;
 
     snprintf(tmp, sizeof(tmp), BEATFORMAT " %s", bc, req->payload);

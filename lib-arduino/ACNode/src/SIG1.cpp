@@ -22,6 +22,7 @@ const char * hmacToHex(const unsigned char * hmac) {
 static const char * hmacAsHex(const char *sessionkey,
                               const char * beatAsString, const char * topic, const char *payload)
 {
+#ifdef LEGACY
     SHA256 sha256;
     
     sha256.reset();
@@ -31,7 +32,23 @@ static const char * hmacAsHex(const char *sessionkey,
     
     unsigned char result[sha256.hashSize()];
     sha256.finalizeHMAC(sessionkey, sizeof(sessionkey), result, sizeof(result));
-    
+#else
+    mbedtls_md_context_t ctx;
+    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+ 
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
+    mbedtls_md_hmac_starts(&ctx, (const unsigned char*)sessionkey, sizeof(sessionkey));
+
+    mbedtls_md_hmac_update(&ctx, (const unsigned char*)beatAsString, strlen(beatAsString));
+    if (topic && *topic) mbedtls_md_hmac_update(&ctx, (const unsigned char*)topic, strlen(topic));
+    if (payload && *payload) mbedtls_md_hmac_update(&ctx, (const unsigned char*)payload, strlen(payload));
+
+    byte result[32];
+    mbedtls_md_hmac_finish(&ctx, result);
+    mbedtls_md_free(&ctx);
+#endif
+ 
     return hmacToHex(result);
 }
 
@@ -95,7 +112,7 @@ SIG1::acauth_result_t SIG1::verify(ACRequest * req) {
 
 SIG1::acauth_result_t SIG1::secure(ACRequest * req) {
     char beatAsString[ MAX_BEAT ];
-    char msg[MAX_MSG];
+    char msg[MAX_MSG+1];
    
     acauth_result_t r = Beat::secure(req);
     if (r == OK || r == FAIL)
@@ -119,10 +136,23 @@ SIG1::acauth_result_t SIG1::secure(ACRequest * req) {
 SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
     char beatAsString[ MAX_BEAT ];
     snprintf(beatAsString, sizeof(beatAsString), BEATFORMAT, req->beatExtracted);
-    
+   
+#ifdef LEGACY 
     SHA256 sha256;
     sha256.reset();
     sha256.update((unsigned char*)&beatAsString, strlen(beatAsString));
+#else
+    mbedtls_md_context_t ctx;
+    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
+    mbedtls_md_hmac_starts(&ctx, (const unsigned char *)passwd, sizeof(passwd));
+    
+    mbedtls_md_hmac_update(&ctx, (const unsigned char*)beatAsString, strlen(beatAsString));
+    mbedtls_md_free(&ctx);
+#endif
+
     // Rather messy - but since we're retiring SIG1 - we won't fix.
     //
     unsigned char uid[32];
@@ -133,10 +163,17 @@ SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
     for(char * tok = strtok(tagc," -"); (i < sizeof(uid)) && tok; tok = strtok(NULL," -")) {
         uid[i++] = atoi(tok);
     }
+#ifdef LEGACY
     sha256.update(uid, i);
     
     unsigned char binresult[sha256.hashSize()];
     sha256.finalizeHMAC(passwd, sizeof(passwd), binresult, sizeof(binresult));
+#else
+    mbedtls_md_hmac_update(&ctx, uid, i);
+
+    byte binresult[32];
+    mbedtls_md_hmac_finish(&ctx, binresult);
+#endif
     
     const char * tag_encoded = hmacToHex(binresult);
     

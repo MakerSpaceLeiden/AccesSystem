@@ -23,7 +23,8 @@
 
 #include <base64.h>
 #include <Crypto.h>
-#include <SHA256.h>
+#include "mbedtls/sha256.h" /* SHA-256 only */
+#include "mbedtls/md.h"     /* generic interface */
 
 #include <list>
 #include <vector>

@@ -6,12 +6,10 @@
 #include <Curve25519.h>
 #include <Ed25519.h>
 #include <RNG.h>
-#include <SHA256.h>
 #include <mbedtls/base64.h>
 
 #include <EEPROM.h>
-#include <AES.h>
-#include <CBC.h>
+#include <mbedtls/aes.h>
 #include <unordered_map>
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
@@ -112,21 +110,43 @@ void kickoff_RNG() {
   //
   RNG.begin(RNG_APP_TAG);
 
+#ifdef LEGACY
   SHA256 sha256;
   sha256.reset();
+#else
+    mbedtls_md_context_t ctx;
+    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
+    mbedtls_md_starts(&ctx);
+#endif
+
 
   for (int i = 0; i < 25; i++) {
-    uint32_t r = trng(); // RANDOM_REG32 ; // Or esp_random(); for the ESP32 in recent libraries.
+    uint32_t r = esp_random();
+#ifdef LEGACY
     sha256.update((unsigned char*)&r, sizeof(r));
+#else
+    mbedtls_md_update(&ctx,(const unsigned char*)&r, sizeof(r));
+#endif
     delay(10);
   };
 
   uint8_t mac[6];
   WiFi.macAddress(mac);
-  sha256.update(mac, sizeof(mac));
 
+#ifdef LEGACY
   uint8_t result[sha256.hashSize()];
+  sha256.update(mac, sizeof(mac));
   sha256.finalize(result, sizeof(result));
+#else
+  uint8_t result[32];
+  mbedtls_md_update(&ctx, mac, sizeof(mac));
+  mbedtls_md_finish(&ctx, result);
+  mbedtls_md_free(&ctx);
+#endif
+
   RNG.stir(result, sizeof(result), 100);
 
   RNG.rand(runtime_seed,sizeof(runtime_seed));
@@ -424,10 +444,25 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
 
     resetWatchdog();
 
+#ifdef LEGACY
     SHA256 sha256;
     sha256.reset();
     sha256.update((unsigned char*)&sessionkey, sizeof(sessionkey));
     sha256.finalize(sessionkey, sizeof(sessionkey));
+#else
+    mbedtls_md_context_t ctx;
+    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
+    mbedtls_md_starts(&ctx);
+
+    mbedtls_md_update(&ctx, (const unsigned char *)sessionkey, sizeof(sessionkey));
+        
+    mbedtls_md_finish(&ctx, sessionkey);
+    mbedtls_md_free(&ctx);
+#endif  
+
 
     size_t olen;
     if ((0 != mbedtls_base64_encode(
@@ -478,7 +513,7 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   };
 
   strncpy(req->version, "SIG/2.0", sizeof(req->version));
-  snprintf(req->tmp, sizeof(req->payload), "%s %s %s", req->version, sigb64, req->payload);
+  snprintf(req->tmp, sizeof(req->tmp)-1, "%s %s %s", req->version, sigb64, req->payload);
   strncpy(req->payload, req->tmp, sizeof(req->payload));
 
   return OK;
@@ -488,20 +523,12 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   if (!sig2_active())
     return ACSecurityHandler::FAIL;
 
-  CBC<AES256> cipher;
+  mbedtls_aes_context aes;
 
   uint8_t iv[16];
   RNG.rand(iv, sizeof(iv));
 
-  if (!cipher.setKey(sessionkey, cipher.keySize())) {
-    Log.println("FAIL setKey");
-    return FAIL;
-  }
-
-  if (!cipher.setIV(iv, cipher.ivSize())) {
-    Log.println("FAIL setIV");
-    return FAIL;
-  }
+  mbedtls_aes_setkey_enc(&aes,sessionkey, 8*sizeof(sessionkey));
 
   // PKCS#7 padding - as traditionally used with AES.
   // https://www.ietf.org/rfc/rfc2315.txt
@@ -520,7 +547,8 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   for (int i = 0; i < pad; i++)
     input[len + i] = pad;
 
-  cipher.encrypt(output, (uint8_t *)input, paddedlen);
+   mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_ENCRYPT, paddedlen, iv, input, output );
+
   if (
        (0 != mbedtls_base64_encode(iv_b64,sizeof(iv_b64),&olen, iv, sizeof(iv))) ||
        (0 != mbedtls_base64_encode( output_b64,sizeof(output_b64),&olen, output, paddedlen))
@@ -651,7 +679,7 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
   };
 
   IPAddress myIp = _acnode->localIP();
-  char buff[MAX_TOKEN_LEN * 2];
+  char buff[MAX_MSG];
   snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", req->payload, myIp[0], myIp[1], myIp[2], myIp[3]);
 
   char b64[128];
@@ -688,6 +716,7 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
 
 void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]) {
   uint8_t nonce_raw[ HASH_LENGTH ];
+#ifdef LEGACY
   SHA256 sha256;
   sha256.reset();
   sha256.update(runtime_seed, sizeof(runtime_seed));
@@ -700,6 +729,26 @@ void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]
   	sha256.update(nonce_raw, sizeof(nonce_raw));
   };
   sha256.finalize(nonce_raw, sizeof(nonce_raw));
+#else
+  mbedtls_md_context_t ctx;
+  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
+  mbedtls_md_starts(&ctx);
+    
+  mbedtls_md_update(&ctx, runtime_seed, sizeof(runtime_seed));
+  mbedtls_md_update(&ctx, node_publicsign, sizeof(node_publicsign));
+  mbedtls_md_update(&ctx, node_publicsession, sizeof(node_publicsession));
+  if (seedOrNull)
+        mbedtls_md_update(&ctx, (const unsigned char*) seedOrNull, strlen(seedOrNull));
+  else {
+        RNG.rand(nonce_raw, sizeof(nonce_raw));
+        mbedtls_md_update(&ctx, nonce_raw, sizeof(nonce_raw));
+  };
+  mbedtls_md_finish(&ctx, nonce_raw);
+  mbedtls_md_free(&ctx);
+#endif  
 
   // We know that this fits - see header of SIG2.h
   //

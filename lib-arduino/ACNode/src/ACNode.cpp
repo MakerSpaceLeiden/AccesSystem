@@ -272,8 +272,8 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     {
         std::list<ACBase *>::iterator it;
         for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
-   	    Debug.printf("%s.begin()\n", (*it)->name());
             (*it)->begin();
+   	    Debug.printf("%s.begin() completed ok\n", (*it)->name());
         }
     }
 #if 0

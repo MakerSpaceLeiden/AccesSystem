@@ -98,6 +98,10 @@ const char * ACNode::state2str(int state) {
 }
 
 void ACNode::reconnectMQTT() {
+    if (_client.getBufferSize() < MAX_MSG) 
+	if (!_client.setBufferSize(MAX_MSG))
+	Log.println("WARNING - buffer size could not be increased to a large enough value. All things may go wrong.");
+
     Log.printf("Connecting <%s> to %s:%d (MQTT State : %s)\n",
 		ACNode::moi, mqtt_server, mqtt_port, 
 		state2str(_client.state()));

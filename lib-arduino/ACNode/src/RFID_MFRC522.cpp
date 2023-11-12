@@ -17,6 +17,7 @@ RFID_MFRC522::RFID_MFRC522(const byte sspin , const byte rstpin , const byte irq
 }
 
 RFID_MFRC522::~RFID_MFRC522() {
+   Log.println("RFID_MFRC522 does not support a destroy yet.");
    // delete _mfrc522;
    // delete _spiDevice;
 }
@@ -67,7 +68,7 @@ void RFID_MFRC522::loop() {
           return;
     }
     if (_mfrc522->PICC_ReadCardSerial() &&  _mfrc522->uid.size) {
-       RFID::processAndRateLimitCard(mfrc522->uid.uidByte,_mfrc522->uid.size);
+       RFID::processAndRateLimitCard(_mfrc522->uid.uidByte,_mfrc522->uid.size);
       _scan++;
     } else {
       _miss++;
