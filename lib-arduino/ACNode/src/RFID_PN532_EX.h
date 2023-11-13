@@ -3,6 +3,11 @@
 
 #include <stddef.h>
 #include <functional>
+
+// Relies on https://github.com/Seeed-Studio/PN532
+// Which is not part of the Arduino ecosystem.
+// Requires PN532_I2C and PN532 to be in Arduino/libraries
+//
 #include <PN532.h>
 #include <PN532_I2C.h>
 
