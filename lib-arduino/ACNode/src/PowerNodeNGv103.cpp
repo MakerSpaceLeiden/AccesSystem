@@ -52,7 +52,7 @@ void setupPowernodeNG() {
 void PowerNodeNGv103::begin() {
  	setup_i2c_power_ctrl();
 
-	_reader = new RFID_PN532_NFC();
+	_reader = new RFID_PN532_EX();
 	_reader->set_debug(false);
         addHandler(_reader);
 

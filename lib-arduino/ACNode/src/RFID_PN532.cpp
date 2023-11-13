@@ -8,7 +8,8 @@ RFID_PN532::RFID_PN532(TwoWire *i2cBus, const byte i2caddr, const byte rstpin, c
    };
 
    _pn532 = new Adafruit_PN532((uint8_t)irqpin, (uint8_t)rstpin, i2cBus);
-   RFID::registerCallback(irqpin);
+   if (irqpin != -1)
+	RFID::registerCallback(irqpin);
 }
 
 // RFID_PN532::~RFID_PN532() { delete _pn532; }
@@ -28,7 +29,6 @@ void RFID_PN532::begin() {
 
   Log.printf("Detected PN532: Chip version: %d,  Firmware vesion: %d.%d\n", chip_version, fw_version_maj,fw_version_min);
   snprintf(_name,sizeof(_name),PN352_NAME_FORMAT,chip_version, fw_version_maj, fw_version_min);
-
 
   // retry forever.
   _pn532->setPassiveActivationRetries(0xFF);

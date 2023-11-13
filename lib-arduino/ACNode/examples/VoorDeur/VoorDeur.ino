@@ -89,9 +89,9 @@ void setup() {
   digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 
   Wire.begin();
-  Wire.setClock(100*1000);
+  Wire.setClock(100 * 1000);
   scan_i2c();
-    
+
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 

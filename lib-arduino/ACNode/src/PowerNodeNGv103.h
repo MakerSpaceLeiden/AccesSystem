@@ -2,7 +2,7 @@
 #define _H_POWERNODENG103
 
 #include "ACNode.h"
-#include <RFID_PN532_NFC.h>
+#include <RFID_PN532_EX.h>
 
 #define CHECK_NFC_READER_AVAILABLE_TIME_WINDOW  (10000) // in ms  
 #define GPIOPORT_I2C_RECOVER_SWITCH             (15)       
@@ -30,7 +30,8 @@ class PowerNodeNGv103 : public ACNode {
 
 	void begin(); 
     private:
-	RFID_PN532_NFC * _reader;
+        // RFID_PN532_NFC * _reader;
+	RFID_PN532_EX * _reader;
 
 };
 #endif
