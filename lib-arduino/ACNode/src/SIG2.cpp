@@ -8,7 +8,6 @@
 #include <RNG.h>
 #include <mbedtls/base64.h>
 
-#define LEGACY
 #ifdef LEGACY
 #include <AES.h>
 #include <CBC.h>
@@ -565,6 +564,8 @@ int my_aes_crypt_cbc(mbedtls_aes_context *ctx,
 
 
 SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
+  size_t olen = 0;
+
   if (!sig2_active())
     return ACSecurityHandler::FAIL;
   if (init_done < 4) {
@@ -572,11 +573,13 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
         return ACSecurityHandler::FAIL;
   };
 
-  mbedtls_aes_context aes;
-
-  uint8_t iv[16];
+  uint8_t iv[16],  iv_b64[ 32 ];
   RNG.rand(iv, sizeof(iv));
-
+  // We need to do this early - as the IV gets trampled on during encoding.
+  if (0 != mbedtls_base64_encode(iv_b64,sizeof(iv_b64),&olen, iv, sizeof(iv))) {
+    Log.println("Failed to base64 encode the IV");
+    return ACSecurityHandler::FAIL;
+  };
 
   // PKCS#7 padding - as traditionally used with AES.
   // https://www.ietf.org/rfc/rfc2315.txt
@@ -587,8 +590,7 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   if (pad == 0) pad = 16; //cipher.blockSize();
 
   size_t paddedlen = len + pad;
-  uint8_t input[ paddedlen ], output[ paddedlen ], output_b64[ paddedlen * 4 / 3 + 4  ], iv_b64[ 32 ];
-  size_t olen = 0;
+  uint8_t input[ paddedlen ], output[ paddedlen ], output_b64[ paddedlen * 4 / 3 + 4  ];
 
   strcpy((char *)input, req->tag);
 
@@ -607,48 +609,21 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   }
   cipher.encrypt(output, (uint8_t *)input, paddedlen);
   if (
-       (0 != mbedtls_base64_encode(iv_b64,sizeof(iv_b64),&olen, iv, sizeof(iv))) ||
        (0 != mbedtls_base64_encode( output_b64,sizeof(output_b64),&olen, output, paddedlen))
   ) {
     Log.println("Failed to CBC base64 encode IV/output");
     return FAIL;
   };
-Serial.println("\n\nLEGACY\n");
-  size_t l; 
-  unsigned char key_b64[128];  mbedtls_base64_encode(key_b64, sizeof(key_b64), &l, sessionkey, sizeof(sessionkey));
-  unsigned char p64[128];  mbedtls_base64_encode(p64, sizeof(p64), &l, input, paddedlen);
-  Serial.print("Plain="); Serial.println(req->tag);
-  Serial.print("paddedlen="); Serial.println(paddedlen);
-  Serial.print("PlainB64="); Serial.println((char*)p64);
-  Serial.print("Plain len="); Serial.println(strlen(req->tag));
-  Serial.print("Paddd len="); Serial.println(paddedlen);
-  Serial.print("Key Size="); Serial.println(cipher.keySize());
-  Serial.print("IV Size="); Serial.println(cipher.ivSize());
-  Serial.print("IV="); Serial.println((char *)iv_b64);
-  Serial.print("Key="); Serial.println((char *)key_b64);
-  Serial.print("Cypher="); Serial.println((char *)output_b64);
-  Serial.print("\n\n\n");
 #else
-  mbedtls_aes_setkey_enc(&aes,sessionkey, 8*sizeof(sessionkey) /* 256 */);
-
+  mbedtls_aes_context aes;
   if (
+       (0 != mbedtls_aes_setkey_enc(&aes,sessionkey, 8*sizeof(sessionkey) /* 256 */)) ||
        (0 != mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_ENCRYPT, paddedlen, iv, input, output )) ||
-       (0 != mbedtls_base64_encode(iv_b64,sizeof(iv_b64),&olen, iv, sizeof(iv))) ||
        (0 != mbedtls_base64_encode( output_b64,sizeof(output_b64),&olen, output, paddedlen))
   ) {
     Log.println("Failed to CBC encrypt or base64 encode IV/output");
     return FAIL;
   };
-
-#if 1
-  size_t l; unsigned char key_b64[128];  mbedtls_base64_encode(key_b64, sizeof(key_b64), &l, sessionkey, sizeof(sessionkey));
-  Serial.print("Paddd len="); Serial.println(paddedlen);
-  Serial.print("IV="); Serial.println((char *)iv_b64);
-  Serial.print("Key="); Serial.println((char *)key_b64);
-  Serial.print("Clear="); Serial.println((char *)(req->tag));
-  Serial.print("Cypher="); Serial.println((char *)output_b64);
-Serial.println("\n\n\n");
-#endif
 #endif
 
   snprintf(req->tag, sizeof(req->tag), "%s.%s", iv_b64, output_b64);
