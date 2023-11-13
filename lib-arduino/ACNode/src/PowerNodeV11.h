@@ -1,4 +1,6 @@
-#pragma once
+#include "ACNode.h"
+#ifndef _H_POWERNODEV11
+#define _H_POWERNODEV11
 
 // https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
 //
@@ -59,4 +61,10 @@
 
 #ifndef RFID_IRQ_PIN
 #define RFID_IRQ_PIN    (33) // Set to -1 to switch to polling mode; 33 to use IRQs
+#endif
+
+class PowerNodeV11: public ACNode {
+  public: 
+	void begin();
+};
 #endif

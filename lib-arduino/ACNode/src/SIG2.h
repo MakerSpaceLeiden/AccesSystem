@@ -4,6 +4,12 @@
 #include "ACBase.h"
 #include "Beat.h"
 
+// Exposed - as it is used during the OTA
+// process to prevent key leakage by
+// rogue firmware.
+
+extern void wipe_eeprom();
+
 class SIG2 : public Beat {
 public:
     const char * name() { return "SIG2"; }

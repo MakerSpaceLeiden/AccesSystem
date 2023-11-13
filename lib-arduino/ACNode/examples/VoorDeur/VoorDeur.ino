@@ -13,26 +13,25 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
-#include <PowerNodeV11.h>
-#include <ACNode.h>
-#include <RFID.h>   // SPI version
 
-#define MACHINE             "voordeur"
+   Tested against the `blue' v0.9 board mounted early November 2023.
+   Schematic: https://github.com/7118fd54-e012-4883-ae03-a2d601609b17
+*/
+#include <PowerNodeNGv103.h>
+#include <ACNode.h>
+#include <RFID_PN532_NFC.h>
+
+#ifndef MACHINE
+#define MACHINE "voordeur"
+#endif
 
 #define SOLENOID_GPIO     (4)
 #define SOLENOID_OFF      (LOW)
 #define SOLENOID_ENGAGED  (HIGH)
 
-#define AARTLED_GPIO      (16)
-
 #define BUZZ_TIME (5 * 1000) // Buzz 8 seconds.
 
-ACNode node = ACNode(MACHINE);
-RFID reader = RFID();
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
-
-TelnetSerialStream telnetSerialStream = TelnetSerialStream();
+PowerNodeNGv103 node = PowerNodeNGv103(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
@@ -82,13 +81,17 @@ unsigned long opening_door_count  = 0, door_denied_count = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
-  Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  Serial.println("Booted: " __FILE__   " " __DATE__ " " __TIME__ );
 
   // Init the hardware and get it into a safe state.
   //
   pinMode(SOLENOID_GPIO, OUTPUT);
   digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
 
+  Wire.begin();
+  Wire.setClock(100*1000);
+  scan_i2c();
+    
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
@@ -127,20 +130,8 @@ void setup() {
 #endif
   });
 
-
-  // This reports things such as FW version of the card; which can 'wedge' it. So we
-  // disable it unless we absolutely positively need that information.
-  //
-  reader.set_debug(false);
-  node.addHandler(&reader);
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
-#endif
-
-#if 1
-  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-  Log.addPrintStream(t);
-  Debug.addPrintStream(t);
 #endif
 
   // node.set_debug(true);

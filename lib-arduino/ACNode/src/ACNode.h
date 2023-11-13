@@ -10,5 +10,7 @@
 
 #include <OTA.h>
 
+extern void scan_i2c();
+
 #endif
 

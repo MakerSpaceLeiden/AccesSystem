@@ -1,4 +1,4 @@
-#if 0
+#include "PowerNodeNGv103.h"
 
 static void setup_i2c_power_ctrl() {
   // for recovery switch I2C
@@ -6,6 +6,7 @@ static void setup_i2c_power_ctrl() {
   digitalWrite(GPIOPORT_I2C_RECOVER_SWITCH, 0);
 }
 
+#if 0
 void resetNFCReader() {
   if (USE_NFC_RFID_CARD) {
     pinMode(RFID_SCL_PIN, OUTPUT);
@@ -47,4 +48,15 @@ void setupPowernodeNG() {
    relay1Off();
 }
 #endif
+
+void PowerNodeNGv103::begin() {
+ 	setup_i2c_power_ctrl();
+
+	_reader = new RFID_PN532_NFC();
+	_reader->set_debug(false);
+        addHandler(_reader);
+
+	ACNode::begin();
+}
+
 

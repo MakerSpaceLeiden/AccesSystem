@@ -8,6 +8,13 @@
 #include <RNG.h>
 #include <mbedtls/base64.h>
 
+#define LEGACY
+#ifdef LEGACY
+#include <AES.h>
+#include <CBC.h>
+#include <SHA256.h>
+#endif
+
 #include <EEPROM.h>
 #include <mbedtls/aes.h>
 #include <unordered_map>
@@ -67,7 +74,6 @@ extern void kickoff_RNG();
 
 extern void load_eeprom();
 extern void save_eeprom();
-extern void wipe_eeprom();
 
 // Option 1 (caninical) - a (correctly) signed message with a known key.
 // Option 2 - a (correctly) signed message with an unknwon key and still pre-TOFU
@@ -169,6 +175,44 @@ void wipe_eeprom() {
   eeprom.version = EEPROM_VERSION;
   save_eeprom();
 }
+
+void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
+    uint8_t tmp_private[CURVE259919_KEYLEN];
+
+    memcpy(sessionkey, pubencr_tmp, sizeof(sessionkey));
+    memcpy(tmp_private, node_privatesession, sizeof(tmp_private));
+    resetWatchdog();
+    Curve25519::dh2(sessionkey, tmp_private);
+
+    resetWatchdog();
+if (0) {
+	unsigned char tmp[100]; size_t l;
+	mbedtls_base64_encode(tmp,sizeof(tmp),&l,sessionkey, sizeof(sessionkey));
+	Log.printf("Session key: %s\n",(char *)tmp);
+}
+#ifdef LEGACY
+    SHA256 sha256;
+    sha256.reset();
+    sha256.update((unsigned char*)sessionkey, sizeof(sessionkey));
+    sha256.finalize(sessionkey, sizeof(sessionkey));
+#else
+    mbedtls_md_context_t ctx;
+    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
+    mbedtls_md_starts(&ctx);
+
+    mbedtls_md_update(&ctx, (const unsigned char *)sessionkey, sizeof(sessionkey));
+    mbedtls_md_finish(&ctx, sessionkey);
+    mbedtls_md_free(&ctx);
+#endif 
+if (0) {
+	unsigned char tmp[100]; size_t l;
+	mbedtls_base64_encode(tmp,sizeof(tmp),&l,sessionkey, sizeof(sessionkey));
+	Log.printf("Shared secret (SHA256): %s\n",(char *)tmp);
+}
+} 
 
 // Ideally called from the runloop - i.e. late once we have at least a modicum of
 // entropy from wifi/etc.
@@ -435,34 +479,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
     //
     // XX to do - consider regenerating it after a welcome; and go through replay attack options.
     //
-    uint8_t tmp_private[CURVE259919_KEYLEN];
-
-    memcpy(sessionkey, pubencr_tmp, sizeof(sessionkey));
-    memcpy(tmp_private, node_privatesession, sizeof(tmp_private));
-    resetWatchdog();
-    Curve25519::dh2(sessionkey, tmp_private);
-
-    resetWatchdog();
-
-#ifdef LEGACY
-    SHA256 sha256;
-    sha256.reset();
-    sha256.update((unsigned char*)&sessionkey, sizeof(sessionkey));
-    sha256.finalize(sessionkey, sizeof(sessionkey));
-#else
-    mbedtls_md_context_t ctx;
-    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-    
-    mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
-    mbedtls_md_starts(&ctx);
-
-    mbedtls_md_update(&ctx, (const unsigned char *)sessionkey, sizeof(sessionkey));
-        
-    mbedtls_md_finish(&ctx, sessionkey);
-    mbedtls_md_free(&ctx);
-#endif  
-
+    calculateSharedSecret(pubencr_tmp);
 
     size_t olen;
     if ((0 != mbedtls_base64_encode(
@@ -520,16 +537,46 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   return OK;
 };
 
+int my_aes_crypt_cbc(mbedtls_aes_context *ctx,
+                          int mode,
+                          size_t length,
+                          unsigned char iv[16],
+                          const unsigned char *input,
+                          unsigned char *output)
+{
+	while (length >= 16) {
+	    unsigned char temp[16];
+	    uint8_t posn;
+
+            for (posn = 0; posn < 16; ++posn)
+               iv[posn] ^= *input++;
+
+            int ret = mbedtls_aes_crypt_ecb(ctx, mode, iv, iv);
+	    if (ret) return ret;
+
+            for (posn = 0; posn < 16; ++posn)
+               *output++ = iv[posn];
+
+            length -= 16;
+        }
+        return 0;
+}
+
+
+
 SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   if (!sig2_active())
     return ACSecurityHandler::FAIL;
+  if (init_done < 4) {
+	Log.println("Not yet got a shared secret. Not sending a cloaked string.");
+        return ACSecurityHandler::FAIL;
+  };
 
   mbedtls_aes_context aes;
 
   uint8_t iv[16];
   RNG.rand(iv, sizeof(iv));
 
-  mbedtls_aes_setkey_enc(&aes,sessionkey, 8*sizeof(sessionkey));
 
   // PKCS#7 padding - as traditionally used with AES.
   // https://www.ietf.org/rfc/rfc2315.txt
@@ -548,25 +595,60 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   for (int i = 0; i < pad; i++)
     input[len + i] = pad;
 
-   mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_ENCRYPT, paddedlen, iv, input, output );
-
+#ifdef LEGACY
+  CBC<AES256> cipher;
+  if (!cipher.setKey(sessionkey, cipher.keySize())) {
+    Log.println("FAIL setKey");
+    return FAIL;
+  }
+  if (!cipher.setIV(iv, cipher.ivSize())) {
+    Log.println("FAIL setIV");
+    return FAIL;
+  }
+  cipher.encrypt(output, (uint8_t *)input, paddedlen);
   if (
        (0 != mbedtls_base64_encode(iv_b64,sizeof(iv_b64),&olen, iv, sizeof(iv))) ||
        (0 != mbedtls_base64_encode( output_b64,sizeof(output_b64),&olen, output, paddedlen))
   ) {
-    Log.println("Failed to base64 encode IV/output");
+    Log.println("Failed to CBC base64 encode IV/output");
     return FAIL;
   };
-
-#if 0
-  unsigned char key_b64[128];  encode_base64(sessionkey, sizeof(sessionkey), key_b64);
-  Serial.print("Plain len="); Serial.println(strlen(lasttag));
+Serial.println("\n\nLEGACY\n");
+  size_t l; 
+  unsigned char key_b64[128];  mbedtls_base64_encode(key_b64, sizeof(key_b64), &l, sessionkey, sizeof(sessionkey));
+  unsigned char p64[128];  mbedtls_base64_encode(p64, sizeof(p64), &l, input, paddedlen);
+  Serial.print("Plain="); Serial.println(req->tag);
+  Serial.print("paddedlen="); Serial.println(paddedlen);
+  Serial.print("PlainB64="); Serial.println((char*)p64);
+  Serial.print("Plain len="); Serial.println(strlen(req->tag));
   Serial.print("Paddd len="); Serial.println(paddedlen);
   Serial.print("Key Size="); Serial.println(cipher.keySize());
   Serial.print("IV Size="); Serial.println(cipher.ivSize());
   Serial.print("IV="); Serial.println((char *)iv_b64);
   Serial.print("Key="); Serial.println((char *)key_b64);
   Serial.print("Cypher="); Serial.println((char *)output_b64);
+  Serial.print("\n\n\n");
+#else
+  mbedtls_aes_setkey_enc(&aes,sessionkey, 8*sizeof(sessionkey) /* 256 */);
+
+  if (
+       (0 != mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_ENCRYPT, paddedlen, iv, input, output )) ||
+       (0 != mbedtls_base64_encode(iv_b64,sizeof(iv_b64),&olen, iv, sizeof(iv))) ||
+       (0 != mbedtls_base64_encode( output_b64,sizeof(output_b64),&olen, output, paddedlen))
+  ) {
+    Log.println("Failed to CBC encrypt or base64 encode IV/output");
+    return FAIL;
+  };
+
+#if 1
+  size_t l; unsigned char key_b64[128];  mbedtls_base64_encode(key_b64, sizeof(key_b64), &l, sessionkey, sizeof(sessionkey));
+  Serial.print("Paddd len="); Serial.println(paddedlen);
+  Serial.print("IV="); Serial.println((char *)iv_b64);
+  Serial.print("Key="); Serial.println((char *)key_b64);
+  Serial.print("Clear="); Serial.println((char *)(req->tag));
+  Serial.print("Cypher="); Serial.println((char *)output_b64);
+Serial.println("\n\n\n");
+#endif
 #endif
 
   snprintf(req->tag, sizeof(req->tag), "%s.%s", iv_b64, output_b64);

@@ -9,8 +9,7 @@
 
 class RFID_PN532: public RFID {
   public:
-    RFID_PN532(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN);
-//    ~RFID_PN532();
+    RFID_PN532(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = -1, const byte irqpin = -1);
 
     const char * name() { return _name; };
 

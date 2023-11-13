@@ -13,7 +13,13 @@ void OTA::begin() {
   	Log.println("**** WARNING -- NO OTA PASSWORD SET *****");
 
   ArduinoOTA.onStart([]() {
-    Log.println("OTA process started (trusting though - not wiping private keys).");
+    if (strstr(_acnode->moi,"test")) 
+	Log.println("OTA process started (trusting though - not wiping private keys).");
+    else {
+	Log.println("OTA process started -- wiping private keys.");
+	wipe_eeprom();
+ 	Log.println("Keys wiped. Do not forget to reset the TOFU on the server.");
+    };
     Serial.print("Progress: 0%");
     Log.stop();
     Debug.stop();

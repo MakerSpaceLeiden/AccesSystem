@@ -15,13 +15,18 @@ RFID_PN532::RFID_PN532(TwoWire *i2cBus, const byte i2caddr, const byte rstpin, c
 
 void RFID_PN532::begin() {
 
-  _pn532->begin();
+  Log.println("Searching for PN532 reader");
+  if (!_pn532->begin()) {
+	Log.println("ERROR: no reader found.");
+	return;
+  };
 
   uint32_t version = _pn532->getFirmwareVersion();
   uint8_t chip_version = (version>>24) & 0xFF;
   uint8_t fw_version_maj = (version>>16) & 0xFF;
   uint8_t fw_version_min = (version>>8) & 0xFF;
 
+  Log.printf("Detected PN532: Chip version: %d,  Firmware vesion: %d.%d\n", chip_version, fw_version_maj,fw_version_min);
   snprintf(_name,sizeof(_name),PN352_NAME_FORMAT,chip_version, fw_version_maj, fw_version_min);
 
 

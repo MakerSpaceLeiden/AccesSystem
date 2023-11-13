@@ -1,3 +1,9 @@
+#ifndef _H_POWERNODENG103
+#define _H_POWERNODENG103
+
+#include "ACNode.h"
+#include <RFID_PN532_NFC.h>
+
 #define CHECK_NFC_READER_AVAILABLE_TIME_WINDOW  (10000) // in ms  
 #define GPIOPORT_I2C_RECOVER_SWITCH             (15)       
 
@@ -12,3 +18,19 @@
 #define BLINK_ERROR                             (300) // blink on/of every 300 ms
 #define BLINK_CHECKING_RFIDCARD                 (600) // blink on/of every 600 ms
 
+#define RFID_RESET_PIN (-1)
+#define RFID_IRQ_PIN (-1)
+
+class PowerNodeNGv103 : public ACNode {
+    public:
+	PowerNodeNGv103(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2) 
+		: ACNode(machine, ssid, ssid_passwd, proto) {};
+	PowerNodeNGv103(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2) 
+		: ACNode(machine, wired, proto) {};
+
+	void begin(); 
+    private:
+	RFID_PN532_NFC * _reader;
+
+};
+#endif

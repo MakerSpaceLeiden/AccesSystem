@@ -1,8 +1,7 @@
 #ifndef _H_ACNODE_PRIVATE
 #define _H_ACNODE_PRIVATE
 
-// #include <OlimexBoard.h>         
-#include <PowerNodeV11.h>
+#include <OlimexBoard.h>         
 
 #ifdef  ESP32
 //#  include <WiFi.h>
