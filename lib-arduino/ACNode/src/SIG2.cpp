@@ -6,16 +6,11 @@
 #include <Curve25519.h>
 #include <Ed25519.h>
 #include <RNG.h>
+#include <EEPROM.h>
+
+#include <mbedtls/aes.h>
 #include <mbedtls/base64.h>
 
-#ifdef LEGACY
-#include <AES.h>
-#include <CBC.h>
-#include <SHA256.h>
-#endif
-
-#include <EEPROM.h>
-#include <mbedtls/aes.h>
 #include <unordered_map>
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
@@ -115,42 +110,26 @@ void kickoff_RNG() {
   //
   RNG.begin(RNG_APP_TAG);
 
-#ifdef LEGACY
-  SHA256 sha256;
-  sha256.reset();
-#else
     mbedtls_md_context_t ctx;
     mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
 
     mbedtls_md_init(&ctx);
     mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
     mbedtls_md_starts(&ctx);
-#endif
-
 
   for (int i = 0; i < 25; i++) {
     uint32_t r = esp_random();
-#ifdef LEGACY
-    sha256.update((unsigned char*)&r, sizeof(r));
-#else
     mbedtls_md_update(&ctx,(const unsigned char*)&r, sizeof(r));
-#endif
     delay(10);
   };
 
   uint8_t mac[6];
   WiFi.macAddress(mac);
 
-#ifdef LEGACY
-  uint8_t result[sha256.hashSize()];
-  sha256.update(mac, sizeof(mac));
-  sha256.finalize(result, sizeof(result));
-#else
   uint8_t result[32];
   mbedtls_md_update(&ctx, mac, sizeof(mac));
   mbedtls_md_finish(&ctx, result);
   mbedtls_md_free(&ctx);
-#endif
 
   RNG.stir(result, sizeof(result), 100);
 
@@ -184,17 +163,7 @@ void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
     Curve25519::dh2(sessionkey, tmp_private);
 
     resetWatchdog();
-if (0) {
-	unsigned char tmp[100]; size_t l;
-	mbedtls_base64_encode(tmp,sizeof(tmp),&l,sessionkey, sizeof(sessionkey));
-	Log.printf("Session key: %s\n",(char *)tmp);
-}
-#ifdef LEGACY
-    SHA256 sha256;
-    sha256.reset();
-    sha256.update((unsigned char*)sessionkey, sizeof(sessionkey));
-    sha256.finalize(sessionkey, sizeof(sessionkey));
-#else
+
     mbedtls_md_context_t ctx;
     mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
     
@@ -205,12 +174,6 @@ if (0) {
     mbedtls_md_update(&ctx, (const unsigned char *)sessionkey, sizeof(sessionkey));
     mbedtls_md_finish(&ctx, sessionkey);
     mbedtls_md_free(&ctx);
-#endif 
-if (0) {
-	unsigned char tmp[100]; size_t l;
-	mbedtls_base64_encode(tmp,sizeof(tmp),&l,sessionkey, sizeof(sessionkey));
-	Log.printf("Shared secret (SHA256): %s\n",(char *)tmp);
-}
 } 
 
 // Ideally called from the runloop - i.e. late once we have at least a modicum of
@@ -597,34 +560,15 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   for (int i = 0; i < pad; i++)
     input[len + i] = pad;
 
-#ifdef LEGACY
-  CBC<AES256> cipher;
-  if (!cipher.setKey(sessionkey, cipher.keySize())) {
-    Log.println("FAIL setKey");
-    return FAIL;
-  }
-  if (!cipher.setIV(iv, cipher.ivSize())) {
-    Log.println("FAIL setIV");
-    return FAIL;
-  }
-  cipher.encrypt(output, (uint8_t *)input, paddedlen);
-  if (
-       (0 != mbedtls_base64_encode( output_b64,sizeof(output_b64),&olen, output, paddedlen))
-  ) {
-    Log.println("Failed to CBC base64 encode IV/output");
-    return FAIL;
-  };
-#else
   mbedtls_aes_context aes;
   if (
        (0 != mbedtls_aes_setkey_enc(&aes,sessionkey, 8*sizeof(sessionkey) /* 256 */)) ||
        (0 != mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_ENCRYPT, paddedlen, iv, input, output )) ||
        (0 != mbedtls_base64_encode( output_b64,sizeof(output_b64),&olen, output, paddedlen))
   ) {
-    Log.println("Failed to CBC encrypt or base64 encode IV/output");
+    Log.println("Failed to CBC encrypt or base64 encode output");
     return FAIL;
   };
-#endif
 
   snprintf(req->tag, sizeof(req->tag), "%s.%s", iv_b64, output_b64);
   return OK;
@@ -775,20 +719,7 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
 
 void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]) {
   uint8_t nonce_raw[ HASH_LENGTH ];
-#ifdef LEGACY
-  SHA256 sha256;
-  sha256.reset();
-  sha256.update(runtime_seed, sizeof(runtime_seed));
-  sha256.update(node_publicsign, sizeof(node_publicsign));
-  sha256.update(node_publicsession, sizeof(node_publicsession));
-  if (seedOrNull)
-	sha256.update(seedOrNull, strlen(seedOrNull));
-  else {
-	RNG.rand(nonce_raw, sizeof(nonce_raw));
-  	sha256.update(nonce_raw, sizeof(nonce_raw));
-  };
-  sha256.finalize(nonce_raw, sizeof(nonce_raw));
-#else
+
   mbedtls_md_context_t ctx;
   mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
     
@@ -807,7 +738,6 @@ void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]
   };
   mbedtls_md_finish(&ctx, nonce_raw);
   mbedtls_md_free(&ctx);
-#endif  
 
   // We know that this fits - see header of SIG2.h
   //
