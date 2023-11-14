@@ -10,6 +10,8 @@
 
 #include <mbedtls/aes.h>
 #include <mbedtls/base64.h>
+// #include <mbedtls/dhm.h>
+// #include <mbedtls/drbg.h>
 
 #include <unordered_map>
 
@@ -136,7 +138,13 @@ void kickoff_RNG() {
   RNG.rand(runtime_seed,sizeof(runtime_seed));
   
   RNG.setAutoSaveTime(60);
+#if 0
+  mbedtls_entropy_context entropy;
+  mbedtls_entropy_init( &entropy );
+  mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy, result,sizeof(result));
+#endif
 }
+
 void load_eeprom() {
   for (size_t adr = 0; adr < sizeof(eeprom); adr++)
     ((uint8_t *)&eeprom)[adr] = EEPROM.read(EEPROM_PRIVATE_OFFSET + adr);
@@ -189,6 +197,9 @@ void SIG2::begin() {
   }
   Log.println("Got a valid eeprom.");
   Beat::begin();
+#if 0
+  mbedtls_ctr_drbg_init( &ctr_drbg );
+#endif
 }
 
 void SIG2::loop() {
@@ -222,8 +233,9 @@ void SIG2::loop() {
   if (init_done == 1) {
     Debug.println("Generating Curve25519 session keypair");
     resetWatchdog();
-    Curve25519::dh1(node_publicsession, node_privatesession);
     bzero(sessionkey, sizeof(sessionkey));
+
+    Curve25519::dh1(node_publicsession, node_privatesession);
 
     if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
       Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);

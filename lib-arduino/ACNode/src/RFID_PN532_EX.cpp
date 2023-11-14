@@ -30,6 +30,10 @@ void RFID_PN532_EX::begin() {
   _nfc532->setPassiveActivationRetries(FOREVER);
 }
 
+bool RFID_PN532_EX::alive() { 
+	return  _nfc532->getFirmwareVersion() ? true : false;
+}
+
 void RFID_PN532_EX::loop() {
     uint8_t uid[RFID_MAX_TAG_LEN];
     uint8_t uidLength; 

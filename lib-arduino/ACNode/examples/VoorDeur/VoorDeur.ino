@@ -25,7 +25,7 @@
 #define MACHINE "voordeur"
 #endif
 
-#define SOLENOID_GPIO     (4)
+#define SOLENOID_GPIO     (FET1) // Also powers the buzzer
 #define SOLENOID_OFF      (LOW)
 #define SOLENOID_ENGAGED  (HIGH)
 
@@ -83,13 +83,9 @@ void setup() {
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__   " " __DATE__ " " __TIME__ );
 
-  // Init the hardware and get it into a safe state.
-  //
-  pinMode(SOLENOID_GPIO, OUTPUT);
-  digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
-
   Wire.begin();
-  Wire.setClock(100 * 1000);
+  // Slowed the speed - still trying to get the RFID reader more reliable
+  // Wire.setClock(100 * 1000);
   scan_i2c();
 
   node.set_mqtt_prefix("ac");
@@ -174,7 +170,7 @@ void loop() {
     lastReport = millis();
   };
 
-  digitalWrite(SOLENOID_GPIO, (machinestate == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
+  // digitalWrite(SOLENOID_GPIO, (machinestate == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
 
   switch (machinestate) {
     case REBOOT:

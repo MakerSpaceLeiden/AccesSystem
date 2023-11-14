@@ -22,6 +22,7 @@ class RFID_PN532_EX: public RFID {
     void begin() ;
     void loop();
 
+    bool alive();
   private:
     PN532_I2C * _i2cNFCDevice;
     PN532 * _nfc532;

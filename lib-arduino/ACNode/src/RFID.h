@@ -22,7 +22,8 @@ class RFID : public ACBase {
 
     RFID& onSwipe(THandlerFunction_SwipeCB fn) 
 	{ _swipe_cb = fn; return *this; };
-  
+
+    bool alive() { return true; };
   protected:
     bool _irqMode = false;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
