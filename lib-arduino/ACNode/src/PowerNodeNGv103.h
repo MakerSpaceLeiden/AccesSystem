@@ -57,6 +57,6 @@ class PowerNodeNGv103 : public ACNode {
 	void loop(); 
     private:
 	RFID_PN532_EX * _reader;
-        unsigned long _last_pn532_check = 0;
+        unsigned long _last_pn532_check = 0, _last_seen_alive = 0;
 };
 #endif

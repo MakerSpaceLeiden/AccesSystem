@@ -1,6 +1,8 @@
 #include <RFID_PN532_EX.h>
 #include <Wire.h>
 
+const uint8_t FOREVER = 255;
+
 RFID_PN532_EX::RFID_PN532_EX()
 {
    _i2cNFCDevice = new PN532_I2C(Wire);
@@ -26,7 +28,6 @@ void RFID_PN532_EX::begin() {
 
   _nfc532->SAMConfig();
 
-  const uint8_t FOREVER = 255;
   _nfc532->setPassiveActivationRetries(FOREVER);
 }
 
@@ -43,8 +44,10 @@ void RFID_PN532_EX::loop() {
              return;
         cardScannedIrqSeen = false;
     } else {
-        if (!_nfc532->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 20))
+        if (!_nfc532->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 5)) {
+	  _nfc532->setPassiveActivationRetries(FOREVER);
 	   return;
+	};
     };
 
     if (!uidLength || uidLength > RFID_MAX_TAG_LEN) {

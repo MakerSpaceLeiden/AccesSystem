@@ -1,29 +1,19 @@
 #include "PowerNodeNGv103.h"
 
 static void setup_i2c_power_ctrl() {
-  // for recovery switch I2C
+  // for recovery switch of NFC reader
+  //
   pinMode(GPIOPORT_I2C_RECOVER_SWITCH, OUTPUT);
   digitalWrite(GPIOPORT_I2C_RECOVER_SWITCH, 0);
 }
 
 void resetNFCReader() {
-  pinMode(RFID_SCL_PIN, OUTPUT);
-  digitalWrite(RFID_SCL_PIN, 0);
-  pinMode(RFID_SDA_PIN, OUTPUT);
-  digitalWrite(RFID_SDA_PIN, 0);
-
+  // Powercycle the NFC reader.
+  //
   digitalWrite(GPIOPORT_I2C_RECOVER_SWITCH, 1);
   delay(500);
   digitalWrite(GPIOPORT_I2C_RECOVER_SWITCH, 0);
 }
-
-#if 0
-void setupPowernodeNG() {
-   setup_i2c_power_ctrl(GPIO);
-   setup_MCP23017();
-   relay1Off();
-}
-#endif
 
 void PowerNodeNGv103::begin() {
  	setup_i2c_power_ctrl();
@@ -36,19 +26,21 @@ void PowerNodeNGv103::begin() {
 }
 
 void PowerNodeNGv103::loop() {
-   	if (millis() - _last_pn532_check > PN532_CHECK_EVERY_SECONDS * 1000) {
-		_last_pn532_check = millis();
-		
-	        if (_reader->alive()) {
-			Debug.println("PN532 still responding, ought to be ok");
-			return;
-		};
-
+	if ((_last_seen_alive) && (millis() - _last_seen_alive > 2500)) {
 	        Log.println("ALARM - PN532 has gone south again. Resetting.");
 		resetNFCReader();
-
         	_reader->begin();
+		_last_pn532_check = 0;
 	};
 
+   	if (millis() - _last_pn532_check > PN532_CHECK_EVERY_SECONDS * 1000) {
+		_last_pn532_check = millis();
+		_last_seen_alive = millis();
+		
+	        if (_reader->alive()) {
+			Debug.println(_last_seen_alive ? "HURAY - PN532 is back" ? "PN532 responding, ought to be ok");
+			_last_seen_alive = 0;
+		};
+	};
 	ACNode::loop();
 };
