@@ -10,8 +10,11 @@
 
 #include <mbedtls/aes.h>
 #include <mbedtls/base64.h>
-// #include <mbedtls/dhm.h>
-// #include <mbedtls/drbg.h>
+#include <mbedtls/dhm.h>
+#include "mbedtls/entropy.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/ecdh.h"
+
 
 #include <unordered_map>
 
@@ -45,15 +48,6 @@ typedef struct __attribute__ ((packed)) {
 #define EEPROM_RND_OFFSET (EEPROM_PRIVATE_OFFSET + sizeof(eeprom_t))
 
 extern eeprom_t eeprom;
-extern uint8_t node_publicsign[CURVE259919_KEYLEN];
-
-// Curve25519 key (In montgomery x space) - not kept in
-// persistent storage as we renew on reboot in a PFS
-// sort of 'light' mode.
-//
-extern uint8_t node_publicsession[CURVE259919_KEYLEN];
-extern uint8_t node_privatesession[CURVE259919_KEYLEN];
-extern uint8_t sessionkey[CURVE259919_SESSIONLEN];
 
 #define CRYPTO_HAS_PRIVATE_KEYS (1<<0)
 #define CRYPTO_HAS_MASTER_TOFU (1<<1)
@@ -61,7 +55,7 @@ extern uint8_t sessionkey[CURVE259919_SESSIONLEN];
 #ifdef BUILD
 #define RNG_APP_TAG BUILD
 #else
-#define RNG_APP_TAG  __FILE__  __DATE__  __TIME__
+#define RNG_APP_TAG  __FILE__  __DATE__  __TIME__ 
 #endif
 
 extern bool sig2_active();
@@ -86,7 +80,11 @@ uint8_t node_publicsign[CURVE259919_KEYLEN];
 // sort of 'light' mode.
 //
 uint8_t node_publicsession[CURVE259919_KEYLEN];
+#if 0
 uint8_t node_privatesession[CURVE259919_KEYLEN];
+#else 
+mbedtls_ecdh_context ctx_cli; // to hold private session key
+#endif
 uint8_t sessionkey[CURVE259919_SESSIONLEN];
 
 // Keys upon whcih trust can be registed. the requested field is used for a nonce; but can be used as an age.
@@ -102,6 +100,19 @@ bool sig2_active() {
 }
 
 uint8_t runtime_seed[ 32 ];
+mbedtls_ctr_drbg_context ctr_drbg;
+
+// Swap a 32 byte value from network (big) to host order.
+void ntoh32(unsigned char * src) {
+        if (htonl(0x4321) == 0x1234)
+		return; // nothing to do - big endian.
+        // am little endian - so swap.
+        for(int i = 0; i < 16; i++) {
+                unsigned char c = src[i];
+                src[i] = src[32 - i - 1];
+                src[32 - i - 1] = c;
+        };
+}
 
 void kickoff_RNG() {
   // Attempt to get a half decent seed soon after boot. We ought to pospone all operations
@@ -138,11 +149,10 @@ void kickoff_RNG() {
   RNG.rand(runtime_seed,sizeof(runtime_seed));
   
   RNG.setAutoSaveTime(60);
-#if 0
+
   mbedtls_entropy_context entropy;
   mbedtls_entropy_init( &entropy );
-  mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy, result,sizeof(result));
-#endif
+  mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy,runtime_seed,sizeof(runtime_seed));
 }
 
 void load_eeprom() {
@@ -163,13 +173,34 @@ void wipe_eeprom() {
 }
 
 void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
-    uint8_t tmp_private[CURVE259919_KEYLEN];
-
+    resetWatchdog();
+#if 0
+    uint8_t tmp_private[CURVE259919_KEYLEN]; // dh2() operates on the inputs and modifies these in place.
     memcpy(sessionkey, pubencr_tmp, sizeof(sessionkey));
     memcpy(tmp_private, node_privatesession, sizeof(tmp_private));
-    resetWatchdog();
     Curve25519::dh2(sessionkey, tmp_private);
-
+#else
+    // Historically we've passed the keys as base64; withouth mapping them to a network (big endian)
+    // order. This worked as Arm (RaspPI, ESP32) and Intel (server) are all little endian. But the
+    // read/write interface of mbedtls is `proper' and produces things in network (big endian)
+    // order. So until we go for a new version - we solve this by fixing the network order 'again'.
+    //
+    ntoh32(pubencr_tmp);
+    if ((0 != mbedtls_mpi_lset( &ctx_cli.Qp.Z, 1 )) ||
+        (0 != mbedtls_mpi_read_binary( &ctx_cli.Qp.X, pubencr_tmp, CURVE259919_KEYLEN)) ||
+        (0 != mbedtls_ecdh_compute_shared( &ctx_cli.grp, &ctx_cli.z, &ctx_cli.Qp, &ctx_cli.d,
+                                       mbedtls_ctr_drbg_random, &ctr_drbg )) ||
+        (0 != mbedtls_mpi_write_binary( &ctx_cli.z, sessionkey, CURVE259919_KEYLEN))
+    ) {
+	Log.println("Something went wrong during calculateSharedSecret(). Aborting.");
+        return;
+    }
+    // we should use mbedtls_mpi_write_binary() to get things in network order. But
+    // historically we've skipped this; as the Arduino lib did not do this; and we
+    // passed the buffers as base64 'raw'. So we fix this by swapping 'again'.
+    //
+    ntoh32(sessionkey);
+#endif
     resetWatchdog();
 
     mbedtls_md_context_t ctx;
@@ -197,9 +228,7 @@ void SIG2::begin() {
   }
   Log.println("Got a valid eeprom.");
   Beat::begin();
-#if 0
   mbedtls_ctr_drbg_init( &ctr_drbg );
-#endif
 }
 
 void SIG2::loop() {
@@ -235,7 +264,21 @@ void SIG2::loop() {
     resetWatchdog();
     bzero(sessionkey, sizeof(sessionkey));
 
+#if 0
     Curve25519::dh1(node_publicsession, node_privatesession);
+#else
+    if ((0 != mbedtls_ecp_group_load( &ctx_cli.grp, MBEDTLS_ECP_DP_CURVE25519 )) || 
+        (0 != mbedtls_ecdh_gen_public( &ctx_cli.grp, &ctx_cli.d, &ctx_cli.Q, mbedtls_ctr_drbg_random, &ctr_drbg)) ||
+        (0 != mbedtls_mpi_write_binary( &ctx_cli.Q.X, node_publicsession, 32 ))
+     ) {
+	Log.println("Curve25519 generation failed.");
+	return;
+     };
+    // we should use mbedtls_mpi_write_binary() to get things in network order. But
+    // historically we've skipped this; as the Arduino lib did not do this //  (ARM 
+    // and Intel are both little Endian. So we fix this by swapping `again'
+    ntoh32(node_publicsession);
+#endif
 
     if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
       Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);
