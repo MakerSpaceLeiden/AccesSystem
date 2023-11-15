@@ -278,15 +278,17 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
             (*it)->begin();
         }
     }
-#if 0
+
+#if TOFU_WIPE_BUTTON
   // secrit reset button that resets TOFU or the shared
   // secret.
-  if (xdigitalRead(SW1_BUTTON) == LOW) {
+  if (xdigitalRead(TOFU_WIPE_BUTTON) == LOW) {
     extern void wipe_eeprom();
     Log.println("Wiped EEPROM with crypto stuff (SW1 pressed)");
     wipe_eeprom();
   };
 #endif
+
   prepareCache(false);  
 
 }
