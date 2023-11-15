@@ -3,7 +3,6 @@
 #include "MakerSpaceMQTT.h" // needed for MAX_MSG
 #include <Arduino.h> // min() macro
 #include <Crypto.h>
-#include <Curve25519.h>
 #include <Ed25519.h>
 #include <RNG.h>
 #include <EEPROM.h>
@@ -80,11 +79,7 @@ uint8_t node_publicsign[CURVE259919_KEYLEN];
 // sort of 'light' mode.
 //
 uint8_t node_publicsession[CURVE259919_KEYLEN];
-#if 0
-uint8_t node_privatesession[CURVE259919_KEYLEN];
-#else 
 mbedtls_ecdh_context ctx_cli; // to hold private session key
-#endif
 uint8_t sessionkey[CURVE259919_SESSIONLEN];
 
 // Keys upon whcih trust can be registed. the requested field is used for a nonce; but can be used as an age.
@@ -174,12 +169,7 @@ void wipe_eeprom() {
 
 void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
     resetWatchdog();
-#if 0
-    uint8_t tmp_private[CURVE259919_KEYLEN]; // dh2() operates on the inputs and modifies these in place.
-    memcpy(sessionkey, pubencr_tmp, sizeof(sessionkey));
-    memcpy(tmp_private, node_privatesession, sizeof(tmp_private));
-    Curve25519::dh2(sessionkey, tmp_private);
-#else
+
     // Historically we've passed the keys as base64; withouth mapping them to a network (big endian)
     // order. This worked as Arm (RaspPI, ESP32) and Intel (server) are all little endian. But the
     // read/write interface of mbedtls is `proper' and produces things in network (big endian)
@@ -200,7 +190,7 @@ void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
     // passed the buffers as base64 'raw'. So we fix this by swapping 'again'.
     //
     ntoh32(sessionkey);
-#endif
+
     resetWatchdog();
 
     mbedtls_md_context_t ctx;
@@ -264,9 +254,6 @@ void SIG2::loop() {
     resetWatchdog();
     bzero(sessionkey, sizeof(sessionkey));
 
-#if 0
-    Curve25519::dh1(node_publicsession, node_privatesession);
-#else
     if ((0 != mbedtls_ecp_group_load( &ctx_cli.grp, MBEDTLS_ECP_DP_CURVE25519 )) || 
         (0 != mbedtls_ecdh_gen_public( &ctx_cli.grp, &ctx_cli.d, &ctx_cli.Q, mbedtls_ctr_drbg_random, &ctr_drbg)) ||
         (0 != mbedtls_mpi_write_binary( &ctx_cli.Q.X, node_publicsession, 32 ))
@@ -278,14 +265,12 @@ void SIG2::loop() {
     // historically we've skipped this; as the Arduino lib did not do this //  (ARM 
     // and Intel are both little Endian. So we fix this by swapping `again'
     ntoh32(node_publicsession);
-#endif
 
     if (eeprom.flags & CRYPTO_HAS_PRIVATE_KEYS) {
       Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);
     } else {
       resetWatchdog();
       Ed25519::generatePrivateKey(eeprom.node_privatesign);
-
       eeprom.flags |= CRYPTO_HAS_PRIVATE_KEYS;
 
       save_eeprom();
