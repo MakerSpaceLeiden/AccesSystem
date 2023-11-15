@@ -46,6 +46,10 @@
 #define PN532_CHECK_EVERY_SECONDS (30)		// Keep alive check every 30 seconds for the reader.
 #endif
 
+#ifndef MCP_I2C_ADDR
+#define MCP_I2C_ADDR (0x20)
+#endif
+
 class PowerNodeNGv103 : public ACNode {
     public:
 	PowerNodeNGv103(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2) 

@@ -143,7 +143,10 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     if (!*moi)  
 	strncpy(moi, machine, sizeof(moi));
 
-
+    // If no one has yet set something - we're going to fall back to
+    // the Arduino baseline.
+    if (gpio = NULL)
+	gpio = new ExpandedGPIO();
 #if 0
     if (_debug)
         debugFlash();
@@ -173,7 +176,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     // config.
     //
     static int debounce = 0;
-    while (digitalRead(PUSHBUTTON) == 0 && debounce < 5) {
+    while (xdigitalRead(PUSHBUTTON) == 0 && debounce < 5) {
         debounce++;
         delay(5);
     };
@@ -278,7 +281,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
 #if 0
   // secrit reset button that resets TOFU or the shared
   // secret.
-  if (digitalRead(SW1_BUTTON) == LOW) {
+  if (xdigitalRead(SW1_BUTTON) == LOW) {
     extern void wipe_eeprom();
     Log.println("Wiped EEPROM with crypto stuff (SW1 pressed)");
     wipe_eeprom();
@@ -385,17 +388,17 @@ void ACNode::loop() {
     if (_debug) {
     	static unsigned long last = millis();
 	static unsigned long sw1, sw2, tock;
-	sw1  += digitalRead(SW1_BUTTON);
-	sw2  += digitalRead(SW1_BUTTON);
+	sw1  += xdigitalRead(SW1_BUTTON);
+	sw2  += xdigitalRead(SW1_BUTTON);
 	tock ++;
 	if (millis() - last > 1000) {
 	      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Triac %d\n",
-	                digitalRead(SW1_BUTTON),
+	                xdigitalRead(SW1_BUTTON),
 	                abs(tock - sw1),
-	                digitalRead(SW2_BUTTON),
+	                xdigitalRead(SW2_BUTTON),
 	                abs(tock - sw2),
-      	 	        digitalRead(RELAY_GPIO),
-      	 	        digitalRead(TRIAC_GPIO)
+      	 	        xigitalRead(RELAY_GPIO),
+      	 	        xigitalRead(TRIAC_GPIO)
       	      );
     	      last = millis(); sw1 = sw2 = tock = 0;
    	 }

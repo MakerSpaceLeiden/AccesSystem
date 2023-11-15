@@ -13,17 +13,23 @@
 #define PIN_HPIO_RES3  (2 << 6)
 #define PIN_HPIO_RES4  (3 << 6)
 
-void expandedPinMode(uint8_t pin, uint8_t mode);
-int expandedDigitaRead(uint8_t pin);
-void expandedDigitalWrite(uint8_t pin, uint8_t val);
+// Convinience functions that rely on a auto created
+// singleton.
+extern void expandedPinMode(uint8_t pin, uint8_t mode);
+extern int  expandedDigitaRead(uint8_t pin);
+extern void expandedDigitalWrite(uint8_t pin, uint8_t val);
 
-class ExpandedPGIO {
-	public:
-		ExpandedPGIO();
-		~ExpandedPGIO();
-		void begin(TwoWire * wire = &Wire, unsigned int mcp23addr = 0);
+class ExpandedGPIO {
+    public:
+	ExpandedGPIO();
+	~ExpandedGPIO();
 
-	// Easiest to be public - will be used from plain C
+	void begin(unsigned int mcp23addr, TwoWire * wire = &Wire);
+
+	void xpinMode(uint8_t pin, uint8_t mode);
+	int xdigitalRead(uint8_t pin);
+	void xdigitalWrite(uint8_t pin, uint8_t val);
+
 	Adafruit_MCP23X17 * mcp = NULL;
 };
 #endif

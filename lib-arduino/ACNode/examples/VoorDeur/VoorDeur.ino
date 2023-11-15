@@ -170,7 +170,12 @@ void loop() {
     lastReport = millis();
   };
 
-  // digitalWrite(SOLENOID_GPIO, (machinestate == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
+  // We're using a special digitalWrite() here; as the Solenoid may in
+  /// fact be operated via a SPI/i2c expander rather than directly. Behind
+  // the scenes; this is node->gpio->digitalWrite() - which routes to
+  // the right place.
+  //
+  expandedDigitalWrite(SOLENOID_GPIO, (machinestate == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
 
   switch (machinestate) {
     case REBOOT:

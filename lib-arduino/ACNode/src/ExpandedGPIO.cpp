@@ -1,26 +1,37 @@
 #include "ExpandedGPIO.h"
 #include <TLog.h>
 
-static ExpandedPGIO * __exp = NULL;
+// Singleton with convenience functions for 'C'.
+//
+static ExpandedGPIO * __exp = NULL;
+void expandedPinMode(uint8_t pin, uint8_t mode) { __exp->xpinMode(pin, mode); };
+int  expandedDigitaRead(uint8_t pin) { return __exp->xdigitalRead(pin); };
+void expandedDigitalWrite(uint8_t pin, uint8_t val) { __exp->xdigitalWrite(pin, val); };
 
-void ExpandedPGIO::begin(TwoWire * wire, unsigned int mcp23addr) {
-	if (mcp23addr) {
-		mcp = new Adafruit_MCP23X17();
-		mcp->begin_I2C(mcp23addr,wire);
-	};
+
+ExpandedGPIO::ExpandedGPIO() {
+	if (__exp)
+		Log.println("ExpandedGPIO is constructed twice; did you expect that ?");
+	__exp = this;
 }
 
-ExpandedPGIO::~ExpandedPGIO() {
-	if (!__exp) return;
+void ExpandedGPIO::begin(unsigned int mcp23addr, TwoWire * wire) {
+	mcp = new Adafruit_MCP23X17();
+	mcp->begin_I2C(mcp23addr,wire);
+}
 
+ExpandedGPIO::~ExpandedGPIO() {
 	if (mcp) delete mcp;
+
+	if (!__exp) return;
 
 	delete __exp;
 	__exp = NULL;
+
 	Log.printf("ExpandedGPIO destroyed -- did you really expect that");
 }
 
-void expandedPinMode(uint8_t pin, uint8_t mode) {
+void ExpandedGPIO::xpinMode(uint8_t pin, uint8_t mode) {
 	if ((pin & PIN_GPIO_MASK) == PIN_HPIO_PLAIN) {
 		pinMode(pin,mode);
 		return;
@@ -34,7 +45,7 @@ void expandedPinMode(uint8_t pin, uint8_t mode) {
 }
 
 
-int expandedDigitaRead(uint8_t pin) {
+int ExpandedGPIO::xdigitalRead(uint8_t pin) {
 	if ((pin & PIN_GPIO_MASK) == PIN_HPIO_PLAIN)
 		return digitalRead(pin);
 
@@ -46,7 +57,7 @@ int expandedDigitaRead(uint8_t pin) {
 }
 
 
-void expandedDigitalWrite(uint8_t pin, uint8_t val) {
+void ExpandedGPIO::xdigitalWrite(uint8_t pin, uint8_t val) {
 	if ((pin & PIN_GPIO_MASK) == PIN_HPIO_PLAIN) {
 		digitalWrite(pin,val);
 		return;
@@ -58,3 +69,4 @@ void expandedDigitalWrite(uint8_t pin, uint8_t val) {
 
 	Log.printf("No expanded digitalWrite() for pin 0x%x, ignored.", pin);
 }
+

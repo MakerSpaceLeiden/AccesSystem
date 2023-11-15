@@ -201,6 +201,10 @@ public:
     //
     void process(const char * topic, const char * payload);
    
+    // Convenience shorthands
+    int xdigitalRead(uint8_t pin) { return gpio->xdigitalRead(pin); };
+    void xdigitalWrite(uint8_t pin, uint8_t val) { gpio->xdigitalWrite(pin, val); };
+    void xpinMode(uint8_t pin, uint8_t mode) { gpio->xpinMode(pin,mode); };
     
     PubSubClient _client;
 private:
@@ -230,7 +234,9 @@ private:
     //
     std::list<ACBase *> _handlers;
     std::list<ACSecurityHandler*> _security_handlers;
+
 protected:
+    ExpandedGPIO * gpio = NULL;
     const char * _ssid;
     const char * _ssid_passwd;
     unsigned long _report_period;
