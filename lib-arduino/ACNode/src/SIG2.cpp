@@ -1,9 +1,10 @@
 #include <ACNode-private.h>
-#include "SIG2.h"
 #include "MakerSpaceMQTT.h" // needed for MAX_MSG
 #include <unordered_map>
 #include <Arduino.h> // min() macro
 #include <EEPROM.h>
+
+#include "SIG2.h"
 
 #include <mbedtls/aes.h>
 #include <mbedtls/base64.h>
@@ -12,16 +13,11 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/ecdh.h>
 
-#include <Crypto.h>
-#include <Ed25519.h>
-
 // We're using libsodium (NaCL) its crypto signing capabilities as we happen
 // to know that these are Ed25519 based. This removes the reliance on an (extra)
 // dependencie - as Sodium is now part of espressif's SDK.
 //
 #include <sodium/crypto_sign.h>
-
-#include <RNG.h>
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
 
@@ -40,6 +36,7 @@
 #if crypto_sign_BYTES != ED59919_SIGLEN
 #error "Libsodium hidden Ed25519 do not seem to hold any longer"
 #endif
+
 #if crypto_sign_SEEDBYTES != CURVE259919_KEYLEN
 #error "Libsodium hidden Ed25519 do not seem to hold any longer"
 #endif
@@ -71,8 +68,6 @@ extern eeprom_t eeprom;
 #endif
 
 extern bool sig2_active();
-
-extern void kickoff_RNG();
 
 extern void load_eeprom();
 extern void save_eeprom();
@@ -109,9 +104,10 @@ bool sig2_active() {
 }
 
 uint8_t runtime_seed[ 32 ];
+mbedtls_entropy_context entropy;
 mbedtls_ctr_drbg_context ctr_drbg;
 
-// Swap a 32 byte value from network (big) to host order.
+// Destructively swap a 32 byte value from network (big) to host order.
 void ntoh32(unsigned char * src) {
         if (htonl(0x4321) == 0x1234)
 		return; // nothing to do - big endian.
@@ -123,45 +119,21 @@ void ntoh32(unsigned char * src) {
         };
 }
 
-void kickoff_RNG() {
-  // Attempt to get a half decent seed soon after boot. We ought to pospone all operations
-  // to the run loop - well after DHCP has gotten is into business.
-  //
-  // Note that Wifi/BT should be on according to:
-  //    https://github.com/espressif/esp-idf/blob/master/components/esp32/hw_random.c
-  //
-  RNG.begin(RNG_APP_TAG);
+int kickoff_RNG() {
+   // Libsodium has its own random internals. mbedtls needs to be fed.
 
-    mbedtls_md_context_t ctx;
-    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-
-    mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
-    mbedtls_md_starts(&ctx);
-
-  for (int i = 0; i < 25; i++) {
-    uint32_t r = esp_random();
-    mbedtls_md_update(&ctx,(const unsigned char*)&r, sizeof(r));
-    delay(10);
-  };
-
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-
-  uint8_t result[32];
-  mbedtls_md_update(&ctx, mac, sizeof(mac));
-  mbedtls_md_finish(&ctx, result);
-  mbedtls_md_free(&ctx);
-
-  RNG.stir(result, sizeof(result), 100);
-
-  RNG.rand(runtime_seed,sizeof(runtime_seed));
-  
-  RNG.setAutoSaveTime(60);
-
-  mbedtls_entropy_context entropy;
   mbedtls_entropy_init( &entropy );
-  mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy,runtime_seed,sizeof(runtime_seed));
+  if (mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy, 
+	(const unsigned char*)RNG_APP_TAG, sizeof(RNG_APP_TAG))) return -1;
+  for (int i = 0; i < 25; i++) {
+      uint32_t r = esp_random();
+      mbedtls_ctr_drbg_update(&ctr_drbg, (const unsigned char *)&r, sizeof(r)); // in later versions of mbedtls - this returns an int which we can check errors with.
+  };
+  unsigned char mac[6];
+  WiFi.macAddress(mac);
+  mbedtls_ctr_drbg_update(&ctr_drbg, (const unsigned char *)&mac, sizeof(mac)); // in later versions of mbedtls - this returns an int which we can check errors with.
+  if (mbedtls_ctr_drbg_random(&ctr_drbg,runtime_seed,sizeof(runtime_seed))) return -1;
+  return 0;
 }
 
 void load_eeprom() {
@@ -170,6 +142,10 @@ void load_eeprom() {
 }
 
 void save_eeprom() {
+  mbedtls_ctr_drbg_update(&ctr_drbg, 
+
+runtime_seed,sizeof(runtime_seed));
+
   for (size_t adr = 0; adr < sizeof(eeprom); adr++)
     EEPROM.write(EEPROM_PRIVATE_OFFSET + adr,  ((uint8_t *)&eeprom)[adr]);
   EEPROM.commit();
@@ -236,23 +212,21 @@ void SIG2::begin() {
 }
 
 void SIG2::loop() {
-  RNG.loop();
   Beat::loop();
 
   if (init_done == 0) {
-    kickoff_RNG();
+    if (kickoff_RNG()) {
+	Log.println("Refusing to start; issues with the random generators.");
+	return;
+    };
     init_done = 1;
     return;
   };
 
-  if (!RNG.available(1024 * 4)) {
-    unsigned long str = millis();
-    for(int i = 0; i < 32  && millis() - str < 200; i++) {
-       uint32_t seed = trng();
-       RNG.stir((const uint8_t *)&seed, sizeof(seed), 100);
-    };
-    return;
-  };
+  unsigned long str = millis();
+  mbedtls_entropy_update_manual(&entropy,(const unsigned char*)&str,sizeof(str));
+  uint32_t seed = trng();
+  mbedtls_entropy_update_manual(&entropy,(const unsigned char*)&seed,sizeof(seed));
 
   if (!_acnode->isConnected()) {
     // force re-connecting, etc post reconnect.
@@ -284,9 +258,7 @@ void SIG2::loop() {
       Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);
     } else {
       resetWatchdog();
-#if 0
-      Ed25519::generatePrivateKey(eeprom.node_privatesign);
-#endif
+
       // In sodium parlance - what is known as the private key in python/curve-ed25519 is called a seed.
       crypto_sign_keypair(node_publicsign,node_privatesign);
       crypto_sign_ed25519_sk_to_seed(eeprom.node_privatesign,node_privatesign);
@@ -298,9 +270,7 @@ void SIG2::loop() {
     };
 
     resetWatchdog();
-#if 0
-    Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
-#endif
+
     if (crypto_sign_seed_keypair(node_publicsign, node_privatesign, eeprom.node_privatesign)) {
 	Log.println("Failed to reconstruct public and private key");
         return;
@@ -467,11 +437,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   // Warning - we are relying on the byte order to be the same on server and client (in the case
   // of the ESP32 - little endian; and not defaulting to a normal big-endian network order.
   //
-#if 0
-  if (!Ed25519::verify(signature, signkey, req->rest, strlen(req->rest))) 
-#else
   if (crypto_sign_verify_detached(signature, (const unsigned char*)req->rest, strlen(req->rest), signkey)) 
-#endif
   {
     Log.println("Invalid Ed25519 signature on message -rejecting.");
     return ACSecurityHandler::FAIL;
@@ -557,13 +523,13 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   uint8_t signature[ED59919_SIGLEN];
 
   resetWatchdog();
-#if 0
-  Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, req->payload, strlen(req->payload));
-#endif
+
   if (crypto_sign_detached(signature, NULL, (const unsigned char*) req->payload, strlen(req->payload), node_privatesign)) {
     Log.println("ED25510 signature failed.");
     return ACSecurityHandler::FAIL;
   };
+  resetWatchdog();
+
   // WARNING - we're relying on EPS32 and Server to both have the same endianness - as we're
   // not converting to standard big-endian network order.
   
@@ -620,7 +586,11 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
   };
 
   uint8_t iv[16],  iv_b64[ 32 ];
-  RNG.rand(iv, sizeof(iv));
+  if (mbedtls_ctr_drbg_random(&ctr_drbg, iv, sizeof(iv))) {
+	Log.println("Failed to get randomness for IV");
+        return ACSecurityHandler::FAIL;
+  };
+
   // We need to do this early - as the IV gets trampled on during encoding.
   if (0 != mbedtls_base64_encode(iv_b64,sizeof(iv_b64),&olen, iv, sizeof(iv))) {
     Log.println("Failed to base64 encode the IV");
@@ -816,7 +786,10 @@ void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]
   if (seedOrNull)
         mbedtls_md_update(&ctx, (const unsigned char*) seedOrNull, strlen(seedOrNull));
   else {
-        RNG.rand(nonce_raw, sizeof(nonce_raw));
+	if (mbedtls_ctr_drbg_random(&ctr_drbg, nonce_raw, sizeof(nonce_raw))) {
+		Log.println("Failed to get randomness for Nonce");
+       		// but continue anyway.
+	};
         mbedtls_md_update(&ctx, nonce_raw, sizeof(nonce_raw));
   };
   mbedtls_md_finish(&ctx, nonce_raw);
