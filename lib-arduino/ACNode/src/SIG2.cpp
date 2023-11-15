@@ -1,21 +1,27 @@
 #include <ACNode-private.h>
 #include "SIG2.h"
 #include "MakerSpaceMQTT.h" // needed for MAX_MSG
+#include <unordered_map>
 #include <Arduino.h> // min() macro
-#include <Crypto.h>
-#include <Ed25519.h>
-#include <RNG.h>
 #include <EEPROM.h>
 
 #include <mbedtls/aes.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/dhm.h>
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/ecdh.h"
+#include <mbedtls/entropy.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/ecdh.h>
 
+#include <Crypto.h>
+#include <Ed25519.h>
 
-#include <unordered_map>
+// We're using libsodium (NaCL) its crypto signing capabilities as we happen
+// to know that these are Ed25519 based. This removes the reliance on an (extra)
+// dependencie - as Sodium is now part of espressif's SDK.
+//
+#include <sodium/crypto_sign.h>
+
+#include <RNG.h>
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
 
@@ -28,7 +34,14 @@
 #endif
 
 #if HASH_LENGTH != 32 // AES256::keySize()
-#error SHA256 "hash should be the same size as the encryption key"
+#error "SHA256 hash should be the same size as the encryption key"
+#endif
+
+#if crypto_sign_BYTES != ED59919_SIGLEN
+#error "Libsodium hidden Ed25519 do not seem to hold any longer"
+#endif
+#if crypto_sign_SEEDBYTES != CURVE259919_KEYLEN
+#error "Libsodium hidden Ed25519 do not seem to hold any longer"
 #endif
 
 typedef struct __attribute__ ((packed)) {
@@ -73,6 +86,7 @@ extern void save_eeprom();
 eeprom_t eeprom;
 
 uint8_t node_publicsign[CURVE259919_KEYLEN];
+uint8_t node_privatesign[crypto_sign_SECRETKEYBYTES]; // as the private key is really the 'seed' in Sodium parlance.
 
 // Curve25519 key (In montgomery x space) - not kept in
 // persistent storage as we renew on reboot in a PFS
@@ -270,15 +284,27 @@ void SIG2::loop() {
       Debug.printf("EEPROM Version %04x contains all needed keys and is TOFU to a master with public key\n", eeprom.version);
     } else {
       resetWatchdog();
+#if 0
       Ed25519::generatePrivateKey(eeprom.node_privatesign);
+#endif
+      // In sodium parlance - what is known as the private key in python/curve-ed25519 is called a seed.
+      crypto_sign_keypair(node_publicsign,node_privatesign);
+      crypto_sign_ed25519_sk_to_seed(eeprom.node_privatesign,node_privatesign);
+
       eeprom.flags |= CRYPTO_HAS_PRIVATE_KEYS;
 
       save_eeprom();
       Debug.printf("EEPROM Version %04x contains all new private key for TOFU\n", eeprom.version);
-    }
+    };
 
     resetWatchdog();
+#if 0
     Ed25519::derivePublicKey(node_publicsign, eeprom.node_privatesign);
+#endif
+    if (crypto_sign_seed_keypair(node_publicsign, node_privatesign, eeprom.node_privatesign)) {
+	Log.println("Failed to reconstruct public and private key");
+        return;
+    };
 
     init_done = 2;
     Debug.println("Full init. Ready for crypto");
@@ -438,10 +464,19 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
   };
 
   resetWatchdog();
-  if (!Ed25519::verify(signature, signkey, req->rest, strlen(req->rest))) {
+  // Warning - we are relying on the byte order to be the same on server and client (in the case
+  // of the ESP32 - little endian; and not defaulting to a normal big-endian network order.
+  //
+#if 0
+  if (!Ed25519::verify(signature, signkey, req->rest, strlen(req->rest))) 
+#else
+  if (crypto_sign_verify_detached(signature, (const unsigned char*)req->rest, strlen(req->rest), signkey)) 
+#endif
+  {
     Log.println("Invalid Ed25519 signature on message -rejecting.");
     return ACSecurityHandler::FAIL;
   };
+
 
   beat_t delta = beat_absdelta(req->beatExtracted, beatCounter);
   if (nonceOk) {
@@ -522,8 +557,16 @@ SIG2::acauth_result_t SIG2::secure(ACRequest * req) {
   uint8_t signature[ED59919_SIGLEN];
 
   resetWatchdog();
+#if 0
   Ed25519::sign(signature, eeprom.node_privatesign, node_publicsign, req->payload, strlen(req->payload));
-
+#endif
+  if (crypto_sign_detached(signature, NULL, (const unsigned char*) req->payload, strlen(req->payload), node_privatesign)) {
+    Log.println("ED25510 signature failed.");
+    return ACSecurityHandler::FAIL;
+  };
+  // WARNING - we're relying on EPS32 and Server to both have the same endianness - as we're
+  // not converting to standard big-endian network order.
+  
   char sigb64[ED59919_SIGLEN * 2]; // plenty for an HMAC and for a 64 byte signature.
   size_t olen = 0;
   if (0 != mbedtls_base64_encode((unsigned char *)sigb64,sizeof(sigb64),&olen,signature, sizeof(signature))) {
