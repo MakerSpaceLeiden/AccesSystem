@@ -15,36 +15,30 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-// Wiring of Power Node v.1.1
-//
-#include <CurrentTransformer.h>
-#include <ButtonDebounce.h>
-#include <PowerNodeNGv103.h>
-#include <ACNode.h>
+#include <PurpleNodev107.h>
+#include <TimerEvent.h>
 
-#include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
+#ifndef MACHINE
+#define MACHINE   "woodlathe"
+#endif
 
-#define MACHINE             "woodlathe"
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-#define INTERLOCK           (OPTO_COUPLER_INPUT1)
-#define CURRENT_GPIO        (CURRENT_INPUT1)
-#define RELAY_GPIO          (RELAY1)
+// . #define INTERLOCK           (OPTO2)
+#define OFF_BUTTON          (BUTT0)
+#define RELAY_GPIO              (OUT0)
 
 //#define OTA_PASSWD          "SomethingSecrit"
+PurpleNodev107 node = PurpleNodev107(MACHINE);
 
-CurrentTransformerWithCallbacks currentSensor = CurrentTransformerWithCallbacks(CURRENT_GPIO, 197); //SVP, 197 Hz sampling of a 50hz signal/
-ButtonDebounce button2(100, 150 /* mSeconds */);
-
-// ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
-// ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
-// ACNode node = ACNode(MACHINE, true); // wired network (default).
-PowerNodeNGv103 node = PowerNodeNGv103(MACHINE);
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
+LED aartLed = LED(LED_INDICATOR);
+
+TimerEvent monitorCurrent;
+
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -100,20 +94,11 @@ void setup() {
   pinMode(RELAY_GPIO, OUTPUT);
   digitalWrite(RELAY_GPIO, 0);
 
+#ifdef INTERLOCK
   pinMode(INTERLOCK, INPUT_PULLUP);
 
-  // the default is spacebus.makerspaceleiden.nl, prefix test
-  // node.set_mqtt_host("mymqtt-server.athome.nl");
-  // node.set_mqtt_prefix("test-1234");
   node.set_mqtt_prefix("ac");
-
-  // specify this when using your own `master'.
-  //
   node.set_master("master");
-  // node.set_mqtt_prefix("");
-  // node.set_master("master");
-
-  // \node.set_report_period(2000);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
@@ -128,57 +113,28 @@ void setup() {
   });
   node.onApproval([](const char * machine) {
     machinestate = POWERED;
+    digitalWrite(BUZZER, HIGH); delay(50); digitalWrite(BUZZER, LOW);
   });
+
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
+    digitalWrite(BUZZER, HIGH); delay(500); digitalWrite(BUZZER, LOW);
   });
+
   node.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
-    // avoid swithing off a machine unless we have to.
-    //
-    if (machinestate < POWERED)
-      machinestate = CHECKINGCARD;
-
-    // We'r declining so that the core library handle sending
-    // an approval request, keep state, and so on.
-    //
-    return ACBase::CMD_DECLINE;
-  });
-  currentSensor.setOnLimit(0.00125);
-
-  currentSensor.onCurrentOn([](void) {
-    if (machinestate >= POWERED) {
-      machinestate = RUNNING;
-      Log.println("Motor started");
-    } else {
-      static unsigned long last = 0;
-      if (millis() - last > 1000) {
-        Log.println("Very strange - current observed while we are 'off'. Should not happen.");
-        errors++;
-      }
-    }
-  });
-
-  currentSensor.onCurrentOff([](void) {
-    // We let the auto-power off on timeout do its work.
-    if (machinestate > POWERED) {
-      machinestate = POWERED;
-      Log.println("Motor stopped");
-    };
-
-  });
-
   node.onReport([](JsonObject  & report) {
     report["state"] = state[machinestate].label;
+#ifdef INTERLOCK
     report["interlock"] = digitalRead(INTERLOCK) ? true : false;
-
+#endif
     report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);
     report["running_time"] = running_total + ((machinestate == RUNNING) ? ((millis() - running_last) / 1000) : 0);
 
     report["idle_poweroff"] = idle_poweroff;
     report["bad_poweroff"] = bad_poweroff;
-
-    report["current"] = currentSensor.sd();
     report["manual_poweroff"] = manual_poweroff;
+
+    report["current"] = analogRead(CURR0); // not very meaningful anymore with the RC circuit ?
 
     report["errors"] = errors;
   });
@@ -187,25 +143,39 @@ void setup() {
   node.addHandler(&ota);
 #endif
 
-  // node.set_debug(true);
-  // node.set_debugAlive(true);
   node.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
-
 }
 
 void loop() {
   node.loop();
   currentSensor.loop();
-  // opto1.loop();
-  button2.update();
+  monitorCurrent.update();
 
+#ifdef INTERLOCK
   if (digitalRead(INTERLOCK)) {
     if (machinestate != OUTOFORDER || millis() - laststatechange > 60 * 1000) {
       Log.printf("Problem with the interlock -- is the big green connector unseated ?\n");
     }
     machinestate = OUTOFORDER;
   };
+#endif
+
+#ifdef OFF_BUTTON
+  if (digitalRead(OFF_BUTTON) == LOW) {
+    if (machinestate < POWERED)
+      return; // button not yet function.
+    if (machinestate > POWERED) {
+      // Refuse to let the safety be used to power something off.
+      digitalWrite(BUZZER, HIGH); delay(500); digitalWrite(BUZZER, LOW);
+      bad_poweroff++;
+      return;
+    }
+    Log.println("Machine powered down");
+    machinestate = WAITINGFORCARD;
+    manual_poweroff++;
+  };
+#endif
 
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
@@ -233,26 +203,7 @@ void loop() {
                  state[laststate].label, state[machinestate].label);
   };
 
-  if (button2.state() == LOW && machinestate >= POWERED) {
-    if (machinestate == RUNNING) {
-      Log.printf("Machine switched off with button while running (bad!)\n");
-      bad_poweroff++;
-    } else if (machinestate == POWERED) {
-      Log.printf("Machine switched OFF with the off-button.\n");;
-      manual_poweroff++;
-    } else {
-      Log.printf("Off button pressed (currently in state %s). Weird.\n",
-                 state[machinestate].label);
-      errors++;
-    }
-    machinestate = WAITINGFORCARD;
-  }
-
-  if (laststate < POWERED)
-    digitalWrite(RELAY_GPIO, 0);
-  else
-    digitalWrite(RELAY_GPIO, 1);
-
+  digitalWrite(RELAY_GPIO, (laststate < POWERED) ? LOW : HIGH);
   aartLed.set(state[machinestate].ledState);
 
   switch (machinestate) {
