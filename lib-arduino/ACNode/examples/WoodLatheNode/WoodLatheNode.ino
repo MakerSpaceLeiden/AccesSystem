@@ -17,45 +17,34 @@
 */
 // Wiring of Power Node v.1.1
 //
-#include <PowerNodeV11.h>
+#include <CurrentTransformer.h>
+#include <ButtonDebounce.h>
+#include <PowerNodeNGv103.h>
 #include <ACNode.h>
-#include <RFID.h>   // SPI or  I2C specified in below constructor.
 
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
-#include <ButtonDebounce.h>         // https://github.com/dikx/ButtonDebounce
 
 #define MACHINE             "woodlathe"
-#define OFF_BUTTON          (SW2_BUTTON)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-#define INTERLOCK           (OPTO2)
+#define INTERLOCK           (OPTO_COUPLER_INPUT1)
+#define CURRENT_GPIO        (CURRENT_INPUT1)
+#define RELAY_GPIO          (RELAY1)
 
 //#define OTA_PASSWD          "SomethingSecrit"
 
-CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO, 197); //SVP, 197 Hz sampling of a 50hz signal/
+CurrentTransformerWithCallbacks currentSensor = CurrentTransformerWithCallbacks(CURRENT_GPIO, 197); //SVP, 197 Hz sampling of a 50hz signal/
+ButtonDebounce button2(100, 150 /* mSeconds */);
 
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-ACNode node = ACNode(MACHINE);
-
-// RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
-// RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
-RFID reader = RFID();
+PowerNodeNGv103 node = PowerNodeNGv103(MACHINE);
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
 LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
-
-ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
-ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
-
-// Various logging options (in addition to Serial).
-SyslogStream syslogStream = SyslogStream();
-MqttLogStream mqttlogStream = MqttLogStream();
-TelnetSerialStream telnetSerialStream = TelnetSerialStream();
-
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -111,12 +100,7 @@ void setup() {
   pinMode(RELAY_GPIO, OUTPUT);
   digitalWrite(RELAY_GPIO, 0);
 
-  pinMode(SW1_BUTTON, INPUT_PULLUP);
-  pinMode(SW2_BUTTON, INPUT_PULLUP);
   pinMode(INTERLOCK, INPUT_PULLUP);
-
-  Serial.printf("Boot state: SW1:%d SW2:%d INTERLOCK:%d\n",
-                digitalRead(SW1_BUTTON), digitalRead(SW2_BUTTON), digitalRead(INTERLOCK));
 
   // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
@@ -148,7 +132,7 @@ void setup() {
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
   });
-  reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
+  node.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
     // avoid swithing off a machine unless we have to.
     //
     if (machinestate < POWERED)
@@ -183,15 +167,6 @@ void setup() {
 
   });
 
-  if (0) {
-    button1.setCallback([](int state) {
-      Debug.printf("Button 1 changed to %d\n", state);
-    });
-    button2.setCallback([](int state) {
-      Debug.printf("Button 2 changed to %d\n", state);
-    });
-  };
-
   node.onReport([](JsonObject  & report) {
     report["state"] = state[machinestate].label;
     report["interlock"] = digitalRead(INTERLOCK) ? true : false;
@@ -208,37 +183,6 @@ void setup() {
     report["errors"] = errors;
   });
 
-  // This reports things such as FW version of the card; which can 'wedge' it. So we
-  // disable it unless we absolutely positively need that information.
-  //
-  reader.set_debug(false);
-  node.addHandler(&reader);
-  // default syslog port and destination (gateway address or broadcast address).
-  //
-#ifdef SYSLOG_HOST
-  syslogStream.setDestination(SYSLOG_HOST);
-  syslogStream.setRaw(true);
-#ifdef SYSLOG_PORT
-  syslogStream.setPort(SYSLOG_PORT);
-#endif
-#endif
-
-  // General normal log goes to MQTT and Syslog (UDP).
-  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-  // Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-
-  // We only sent the very low level debugging to syslog.
-  // Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-
-#if 1
-  // As the PoE devices have their own grounding - the cannot readily be connected
-  // to with a sericd Peral cable.  This allows for a telnet instead.
-  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-
-  Log.addPrintStream(t);
-  Debug.addPrintStream(t);
-#endif
-
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
@@ -252,10 +196,9 @@ void setup() {
 
 void loop() {
   node.loop();
-  button1.update();
-  button2.update();
   currentSensor.loop();
   // opto1.loop();
+  button2.update();
 
   if (digitalRead(INTERLOCK)) {
     if (machinestate != OUTOFORDER || millis() - laststatechange > 60 * 1000) {
@@ -312,28 +255,6 @@ void loop() {
 
   aartLed.set(state[machinestate].ledState);
 
-  if (1) {
-    static unsigned long last = millis();
-    static unsigned long sw1, sw2, tock;
-    sw1  += digitalRead(SW1_BUTTON);
-    sw2  += digitalRead(SW1_BUTTON);
-    tock ++;
-    if (millis() - last > 1000) {
-      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Current %f/%f=%f/%s Interlock %d\n",
-                   digitalRead(SW1_BUTTON),
-                   abs(tock - sw1),
-                   digitalRead(SW2_BUTTON),
-                   abs(tock - sw2),
-                   digitalRead(RELAY_GPIO),
-                   currentSensor.sd(),
-                   currentSensor.avg(),
-                   analogRead(CURRENT_GPIO) / 1024.,
-                   currentSensor.hasCurrent() ? "yes" : "no",
-                   digitalRead(INTERLOCK)
-                  );
-      last = millis(); sw1 = sw2 = tock = 0;
-    }
-  }
   switch (machinestate) {
     case WAITINGFORCARD:
       break;

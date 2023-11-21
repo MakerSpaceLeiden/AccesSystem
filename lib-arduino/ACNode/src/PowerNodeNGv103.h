@@ -2,6 +2,7 @@
 #define _H_POWERNODENG103
 
 #include "ACNode.h"
+#include <RFID.h>
 #include <RFID_PN532_EX.h>
 #include <Wire.h>
 #include <ExpandedGPIO.h>
@@ -59,6 +60,9 @@ class PowerNodeNGv103 : public ACNode {
 
 	void begin(); 
 	void loop(); 
+	void onSwipe(RFID::THandlerFunction_SwipeCB fn) {
+		_reader->onSwipe(fn); 
+	};
     private:
 	RFID_PN532_EX * _reader;
         unsigned long _last_pn532_check = 0, _last_seen_alive = 0;

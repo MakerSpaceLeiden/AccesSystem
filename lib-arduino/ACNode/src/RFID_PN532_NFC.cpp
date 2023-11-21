@@ -1,6 +1,6 @@
+#if 0
 #include <RFID_PN532_NFC.h>
 #include <Wire.h>
-
 
 RFID_PN532_NFC::RFID_PN532_NFC()
 {
@@ -43,3 +43,5 @@ void RFID_PN532_NFC::loop() {
 
     return;
 }
+#endif
+
