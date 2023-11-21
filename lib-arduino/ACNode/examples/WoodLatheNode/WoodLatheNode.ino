@@ -23,9 +23,9 @@
 #endif
 
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-// . #define INTERLOCK           (OPTO2)
+// . #define INTERLOCK      (OPTO2)
 #define OFF_BUTTON          (BUTT0)
-#define RELAY_GPIO              (OUT0)
+#define RELAY_GPIO          (OUT0)
 
 //#define OTA_PASSWD          "SomethingSecrit"
 PurpleNodev107 node = PurpleNodev107(MACHINE);
@@ -91,11 +91,8 @@ void setup() {
 
   // Init the hardware and get it into a safe state.
   //
-  pinMode(RELAY_GPIO, OUTPUT);
   digitalWrite(RELAY_GPIO, 0);
-
-#ifdef INTERLOCK
-  pinMode(INTERLOCK, INPUT_PULLUP);
+  pinMode(RELAY_GPIO, OUTPUT);
 
   node.set_mqtt_prefix("ac");
   node.set_master("master");
@@ -118,7 +115,9 @@ void setup() {
 
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
-    digitalWrite(BUZZER, HIGH); delay(500); digitalWrite(BUZZER, LOW);
+    for(int i = 0; i < 10; i++) {
+      digitalWrite(BUZZER, HIGH); delay(100); digitalWrite(BUZZER, LOW);delay(100);
+    };
   });
 
   node.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
