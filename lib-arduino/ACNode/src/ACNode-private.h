@@ -1,8 +1,6 @@
 #ifndef _H_ACNODE_PRIVATE
 #define _H_ACNODE_PRIVATE
 
-#include <OlimexBoard.h>         
-
 #ifdef  ESP32
 //#  include <WiFi.h>
 #  include <ESPmDNS.h>
@@ -74,7 +72,8 @@ typedef enum {
 
 typedef enum { 
 	BOARD_AART,  	// https://wiki.makerspaceleiden.nl/mediawiki/index.php/POESP-board_1.0
-	BOARD_OLIMEX 	// https://www.olimex.com/Products/IoT/ESP32/ESP32-POE/open-source-hardware
+	BOARD_OLIMEX, 	// https://www.olimex.com/Products/IoT/ESP32/ESP32-POE/open-source-hardware
+	BOARD_NG	// https://github.com/dirkx/rfid-oled-esp32 (white, green, red and purple)
 } eth_board_t;
 
 // #define HAS_MSL
@@ -82,6 +81,16 @@ typedef enum {
 #define HAS_SIG2
 
 typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
+
+
+// Clear EEProm + Cache button
+// Press BUT1 on Olimex ESP32 PoE module before (re)boot of node
+// keep BUT1 pressed for at least 5 s
+// After the release of BUT1 node will restart with empty EEProm and empty cache
+
+#define CLEAR_EEPROM_AND_CACHE_BUTTON           (34)
+#define CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED   (LOW)
+#define MAX_WAIT_TIME_BUTTON_PRESSED            (4000)  // in ms
 
 class ACNode : public ACBase {
 public:
@@ -112,22 +121,8 @@ public:
     char logpath[MAX_NAME];
     char mqtt_topic_prefix[MAX_NAME];
     
-    IPAddress localIP() { 
-#ifdef ESP32
-	if (_wired) 
-	    return ETH.localIP(); 
-	else 
-#endif 
-	    return WiFi.localIP(); 
-    };
-    String macAddressString() { 
-#ifdef ESP32
-         if (_wired) 
-            return ETH.macAddress(); 
-         else 
-#endif
-	    return WiFi.macAddress(); 
-    };
+    IPAddress localIP();
+    String macAddressString();
     String chipId() {
 #ifdef ESP32
                 uint64_t chipid = ESP.getEfuseMac();
@@ -224,6 +219,7 @@ private:
     void reconnectMQTT();
     void mqttLoop();
     void pop();
+    void checkClearEEPromAndCacheButtonPressed(void);
 
     const char * state2str(int state);
     

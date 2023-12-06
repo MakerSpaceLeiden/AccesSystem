@@ -44,19 +44,22 @@
           GPI35
 
 */
-#include <PowerNodeNG-v103.h>
-#include <ACNode.h>
-#include <RFID.h>   // SPI version
+#define GPB0 ( PIN_HPIO_MCP | ( 8 + 0))
+#define GPB3 ( PIN_HPIO_MCP | ( 8 + 3))
+
+#include <PowerNodeNGv103.h>
 
 // All of those are part of the normal libraries of Arduino.
 //
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
 #include <ButtonDebounce.h>         // https://github.com/dirkx/ButtonDebounce.git
 #include <OptoDebounce.h>           // https://github.com/dirkx/OptoDebounce.git
-#include <Adafruit_MCP23X17.h>      // https://github.com/adafruit/Adafruit-MCP23017-Arduino-Library
 
+#ifndef MACHINE
 #define MACHINE             "lintzaag"
-#define OFF_BUTTON          (SW2_BUTTON)
+#endif
+
+#define OFF_BUTTON          (39)
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 
 // Current reading whule runing 0.015 or higher
@@ -64,17 +67,12 @@
 // Current reading while off    0.020
 #define CURRENT_THRESHHOLD  (0.005)
 
-//#define OTA_PASSWD          "SomethingSecrit"
-
-CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
-
-#include <ACNode.h>
-#include <RFID.h>   // SPI version
+CurrentTransformerWithCallbacks currentSensor = CurrentTransformerWithCallbacks(CURRENT_INPUT1);
 
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
-ACNode node = ACNode(MACHINE);
+PowerNodeNGv103 node = PowerNodeNGv103(MACHINE);
 
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
 // RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
@@ -84,17 +82,12 @@ RFID reader = RFID();
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-LED aartLed = LED(AART_LED);    // defaults to the aartLed - otherwise specify a GPIO.
 
-ButtonDebounce button1(SW1_BUTTON, 150 /* mSeconds */);
-ButtonDebounce button2(SW2_BUTTON, 150 /* mSeconds */);
-OptoDebounce opto1 = OptoDebounce(OPTO1);
+const uint8_t RELAY_GPIO = GPB0;
+LED aartLed = LED(GPB3);    // defaults to the aartLed - otherwise specify a GPIO.
 
-// Various logging options (in addition to Serial).
-SyslogStream syslogStream = SyslogStream();
-MqttLogStream mqttlogStream = MqttLogStream();
-// TelnetSerialStream telnetSerialStream = TelnetSerialStream();
-
+ButtonDebounce offButton(OFF_BUTTON, 150 /* mSeconds */);
+OptoDebounce opto1 = OptoDebounce(OPTO_COUPLER_INPUT1);
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -138,75 +131,16 @@ unsigned long running_total = 0, running_last;
 unsigned long bad_poweroff = 0;
 unsigned long idle_poweroff = 0;
 
-// Clear EEProm + Cache button
-// Press BUT1 on Olimex ESP32 PoE module before (re)boot of node
-// keep BUT1 pressed for at least 5 s
-// After the release of BUT1 node will restart with empty EEProm and empty cache
-
-#define CLEAR_EEPROM_AND_CACHE_BUTTON           (34)
-#define CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED   (LOW)
-#define MAX_WAIT_TIME_BUTTON_PRESSED            (4000)  // in ms
-
-static void checkClearEEPromAndCacheButtonPressed(void) {
-  unsigned long ButtonPressedTime;
-  unsigned long currentSecs;
-  unsigned long prevSecs;
-  bool firstTime = true;
-
-  // check CLEAR_EEPROM_AND_CACHE_BUTTON pressed
-  pinMode(CLEAR_EEPROM_AND_CACHE_BUTTON, INPUT);
-  // check if button is pressed for at least 3 s
-  Log.println("Checking if the button is pressed for clearing EEProm and cache");
-  ButtonPressedTime = millis();
-  prevSecs = MAX_WAIT_TIME_BUTTON_PRESSED / 1000;
-  Log.print(prevSecs);
-  Log.print(" s");
-  while (digitalRead(CLEAR_EEPROM_AND_CACHE_BUTTON) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
-    if ((millis() - ButtonPressedTime) >= MAX_WAIT_TIME_BUTTON_PRESSED) {
-      if (firstTime == true) {
-        Log.print("\rPlease release button");
-        firstTime = false;
-      }
-    } else {
-      currentSecs = (MAX_WAIT_TIME_BUTTON_PRESSED - millis()) / 1000;
-      if ((currentSecs != prevSecs) && (currentSecs >= 0)) {
-        Log.print("\r");
-        Log.print(currentSecs);
-        Log.print(" s");
-        prevSecs = currentSecs;
-      }
-    }
-  }
-  if (millis() - ButtonPressedTime >= MAX_WAIT_TIME_BUTTON_PRESSED) {
-    Log.print("\rButton for clearing EEProm and cache was pressed for more than ");
-    Log.print(MAX_WAIT_TIME_BUTTON_PRESSED / 1000);
-    Log.println(" s, EEProm and Cache will be cleared!");
-    // Clear EEPROM
-    EEPROM.begin(1024);
-    wipe_eeprom();
-    Log.println("EEProm cleared!");
-    // Clear cache
-    prepareCache(true);
-    Log.println("Cache cleared!");
-    // wait until button is released, than reboot
-    while (digitalRead(CLEAR_EEPROM_AND_CACHE_BUTTON) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
-      // do nothing here
-    }
-    Log.println("Node will be restarted");
-    // restart node
-    ESP.restart();
-  } else {
-    Log.println("\rButton was not (or not long enough) pressed to clear EEProm and cache");
-  }
-}
 
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 
-  setupPowernodeNG();
-  checkClearEEPromAndCacheButtonPressed();
+  // make sure the relay is off.
+  node.xdigitalWrite(RELAY_GPIO, 0);
+  node.xpinMode(RELAY_GPIO, OUTPUT);
+  node.xdigitalWrite(RELAY_GPIO, 0);
 
   // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
@@ -235,7 +169,7 @@ void setup() {
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
   });
-  reader.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
+  node.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
     // avoid swithing off a machine unless we have to.
     //
     if (machinestate < POWERED)
@@ -271,11 +205,23 @@ void setup() {
 
   });
 
-  button1.setCallback([](int state) {
-    Debug.printf("Button 1 changed to %d\n", state);
-  });
-  button2.setCallback([](int state) {
-    Debug.printf("Button 2 changed to %d\n", state);
+  offButton.setCallback([](int buttonOnOff) {
+    if (buttonOnOff != LOW) return;
+    if (machinestate < POWERED) {
+      Log.printf("Machine off button pressed; but I am already off (ignoring)\n");
+      return;
+    };
+
+    if (machinestate == RUNNING) {
+      Log.printf("Machine switched off with button while running (bad!)\n");
+      bad_poweroff++;
+    } else if (machinestate == POWERED) {
+      Log.printf("Machine switched OFF with the off-button.\n");;
+    } else {
+      Log.printf("Off button pressed (currently in state %s). Weird.\n",
+                 state[machinestate].label);
+    }
+    machinestate = WAITINGFORCARD;
   });
 
   node.onReport([](JsonObject  & report) {
@@ -300,29 +246,7 @@ void setup() {
   //
   reader.set_debug(false);
   node.addHandler(&reader);
-  // default syslog port and destination (gateway address or broadcast address).
-  //
-#ifdef SYSLOG_HOST
-  syslogStream.setDestination(SYSLOG_HOST);
-  syslogStream.setRaw(true);
-#ifdef SYSLOG_PORT
-  syslogStream.setPort(SYSLOG_PORT);
-#endif
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-  Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-#endif
 
-  // General normal log goes to MQTT and Syslog (UDP).
-  Log.addPrintStream(std::make_shared<MqttLogStream>(mqttlogStream));
-
-#if 1
-  // As the PoE devices have their own grounding - the cannot readily be connected
-  // to with a sericd Peral cable.  This allows for a telnet instead.
-  auto t = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-
-  Log.addPrintStream(t);
-  Debug.addPrintStream(t);
-#endif
 
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
@@ -335,14 +259,10 @@ void setup() {
 }
 
 void loop() {
+  static bool haveSeenPower = false;
+
   node.loop();
   opto1.loop();
-  currentSensor.loop();
-
-  button1.update();
-  button2.update();
-
-  static bool haveSeenPower = false;
 
   if (laststate != machinestate) {
     Debug.printf("Changed from state <%s> to state <%s>\n",
@@ -370,19 +290,6 @@ void loop() {
                  state[laststate].label, state[machinestate].label);
   };
 
-  if (button2.state() == LOW && machinestate >= POWERED) {
-    if (machinestate == RUNNING) {
-      Log.printf("Machine switched off with button while running (bad!)\n");
-      bad_poweroff++;
-    } else if (machinestate == POWERED) {
-      Log.printf("Machine switched OFF with the off-button.\n");;
-    } else {
-      Log.printf("Off button pressed (currently in state %s). Weird.\n",
-                 state[machinestate].label);
-    }
-    machinestate = WAITINGFORCARD;
-  };
-
   if ((machinestate > WAITINGFORCARD) && (!opto1.state())) {
     // Once you have swiped your card - you have 120 seconds to hit the green button on the back.
     if (millis() - laststatechange > 120 * 1000) {
@@ -407,9 +314,9 @@ void loop() {
     haveSeenPower = false;
 
   if (laststate < POWERED)
-    digitalWrite(RELAY_GPIO, 0);
+    node.xdigitalWrite(RELAY_GPIO, 0);
   else
-    digitalWrite(RELAY_GPIO, 1);
+    node.xdigitalWrite(RELAY_GPIO, 1);
 
   aartLed.set(state[machinestate].ledState);
 

@@ -9,5 +9,7 @@ void PurpleNodev107::begin() {
    _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
    addHandler(_reader);
 
-   ACNode::begin(BOARD_OLIMEX);
+   ETH.begin(ETH_PHY_ADDR, -1, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
+
+   ACNode::begin();
 }

@@ -1,6 +1,8 @@
 #include <ACNode-private.h>
 
 #ifdef ESP32
+#include <ETH.h>
+
 static bool _connected = false;
 
 // The Enums have all changed names; they got an Arduino prefix

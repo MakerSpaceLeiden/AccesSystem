@@ -1,4 +1,6 @@
 #include "PowerNodeNGv103.h"
+#include <OlimexBoard.h>
+#include <ETH.h>
 
 void PowerNodeNGv103::begin() {
 	gpio = new ExpandedGPIO();
@@ -12,6 +14,8 @@ void PowerNodeNGv103::begin() {
 	_reader = new RFID_PN532_EX();
 	_reader->set_debug(false);
         addHandler(_reader);
+
+        ETH.begin(ETH_PHY_ADDR, -1 /* revision K, NRST is RC */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
 
 	ACNode::begin();
 }

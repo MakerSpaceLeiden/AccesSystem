@@ -1,6 +1,7 @@
 #include <ACNode.h>
 #include "ConfigPortal.h"
 #include <Cache.h>
+#include <EEPROM.h>
 
 // Sort of a fake singleton to overcome callback
 // limits in MQTT callback and elsewhere.
@@ -20,6 +21,9 @@ SIG2 sig2 = SIG2();
 #endif
 
 #ifdef ESP32
+#include <WiFi.h>
+#include <ETH.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -83,6 +87,24 @@ void ACNode::pop() {
 #ifdef SYSLOG_HOST
     Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 #endif
+};
+
+IPAddress ACNode::localIP() {
+#ifdef ESP32
+        if (_wired)
+            return ETH.localIP();
+        else
+#endif
+        return WiFi.localIP();
+};
+
+String ACNode::macAddressString() {
+#ifdef ESP32
+         if (_wired)
+            return ETH.macAddress();
+         else
+#endif
+        return WiFi.macAddress();
 };
 
 ACNode::ACNode(const char * m, bool wired, acnode_proto_t proto) : 
@@ -151,11 +173,19 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     if (_debug)
         debugFlash();
 #endif
+
+    checkClearEEPromAndCacheButtonPressed();
+
 #ifdef ESP32 
     if (_wired)  {
        WiFi.onEvent(WiFiEvent);
-
+    }
+#endif
+#if 0
        switch(board) {
+       case BOARD_NG:
+         ETH.begin(ETH_PHY_ADDR, ETH_PHY_RESET, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
+         break;
        case BOARD_OLIMEX:
          ETH.begin(ETH_PHY_ADDR, 12 /* power */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
          break;
@@ -165,8 +195,8 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
        default:
          ETH.begin();
       }
-    }
 #endif
+
   
 #ifdef CONFIGAP
     configBegin();
@@ -707,4 +737,58 @@ void ACNode::delayedReboot() {
         sig2.add_trusted_node(node);
  }
  #endif
+
+void ACNode::checkClearEEPromAndCacheButtonPressed(void) {
+  unsigned long ButtonPressedTime;
+  unsigned long currentSecs;
+  unsigned long prevSecs;
+  bool firstTime = true;
+
+  // check CLEAR_EEPROM_AND_CACHE_BUTTON pressed
+  pinMode(CLEAR_EEPROM_AND_CACHE_BUTTON, INPUT);
+  // check if button is pressed for at least 3 s
+  Log.println("Checking if the button is pressed for clearing EEProm and cache");
+  ButtonPressedTime = millis();
+  prevSecs = MAX_WAIT_TIME_BUTTON_PRESSED / 1000;
+  Log.print(prevSecs);
+  Log.print(" s");
+  while (digitalRead(CLEAR_EEPROM_AND_CACHE_BUTTON) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
+    if ((millis() - ButtonPressedTime) >= MAX_WAIT_TIME_BUTTON_PRESSED) {
+      if (firstTime == true) {
+        Log.print("\rPlease release button");
+        firstTime = false;
+      }
+    } else {
+      currentSecs = (MAX_WAIT_TIME_BUTTON_PRESSED - millis()) / 1000;
+      if ((currentSecs != prevSecs) && (currentSecs >= 0)) {
+        Log.print("\r");
+        Log.print(currentSecs);
+        Log.print(" s");
+        prevSecs = currentSecs;
+      }
+    }
+  }
+  if (millis() - ButtonPressedTime >= MAX_WAIT_TIME_BUTTON_PRESSED) {
+    Log.print("\rButton for clearing EEProm and cache was pressed for more than ");
+    Log.print(MAX_WAIT_TIME_BUTTON_PRESSED / 1000);
+    Log.println(" s, EEProm and Cache will be cleared!");
+    // Clear EEPROM
+    EEPROM.begin(1024);
+    wipe_eeprom();
+    Log.println("EEProm cleared!");
+    // Clear cache
+    prepareCache(true);
+    Log.println("Cache cleared!");
+    // wait until button is released, than reboot
+    while (digitalRead(CLEAR_EEPROM_AND_CACHE_BUTTON) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
+      // do nothing here
+    }
+    Log.println("Node will be restarted");
+    // restart node
+    ESP.restart();
+  } else {
+    Log.println("\rButton was not (or not long enough) pressed to clear EEProm and cache");
+  }
+}
+
 

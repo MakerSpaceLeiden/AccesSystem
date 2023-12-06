@@ -14,8 +14,10 @@
    ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+   Compile settings:  EPS32-WROOM-DA
 */
-#include <PurpleNodev107.h>
+#include <WhiteNodev108.h>
 #include <TimerEvent.h>
 
 #ifndef MACHINE
@@ -23,13 +25,13 @@
 #endif
 
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
-// . #define INTERLOCK      (OPTO2)
+
+// #define INTERLOCK      (OPTO2)
 #define OFF_BUTTON          (BUTT0)
 #define RELAY_GPIO          (OUT0)
 
 //#define OTA_PASSWD          "SomethingSecrit"
-PurpleNodev107 node = PurpleNodev107(MACHINE);
-
+WhiteNodev108 node = WhiteNodev108(MACHINE);
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
@@ -38,7 +40,6 @@ OTA ota = OTA(OTA_PASSWD);
 LED aartLed = LED(LED_INDICATOR);
 
 TimerEvent monitorCurrent;
-
 
 typedef enum {
   BOOTING, OUTOFORDER,      // device not functional.
@@ -93,6 +94,8 @@ void setup() {
   //
   digitalWrite(RELAY_GPIO, 0);
   pinMode(RELAY_GPIO, OUTPUT);
+  digitalWrite(BUZZER, LOW);
+  pinMode(BUZZER, OUTPUT);
 
   node.set_mqtt_prefix("ac");
   node.set_master("master");
@@ -115,12 +118,11 @@ void setup() {
 
   node.onDenied([](const char * machine) {
     machinestate = REJECTED;
-    for(int i = 0; i < 10; i++) {
-      digitalWrite(BUZZER, HIGH); delay(100); digitalWrite(BUZZER, LOW);delay(100);
+    for (int i = 0; i < 10; i++) {
+      digitalWrite(BUZZER, HIGH); delay(100); digitalWrite(BUZZER, LOW); delay(100);
     };
   });
 
-  node.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
   node.onReport([](JsonObject  & report) {
     report["state"] = state[machinestate].label;
 #ifdef INTERLOCK
@@ -148,7 +150,6 @@ void setup() {
 
 void loop() {
   node.loop();
-  currentSensor.loop();
   monitorCurrent.update();
 
 #ifdef INTERLOCK
