@@ -157,7 +157,7 @@ void ACNode::addSecurityHandler(ACSecurityHandler * handler) {
     addHandler(handler);
 }
 
-void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
+void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button)
 {
     if (!*machine)  
 	strncpy(machine, "unset-machine-name", sizeof(machine));
@@ -169,12 +169,15 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     // the Arduino baseline.
     if (gpio = NULL)
 	gpio = new ExpandedGPIO();
+
+#define X { Serial.printf("Halting at %s:%d\n", __FILE__, __LINE__); delay(5000); }
+
 #if 0
     if (_debug)
         debugFlash();
 #endif
 
-    checkClearEEPromAndCacheButtonPressed();
+    checkClearEEPromAndCacheButtonPressed(clear_button);
 
 #ifdef ESP32 
     if (_wired)  {
@@ -217,7 +220,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
     
     if (_wired) {
         Log.println("Wired mode");
-        WiFi.mode(WIFI_STA);
+        // WiFi.mode(WIFI_STA);
     } else
     if (_ssid) {
         Log.printf("Starting up wifi (hardcoded SSID <%s>)\n", _ssid);
@@ -227,7 +230,6 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
         WiFiManager wifiManager;
         wifiManager.autoConnect();
     };
-    
     
     // Try up to del seconds to get a WiFi connection; and if that fails; reboot
     // with a bit of a delay.
@@ -320,7 +322,6 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */)
 #endif
 
   prepareCache(false);  
-
 }
 
 char * ACNode::cloak(char * tag) {
@@ -738,21 +739,24 @@ void ACNode::delayedReboot() {
  }
  #endif
 
-void ACNode::checkClearEEPromAndCacheButtonPressed(void) {
+void ACNode::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
   unsigned long ButtonPressedTime;
   unsigned long currentSecs;
   unsigned long prevSecs;
   bool firstTime = true;
 
-  // check CLEAR_EEPROM_AND_CACHE_BUTTON pressed
-  pinMode(CLEAR_EEPROM_AND_CACHE_BUTTON, INPUT);
+  if (button >254)
+	return;
+
+  // check button pressed
+  pinMode(button, INPUT);
   // check if button is pressed for at least 3 s
   Log.println("Checking if the button is pressed for clearing EEProm and cache");
   ButtonPressedTime = millis();
   prevSecs = MAX_WAIT_TIME_BUTTON_PRESSED / 1000;
   Log.print(prevSecs);
   Log.print(" s");
-  while (digitalRead(CLEAR_EEPROM_AND_CACHE_BUTTON) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
+  while (digitalRead(button) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
     if ((millis() - ButtonPressedTime) >= MAX_WAIT_TIME_BUTTON_PRESSED) {
       if (firstTime == true) {
         Log.print("\rPlease release button");
@@ -780,7 +784,7 @@ void ACNode::checkClearEEPromAndCacheButtonPressed(void) {
     prepareCache(true);
     Log.println("Cache cleared!");
     // wait until button is released, than reboot
-    while (digitalRead(CLEAR_EEPROM_AND_CACHE_BUTTON) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
+    while (digitalRead(button) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
       // do nothing here
     }
     Log.println("Node will be restarted");

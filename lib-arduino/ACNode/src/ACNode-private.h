@@ -88,7 +88,6 @@ typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
 // keep BUT1 pressed for at least 5 s
 // After the release of BUT1 node will restart with empty EEProm and empty cache
 
-#define CLEAR_EEPROM_AND_CACHE_BUTTON           (34)
 #define CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED   (LOW)
 #define MAX_WAIT_TIME_BUTTON_PRESSED            (4000)  // in ms
 
@@ -166,7 +165,7 @@ public:
             { _report_callback = fn; return; };
 
     void loop();
-    void begin(eth_board_t board = BOARD_AART);
+    void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
     cmd_result_t handle_cmd(ACRequest * req);
    
     void addHandler(ACBase *handler);
@@ -219,7 +218,7 @@ private:
     void reconnectMQTT();
     void mqttLoop();
     void pop();
-    void checkClearEEPromAndCacheButtonPressed(void);
+    void checkClearEEPromAndCacheButtonPressed(uint8_t button);
 
     const char * state2str(int state);
     

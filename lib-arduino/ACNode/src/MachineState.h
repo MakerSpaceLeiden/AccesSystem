@@ -4,8 +4,6 @@
 #include <ACNode-private.h>
 #include <ACBase.h>
 
-
-
 class MachineState : public ACBase {
   public:
     static const time_t NEVER = 0;
@@ -18,6 +16,7 @@ class MachineState : public ACBase {
         NOCONN,                   /* sort of fairly hopless (though we can cache RFIDs!)  */
         WAITINGFORCARD,           /* waiting for card. */
         CHECKINGCARD,             /* checkeing card. with server */
+	REJECTED,
 	// kept free */
 	START_PRIVATE_STATES = 100,
 	PSTATE_101 = 101, PSTATE_102 = 102, PSTATE_103 = 103, PSTATE_104 = 104, PSTATE_105 = 105, 
@@ -82,6 +81,9 @@ class MachineState : public ACBase {
 
     state_t * _initState(uint8_t state, state_t dflt);
     state_t * _initState(uint8_t state, state_t * dflt);
+    state_t * _initState(uint8_t state, const char * label, LED::led_state_t ledState, 
+	time_t timeout = NEVER, machinestate_t nextstate = NEVER, time_t timeInState = 0);
+   
 
   public:
     const char * label();
@@ -91,7 +93,7 @@ class MachineState : public ACBase {
 
     machinestate_t state();
 
-    void operator=(machinestate_t s);
+    // void operator=(machinestate_t s);
     void setState(machinestate_t s);
 
     bool operator <(machinestate_t s) { return s < machinestate; };
@@ -111,8 +113,10 @@ class MachineState : public ACBase {
 
     machinestate_t addState(const char * label, time_t timeout, machinestate_t nextstate);
 
-    machinestate_t addState(const char * label, LED::led_state_t ledState, 
-		time_t timeout, machinestate_t nextstate);
+    machinestate_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate);
+
+    time_t secondsLeftInThisState();
+    String timeLeftInThisState();
 
     void defineState(machinestate_t state,
 		const char * label, 

@@ -11,5 +11,5 @@ void PurpleNodev107::begin() {
 
    ETH.begin(ETH_PHY_ADDR, -1, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
 
-   ACNode::begin();
+   ACNode::begin(BOARD_NG);
 }

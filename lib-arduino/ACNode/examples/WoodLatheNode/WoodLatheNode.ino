@@ -27,7 +27,8 @@
 #define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
 
 // #define INTERLOCK      (OPTO2)
-#define OFF_BUTTON          (BUTT0)
+#define MENU_BUTTON          (BUTT0)
+#define OFF_BUTTON          (BUTT1)
 #define RELAY_GPIO          (OUT0)
 
 //#define OTA_PASSWD          "SomethingSecrit"
@@ -37,46 +38,12 @@ WhiteNodev108 node = WhiteNodev108(MACHINE);
 OTA ota = OTA(OTA_PASSWD);
 #endif
 
-LED aartLed = LED(LED_INDICATOR);
+// LED aartLed = LED(LED_INDICATOR);
 
-TimerEvent monitorCurrent;
+MachineState machinestate = MachineState();
 
-typedef enum {
-  BOOTING, OUTOFORDER,      // device not functional.
-  REBOOT,                   // forcefull reboot
-  TRANSIENTERROR,           // hopefully goes away level error
-  NOCONN,                   // sort of fairly hopless (though we can cache RFIDs!)
-  WAITINGFORCARD,           // waiting for card.
-  CHECKINGCARD,
-  REJECTED,
-  POWERED,                  // this is where we engage the relay.
-  RUNNING,                  // this is when we detect a current.
-} machinestates_t;
-
-#define NEVER (0)
-
-struct {
-  const char * label;                   // name of this state
-  LED::led_state_t ledState;            // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
-  time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
-  machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
-} state[RUNNING + 1] =
-{
-  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "No network",           LED::LED_FLASH,         NEVER     , NOCONN },           // should we reboot at some point ?
-  { "Waiting for card",     LED::LED_IDLE,          NEVER     , WAITINGFORCARD },
-  { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD },
-  { "Rejecting noise/card", LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "Powered - but idle",   LED::LED_ON,            NEVER     , WAITINGFORCARD },   // we leave poweroff idle to the code below.
-  { "Running",              LED::LED_ON,            NEVER     , WAITINGFORCARD },
-};
-
-unsigned long laststatechange = 0;
-static machinestates_t laststate = BOOTING;
-machinestates_t machinestate = BOOTING;
+// Extra, hardware specific states
+MachineState::machinestate_t POWERED, RUNNING;
 
 unsigned long powered_total = 0, powered_last;
 unsigned long running_total = 0, running_last;
@@ -94,37 +61,59 @@ void setup() {
   //
   digitalWrite(RELAY_GPIO, 0);
   pinMode(RELAY_GPIO, OUTPUT);
+
   digitalWrite(BUZZER, LOW);
   pinMode(BUZZER, OUTPUT);
+
+  pinMode(MENU_BUTTON, INPUT_PULLUP);
+  pinMode(OFF_BUTTON, INPUT_PULLUP);
+
+  POWERED = machinestate.addState( "Powered but idle", LED::LED_ON, MAX_IDLE_TIME, MachineState::WAITINGFORCARD);
+  RUNNING = machinestate.addState( "Lathe Running", LED::LED_ON, MachineState::NEVER);
+
+  machinestate.setState(MachineState::BOOTING);
+
+  machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    node.updateDisplayStateMsg(machinestate.label());
+    Log.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
+    if (current == MachineState::WAITINGFORCARD)
+      node.updateDisplay("", "MORE", true);
+    if (current == POWERED)
+      node.updateDisplay("TURN OFF", "MORE", true);
+    if (current == RUNNING)
+      node.updateDisplay("", "", true);
+  });
 
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
   node.onConnect([]() {
-    machinestate = WAITINGFORCARD;
+    machinestate.setState(MachineState::WAITINGFORCARD);
   });
   node.onDisconnect([]() {
-    machinestate = NOCONN;
+    machinestate.setState(MachineState::NOCONN);
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
-    machinestate = TRANSIENTERROR;
+    machinestate.setState(MachineState::TRANSIENTERROR);
     errors++;
   });
   node.onApproval([](const char * machine) {
-    machinestate = POWERED;
-    digitalWrite(BUZZER, HIGH); delay(50); digitalWrite(BUZZER, LOW);
+    Log.println("Approval callback");
+    if (machinestate.state() != POWERED) {
+      digitalWrite(BUZZER, HIGH); delay(50); digitalWrite(BUZZER, LOW);
+    };
+    machinestate.setState(POWERED);
   });
 
   node.onDenied([](const char * machine) {
-    machinestate = REJECTED;
+    machinestate.setState(MachineState::REJECTED);
     for (int i = 0; i < 10; i++) {
       digitalWrite(BUZZER, HIGH); delay(100); digitalWrite(BUZZER, LOW); delay(100);
     };
   });
 
   node.onReport([](JsonObject  & report) {
-    report["state"] = state[machinestate].label;
 #ifdef INTERLOCK
     report["interlock"] = digitalRead(INTERLOCK) ? true : false;
 #endif
@@ -135,29 +124,45 @@ void setup() {
     report["bad_poweroff"] = bad_poweroff;
     report["manual_poweroff"] = manual_poweroff;
 
-    report["current"] = analogRead(CURR0); // not very meaningful anymore with the RC circuit ?
-
     report["errors"] = errors;
   });
 
 #ifdef OTA_PASSWD
   node.addHandler(&ota);
 #endif
+  node.addHandler(&machinestate);
 
   node.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+
 }
 
 void loop() {
+  static unsigned long lst = 0;
+  if (millis() - lst > 1000) {
+    lst = millis();
+
+    if (machinestate.state() == POWERED) {
+      String left = machinestate.timeLeftInThisState();
+      if (left.length()) node.updateDisplayStateMsg("Auto off: " + left);
+    };
+
+    if (0) Log.printf("off=%d, menu=%d, opto=%d,%d, cur=%d,%d curA=%d,%d\n",
+                        digitalRead(OFF_BUTTON), digitalRead(MENU_BUTTON),
+                        digitalRead(OPTO0), digitalRead(OPTO1),
+                        digitalRead(CURR0), digitalRead(CURR1),
+                        analogRead(CURR0), analogRead(CURR1));
+  };
   node.loop();
-  monitorCurrent.update();
 
 #ifdef INTERLOCK
   if (digitalRead(INTERLOCK)) {
-    if (machinestate != OUTOFORDER || millis() - laststatechange > 60 * 1000) {
+    static unsigned long last_warning = 0;
+    if (machinestate != MachineState::OUTOFORDER || last_warning == 0 || millis() - last_warning > 60 * 1000) {
       Log.printf("Problem with the interlock -- is the big green connector unseated ?\n");
+      last_warning = millis();
     }
-    machinestate = OUTOFORDER;
+    machinestate = MachineState::OUTOFORDER;
   };
 #endif
 
@@ -171,71 +176,14 @@ void loop() {
       bad_poweroff++;
       return;
     }
-    Log.println("Machine powered down");
-    machinestate = WAITINGFORCARD;
+    Log.println("Machine powered down by OFF button");
+    machinestate.setState(MachineState::WAITINGFORCARD);
+    digitalWrite(BUZZER, HIGH); delay(50); digitalWrite(BUZZER, LOW);
     manual_poweroff++;
   };
 #endif
 
-  if (laststate != machinestate) {
-    Debug.printf("Changed from state <%s> to state <%s>\n",
-                 state[laststate].label, state[machinestate].label);
 
-    if (machinestate == POWERED && laststate < POWERED) {
-      powered_last = millis();
-    } else if (laststate == POWERED && machinestate < POWERED) {
-      powered_total += (millis() - running_last) / 1000;
-    };
-    if (machinestate == RUNNING && laststate < RUNNING) {
-      running_last = millis();
-    } else if (laststate == RUNNING && machinestate < RUNNING) {
-      running_total += (millis() - running_last) / 1000;
-    };
-    laststate = machinestate;
-    laststatechange = millis();
-  }
-
-  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
-    laststate = machinestate;
-    machinestate = state[machinestate].failStateOnTimeout;
-    Debug.printf("Time-out; transition from %s to %s\n",
-                 state[laststate].label, state[machinestate].label);
-  };
-
-  digitalWrite(RELAY_GPIO, (laststate < POWERED) ? LOW : HIGH);
-  aartLed.set(state[machinestate].ledState);
-
-  switch (machinestate) {
-    case WAITINGFORCARD:
-      break;
-
-    case REBOOT:
-      node.delayedReboot();
-      break;
-
-    case CHECKINGCARD:
-      break;
-
-    case POWERED:
-      if ((millis() - laststatechange) > MAX_IDLE_TIME) {
-        Log.printf("Machine idle for too long - switching off.\n");
-        machinestate = WAITINGFORCARD;
-        idle_poweroff++;
-      }
-      break;
-
-    case RUNNING:
-      break;
-
-    case REJECTED:
-      break;
-
-    case TRANSIENTERROR:
-      break;
-    case OUTOFORDER:
-    case NOCONN:
-    case BOOTING:
-      break;
-  };
+  digitalWrite(RELAY_GPIO,
+               ((machinestate.state() == POWERED) || (machinestate.state() == RUNNING)) ? HIGH : LOW);
 }

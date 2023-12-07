@@ -9,14 +9,33 @@
       return _initState(state, &dflt);
     }
 
+    MachineState::state_t * MachineState::_initState(uint8_t state, 
+	const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, time_t timeInState) 
+    {
+	state_t s = {
+		.label = label,
+		.ledState = ledState,
+      		.maxTimeInMilliSeconds = timeout,
+      		.failStateOnTimeout = nextstate,
+      		.timeInState = timeInState,
+      		.timeoutTransitions = 0,
+      		.autoReportCycle = 0,
+      		.onLoopCB = nullptr,
+      		.onChangeCB = nullptr,
+      		.onTimeoutCB = nullptr,
+    	};
+	return _initState(state, &s);
+      }
+
     MachineState::state_t * MachineState::_initState(uint8_t state, MachineState::state_t * dflt) {
       // state_t *s = heap_caps_malloc(sizeof(state_t), MALLOC_CAP_32BIT | MALLOC_CAP_SPIRAM);
       state_t * s = (state_t *) malloc(sizeof(state_t));
+      if (!s) return NULL;
 
-      if (dflt)
-        *s = *dflt;
+      if (dflt) 
+        memcpy(s,dflt,sizeof(state_t)); // *s = *dflt;
       else
-        *s = {};
+        memset(s,0,sizeof(s)); // *s = {};
 
       _state2stateStruct[state] = s;
       return s;
@@ -40,9 +59,11 @@
       machinestate = s;
     }
 
+#if 0
     void MachineState::operator=(machinestate_t s) {
       machinestate = s;
     }
+#endif
 
     void MachineState::setOnLoopCallback(uint8_t state, THandlerFunction_OnLoopCB onLoopCB) {
       state_t *s = _state2stateStruct[state];
@@ -52,70 +73,70 @@
 
     void MachineState::setOnChangeCallback(uint8_t state, THandlerFunction_OnChangeCB onChangeCB) {
       state_t *s = _state2stateStruct[state];
-      if (s == NULL) s = _initState(state, NULL);
+      if (s == NULL) 
+		s = _initState(state, NULL);
       s->onChangeCB = onChangeCB;
     };
 
     void MachineState::setOnTimeoutCallback(uint8_t state, THandlerFunction_OnTimeoutCB onTimeoutCB) {
       state_t *s = _state2stateStruct[state];
-      if (s == NULL) s = _initState(state, NULL);
+      if (s == NULL) 
+		s = _initState(state, NULL);
       s->onTimeoutCB = onTimeoutCB;
     };
 
 
-    uint8_t MachineState::addState(const char * label, machinestate_t nextstate) {
+    MachineState::machinestate_t MachineState::addState(const char * label, machinestate_t nextstate) {
       return addState((state_t) {
         label, LED::LED_ERROR, 5 * 10000, nextstate, 0, 0, 0, nullptr, nullptr, nullptr
       });
     }
 
-    uint8_t MachineState::addState(const char * label, time_t timeout, machinestate_t nextstate) {
+    MachineState::machinestate_t MachineState::addState(const char * label, time_t timeout, machinestate_t nextstate) {
       return addState((state_t) {
         label, LED::LED_ERROR, timeout, nextstate, 0, 0, 0, nullptr, nullptr, nullptr
       });
     }
 
-    uint8_t MachineState::addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate) {
-      return addState((state_t) { label, ledState, timeout, nextstate, 0, 0, 0, nullptr,nullptr,nullptr });
+    MachineState::machinestate_t MachineState::addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate) {
+	state_t s = {
+		.label = label,
+		.ledState = ledState,
+      		.maxTimeInMilliSeconds = timeout,
+      		.failStateOnTimeout = nextstate,
+      		.timeInState = NEVER,
+      		.timeoutTransitions = 0,
+      		.autoReportCycle = 0,
+      		.onLoopCB = nullptr,
+      		.onChangeCB = nullptr,
+      		.onTimeoutCB = nullptr,
+    	};
+      return addState(s);
     }
 
+    MachineState::machinestate_t MachineState::addState(state_t aState) {
+      for (uint8_t i = 0; i < 255; i++)
+        if (_state2stateStruct[i] == NULL) {
+          _initState(i, &aState);
+          return i;
+        };
+      Log.println("BUG -- More than 254 active states ?");
+      return 255;
+    };
+
     MachineState::MachineState() {
-      _initState(WAITINGFORCARD,
-      (state_t) {
-        "Waiting for card",     LED::LED_IDLE,                 NEVER, WAITINGFORCARD , 0,             0, 0,
-        nullptr, nullptr, nullptr
-      });
-      _initState(REBOOT,
-      (state_t) {
-        "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT,         0,             0, 0,
-        nullptr, nullptr, nullptr
-      });
-      _initState(BOOTING,
-      (state_t) {
-        "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT,         0 ,            0, 0,
-        nullptr, nullptr, nullptr
-      });
-      _initState(OUTOFORDER,
-      (state_t) {
-        "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT,         5 * 60 * 1000, 0, 0,
-        nullptr, nullptr, nullptr
-      });
-      _initState(TRANSIENTERROR,
-      (state_t) {
-        "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD, 5 * 60 * 1000, 0, 0,
-        nullptr, nullptr, nullptr
-      });
-      _initState(NOCONN,
-      (state_t) {
-        "No network",           LED::LED_FLASH,                NEVER, NOCONN,         0,             0, 0,
-        nullptr, nullptr, nullptr
-      });
-      _initState(CHECKINGCARD,
-      (state_t) {
-        "Checking card...",             LED::LED_IDLE,             10 * 1000, WAITINGFORCARD, 0,             0, 0,
-        nullptr, nullptr, nullptr
-      });
-      _initState(ALL_STATES, (state_t) { "<default>",LED::LED_IDLE,NEVER,ALL_STATES,0,0, 0, nullptr, nullptr, nullptr });
+      for(int i = 0; i < 256; i++) 
+	_state2stateStruct[i] = NULL; 
+
+      _initState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD, 0            );
+      _initState(REBOOT, 	"Rebooting",            LED::LED_ERROR,   120 * 1000, REBOOT,         0            );
+      _initState(BOOTING, 	"Booting",              LED::LED_ERROR,   120 * 1000, REBOOT,         0            );
+      _initState(OUTOFORDER, 	"Out of order",         LED::LED_ERROR,   120 * 1000, REBOOT,         5 * 60 * 1000);
+      _initState(TRANSIENTERROR,"Transient Error",      LED::LED_ERROR,     5 * 1000, WAITINGFORCARD, 5 * 60 * 1000);
+      _initState(NOCONN, 	"No network",           LED::LED_FLASH,        NEVER, NOCONN,         0            );
+      _initState(CHECKINGCARD, 	"Checking card...",     LED::LED_IDLE,     10 * 1000, WAITINGFORCARD, 0            );
+      _initState(REJECTED, 	"Card rejected",        LED::LED_ERROR,     2 * 1000, WAITINGFORCARD, 0            );
+      _initState(ALL_STATES, 	"<default>",            LED::LED_IDLE,         NEVER, ALL_STATES,     0            );
 
       laststate = OUTOFORDER;
       machinestate = BOOTING;
@@ -191,14 +212,26 @@
         _state2stateStruct[ALL_STATES]->onLoopCB(machinestate);
     };
 
-    uint8_t MachineState::addState(state_t aState) {
-      for (uint8_t i = 1; i < 255; i++)
-        if (_state2stateStruct[i] == NULL) {
-          _initState(i, &aState);
-          return i;
-        };
-      Log.println("BUG -- More than 254 active states ?");
-      return 255;
+    time_t MachineState::secondsLeftInThisState() {
+	if (_state2stateStruct[machinestate]->maxTimeInMilliSeconds == NEVER)
+		return 0;
+
+        unsigned long d = millis() - laststatechange;
+        d = _state2stateStruct[machinestate]->maxTimeInMilliSeconds - d;
+	return d / 1000;
+    };
+
+    String MachineState::timeLeftInThisState() {
+	char buff[48];
+	time_t d = secondsLeftInThisState();
+	if (d == 0) return "";
+	int s = d % 60; d /= 60;
+	int m = d % 60; d /= 60;
+	int h = d;
+	if (h) snprintf(buff,sizeof(buff),"%02d:%02d",h,m);
+	else if (m > 5) snprintf(buff,sizeof(buff),"%02d:%02d",m,s);
+	else snprintf(buff,sizeof(buff),"%d",m*60+s);
+	return String(buff);
     };
 
     void MachineState::defineState(uint8_t state,

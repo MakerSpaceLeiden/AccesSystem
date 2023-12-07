@@ -2,6 +2,8 @@
 #include <OlimexBoard.h>
 #include <ETH.h>
 
+static const uint8_t CLEAR_EEPROM_AND_CACHE_BUTTON = 34;
+
 void PowerNodeNGv103::begin() {
 	gpio = new ExpandedGPIO();
 	gpio->begin(MCP_I2C_ADDR);
@@ -17,7 +19,7 @@ void PowerNodeNGv103::begin() {
 
         ETH.begin(ETH_PHY_ADDR, -1 /* revision K, NRST is RC */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
 
-	ACNode::begin();
+	ACNode::begin(BOARD_OLIMEX, CLEAR_EEPROM_AND_CACHE_BUTTON);
 }
 
 void PowerNodeNGv103::loop() {
