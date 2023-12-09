@@ -222,7 +222,7 @@ void loop() {
 
     if (machinestate == POWERED) {
       String left = machinestate.timeLeftInThisState();
-      if (left.length() && machinestate.timeInThisState() > 300) node.updateDisplayStateMsg("Auto off: " + left,1);
+      if (left.length() && machinestate.secondsInThisState() > 300) node.updateDisplayStateMsg("Auto off: " + left,1);
     };
 
     if (machinestate == MachineState::WAITINGFORCARD && machinestate.secondsInThisState() > SCREENSAVER_DELAY) {
