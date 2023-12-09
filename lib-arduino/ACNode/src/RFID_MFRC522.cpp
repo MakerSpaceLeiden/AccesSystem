@@ -13,6 +13,7 @@ RFID_MFRC522::RFID_MFRC522(const byte sspin , const byte rstpin , const byte irq
    _spiDevice = new MFRC522_SPI(sspin, rstpin, &SPI);
    _mfrc522 = new MFRC522(_spiDevice);
 
+   Log.println("MFRC522: SPI wired.");
    RFID::registerCallback(irqpin);
 }
 
@@ -27,6 +28,7 @@ RFID_MFRC522::RFID_MFRC522(TwoWire *i2cBus, const byte i2caddr, const byte rstpi
    _i2cDevice = new MFRC522_I2C(rstpin, i2caddr, *i2cBus);
    _mfrc522 = new MFRC522(_i2cDevice);
 
+   Log.println("MFRC522: I2C wired.");
    RFID::registerCallback(irqpin);
 }
 
@@ -36,9 +38,9 @@ void RFID_MFRC522::begin() {
   if (true == _irqMode) {
 	_mfrc522->PCD_WriteRegister(_mfrc522->ComIEnReg, 0xA0 /* irq on read */);
 	cardScannedIrqSeen = false; 
-	Log.println("MFRC522: IRQ mode.");
+	Log.println("MFRC522: Now scanning in IRQ mode.");
    } else {
-	Log.println("MFRC522: Polling mode.");
+	Log.println("MFRC522: Now scanning in Polling mode.");
    };
 
    // Note: this seems to wedge certain cards.

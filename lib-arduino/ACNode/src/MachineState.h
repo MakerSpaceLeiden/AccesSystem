@@ -9,7 +9,7 @@ class MachineState : public ACBase {
     static const time_t NEVER = 0;
 
     typedef enum {
-	BOOTING = 1,                  /* Startup state */
+	BOOTING = 0,                  /* Startup state */
         OUTOFORDER,               /* device not functional.  */
         REBOOT,                   /* forcefull reboot  */
         TRANSIENTERROR,           /* hopefully goes away level error  */
@@ -93,13 +93,13 @@ class MachineState : public ACBase {
 
     machinestate_t state();
 
-    // void operator=(machinestate_t s);
+    void operator=(machinestate_t s);
     void setState(machinestate_t s);
 
-    bool operator <(machinestate_t s) { return s < machinestate; };
+    bool operator <(machinestate_t s) { return s > machinestate; };
     bool operator ==(machinestate_t s) { return s == machinestate; };
     bool operator !=(machinestate_t s) { return s != machinestate; };
-    bool operator >(machinestate_t s) { return s > machinestate; };
+    bool operator >(machinestate_t s) { return s < machinestate; };
 
     void setOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
 
@@ -115,6 +115,7 @@ class MachineState : public ACBase {
 
     machinestate_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate);
 
+    time_t secondsInThisState();
     time_t secondsLeftInThisState();
     String timeLeftInThisState();
 

@@ -18,18 +18,20 @@
    Compile settings:  EPS32-WROOM-DA
 */
 #include <WhiteNodev108.h>
-#include <TimerEvent.h>
+#include <ButtonDebounce.h>
 
 #ifndef MACHINE
 #define MACHINE   "woodlathe"
 #endif
 
-#define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
+const unsigned long MAX_IDLE_TIME =     35 * 60;  // auto power off the machine after 35 minutes of no use.
+const unsigned long SCREENSAVER_DELAY = 20 * 60;  // power off the screen after 20 mins of no swipe.
 
 // #define INTERLOCK      (OPTO2)
-#define MENU_BUTTON          (BUTT0)
-#define OFF_BUTTON          (BUTT1)
-#define RELAY_GPIO          (OUT0)
+#define MENU_BUTTON       (BUTT0)
+#define OFF_BUTTON        (BUTT1)
+#define RELAY_GPIO        (OUT0)
+#define WHEN_PRESSED      (ONLOW) // pullup, active low buttons
 
 //#define OTA_PASSWD          "SomethingSecrit"
 WhiteNodev108 node = WhiteNodev108(MACHINE);
@@ -40,10 +42,13 @@ OTA ota = OTA(OTA_PASSWD);
 
 // LED aartLed = LED(LED_INDICATOR);
 
+ButtonDebounce * offButton, * menuButton;
+
 MachineState machinestate = MachineState();
 
 // Extra, hardware specific states
-MachineState::machinestate_t POWERED, RUNNING;
+MachineState::machinestate_t SCREENSAVER, INFODISPLAY, POWERED, RUNNING;
+
 
 unsigned long powered_total = 0, powered_last;
 unsigned long running_total = 0, running_last;
@@ -65,23 +70,90 @@ void setup() {
   digitalWrite(BUZZER, LOW);
   pinMode(BUZZER, OUTPUT);
 
-  pinMode(MENU_BUTTON, INPUT_PULLUP);
-  pinMode(OFF_BUTTON, INPUT_PULLUP);
-
-  POWERED = machinestate.addState( "Powered but idle", LED::LED_ON, MAX_IDLE_TIME, MachineState::WAITINGFORCARD);
+  SCREENSAVER = machinestate.addState( "Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER);
+  INFODISPLAY = machinestate.addState( "User browsing info pages", LED::LED_OFF, 20 * 1000,  MachineState::WAITINGFORCARD);
+  POWERED = machinestate.addState( "Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);
   RUNNING = machinestate.addState( "Lathe Running", LED::LED_ON, MachineState::NEVER);
 
   machinestate.setState(MachineState::BOOTING);
 
+  offButton = new ButtonDebounce(OFF_BUTTON);
+  offButton->setCallback([](const int newState) {
+    if (machinestate == SCREENSAVER) {
+      machinestate = MachineState::WAITINGFORCARD;
+      return;
+    };
+    if (machinestate == RUNNING) {
+      // Refuse to let the safety be used to power something off.
+      Log.println("Bad poweroff attempt. Ignoring.");
+      digitalWrite(BUZZER, HIGH); delay(500); digitalWrite(BUZZER, LOW);
+      bad_poweroff++;
+      return;
+    };
+    if (machinestate == POWERED) {
+      Log.println("Machine powered down by OFF button");
+      machinestate = MachineState::WAITINGFORCARD;
+      digitalWrite(BUZZER, HIGH); delay(50); digitalWrite(BUZZER, LOW);
+      manual_poweroff++;
+      return;
+    };
+    if (machinestate == INFODISPLAY) {
+      machinestate = MachineState::WAITINGFORCARD;
+      return;
+    };
+    Log.println("Left button press ignored.");
+  }, WHEN_PRESSED);
+
+  menuButton = new ButtonDebounce(MENU_BUTTON);
+  menuButton->setCallback([](const int newState) {
+    if (machinestate == SCREENSAVER) {
+      machinestate = MachineState::WAITINGFORCARD;
+      return;
+    };
+    if (machinestate == MachineState::WAITINGFORCARD) {
+      machinestate = INFODISPLAY;
+    }
+    Log.println("Right button press ignored.");
+  }, WHEN_PRESSED);
+
+
+
   machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-    node.updateDisplayStateMsg(machinestate.label());
     Log.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
+
+    node.setDisplayScreensaver(current == SCREENSAVER);
+
     if (current == MachineState::WAITINGFORCARD)
       node.updateDisplay("", "MORE", true);
-    if (current == POWERED)
+    else if (current == POWERED)
       node.updateDisplay("TURN OFF", "MORE", true);
-    if (current == RUNNING)
-      node.updateDisplay("", "", true);
+    else if (current == RUNNING)
+      node.updateDisplay(machinestate.label(), "", true);
+    else if (current == INFODISPLAY) {
+      node.updateInfoDisplay(0);
+      return;
+    };
+    node.updateDisplayStateMsg(machinestate.label());
+  });
+
+
+  node.onSwipe([](const char *tag)  -> ACBase::cmd_result_t  {
+    if (machinestate < MachineState::WAITINGFORCARD) {
+      Log.printf("Ignoring swipe; as the node is not yet ready for it\n");
+      return  ACBase::CMD_CLAIMED;
+    };
+
+    if (machinestate == SCREENSAVER) {
+      machinestate.setState(MachineState::WAITINGFORCARD);
+      Log.println("Switching off the screensaver");
+    };
+    if (machinestate == INFODISPLAY) {
+      machinestate.setState(MachineState::WAITINGFORCARD);
+      Log.println("Aborting info, to handle swipe");
+    };
+
+    // Let the core library handle the rest.
+    return  ACBase::CMD_DECLINE;
   });
 
   node.set_mqtt_prefix("ac");
@@ -100,16 +172,19 @@ void setup() {
   });
   node.onApproval([](const char * machine) {
     Log.println("Approval callback");
-    if (machinestate.state() != POWERED) {
+    if (machinestate != POWERED) {
       digitalWrite(BUZZER, HIGH); delay(50); digitalWrite(BUZZER, LOW);
     };
     machinestate.setState(POWERED);
   });
-
   node.onDenied([](const char * machine) {
+    if (machinestate == SCREENSAVER) {
+      machinestate.setState(MachineState::WAITINGFORCARD);
+      return;
+    };
     machinestate.setState(MachineState::REJECTED);
     for (int i = 0; i < 10; i++) {
-      digitalWrite(BUZZER, HIGH); delay(100); digitalWrite(BUZZER, LOW); delay(100);
+      digitalWrite(BUZZER, HIGH); delay(50); digitalWrite(BUZZER, LOW); delay(50);
     };
   });
 
@@ -133,27 +208,28 @@ void setup() {
   node.addHandler(&machinestate);
 
   node.begin();
+
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 
 }
 
 void loop() {
+  node.loop();
+
   static unsigned long lst = 0;
   if (millis() - lst > 1000) {
     lst = millis();
 
-    if (machinestate.state() == POWERED) {
+    if (machinestate == POWERED) {
       String left = machinestate.timeLeftInThisState();
-      if (left.length()) node.updateDisplayStateMsg("Auto off: " + left);
+      if (left.length() && machinestate.timeInThisState() > 300) node.updateDisplayStateMsg("Auto off: " + left,1);
     };
 
-    if (0) Log.printf("off=%d, menu=%d, opto=%d,%d, cur=%d,%d curA=%d,%d\n",
-                        digitalRead(OFF_BUTTON), digitalRead(MENU_BUTTON),
-                        digitalRead(OPTO0), digitalRead(OPTO1),
-                        digitalRead(CURR0), digitalRead(CURR1),
-                        analogRead(CURR0), analogRead(CURR1));
+    if (machinestate == MachineState::WAITINGFORCARD && machinestate.secondsInThisState() > SCREENSAVER_DELAY) {
+      Log.println("Enabling screensaver");
+      machinestate.setState(SCREENSAVER);
+    };
   };
-  node.loop();
 
 #ifdef INTERLOCK
   if (digitalRead(INTERLOCK)) {
@@ -166,24 +242,6 @@ void loop() {
   };
 #endif
 
-#ifdef OFF_BUTTON
-  if (digitalRead(OFF_BUTTON) == LOW) {
-    if (machinestate < POWERED)
-      return; // button not yet function.
-    if (machinestate > POWERED) {
-      // Refuse to let the safety be used to power something off.
-      digitalWrite(BUZZER, HIGH); delay(500); digitalWrite(BUZZER, LOW);
-      bad_poweroff++;
-      return;
-    }
-    Log.println("Machine powered down by OFF button");
-    machinestate.setState(MachineState::WAITINGFORCARD);
-    digitalWrite(BUZZER, HIGH); delay(50); digitalWrite(BUZZER, LOW);
-    manual_poweroff++;
-  };
-#endif
-
-
   digitalWrite(RELAY_GPIO,
-               ((machinestate.state() == POWERED) || (machinestate.state() == RUNNING)) ? HIGH : LOW);
+               ((machinestate == POWERED) || (machinestate == RUNNING)) ? HIGH : LOW);
 }

@@ -59,11 +59,9 @@
       machinestate = s;
     }
 
-#if 0
     void MachineState::operator=(machinestate_t s) {
       machinestate = s;
     }
-#endif
 
     void MachineState::setOnLoopCallback(uint8_t state, THandlerFunction_OnLoopCB onLoopCB) {
       state_t *s = _state2stateStruct[state];
@@ -210,6 +208,11 @@
         _state2stateStruct[machinestate]->onLoopCB(machinestate);
       else if (_state2stateStruct[ALL_STATES]->onLoopCB)
         _state2stateStruct[ALL_STATES]->onLoopCB(machinestate);
+    };
+
+    time_t MachineState::secondsInThisState() {
+        unsigned long d = millis() - laststatechange;
+	return d / 1000;
     };
 
     time_t MachineState::secondsLeftInThisState() {

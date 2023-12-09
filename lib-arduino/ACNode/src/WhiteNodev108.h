@@ -55,18 +55,32 @@ const uint8_t SCREEN_RESET = -1;     //  Not wired up
 
 class WhiteNodev108 : public ACNode {
   public: 
-	WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2) 
-		: ACNode(machine, wired, proto) {};
+	WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
 	void begin(bool hasScreen = true);
         void loop();
         void updateDisplay(String left, String right, bool rebuildFull = false);
-        void updateDisplayStateMsg(String msg);
-
+        void updateDisplayStateMsg(String msg,int line = 0);
+	void updateInfoDisplay(int page);
+	void setDisplayScreensaver(bool on);
+	void onSwipe(RFID::THandlerFunction_SwipeCB fn);
   private:
 	// reader build into the board - so only one type; and it is hardcoded.
 	//
         RFID_MFRC522 * _reader;
 	bool _hasScreen;
 	Adafruit_SH1106G * _display;
+	int _pageState;
+
+typedef struct state {
+  uint8_t pin; const char * label; int lst; int tpe;
+} state_t;
+state_t states[6] = {
+  { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
+  { BUTT1, "NO/back", 1, INPUT_PULLUP },
+  { CURR0, "Curr 1" , 1, INPUT },
+  { CURR1, "Curr 2", 1, INPUT },
+  { OPTO0, "Opto 1", 1, INPUT  },
+  { OPTO1, "Opto 2", 1, INPUT },
+};
 };
 #endif
