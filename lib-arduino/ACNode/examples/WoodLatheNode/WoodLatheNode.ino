@@ -15,7 +15,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-   Compile settings:  EPS32-WROOM-DA
+   Compile settings:  EPS32 Dev Module
 */
 #include <WhiteNodev108.h>
 #include <ButtonDebounce.h>
@@ -24,8 +24,10 @@
 #define MACHINE   "woodlathe"
 #endif
 
+const unsigned long CARD_CHECK_WAIT =         3;  // wait up to 3 seconds for a card to be checked.
 const unsigned long MAX_IDLE_TIME =     35 * 60;  // auto power off the machine after 35 minutes of no use.
-const unsigned long SCREENSAVER_DELAY = 20 * 60;  // power off the screen after 20 mins of no swipe.
+const unsigned long SHOW_COUNTDOWN_TIME_AFTER = 600; // Only start showing above idle to off countdown after 10 minutes of no use.
+const unsigned long SCREENSAVER_DELAY = 20 * 60;  // power off the screen after some period of no swipe/interaction.
 
 // #define INTERLOCK      (OPTO2)
 #define MENU_BUTTON       (BUTT0)
@@ -34,7 +36,7 @@ const unsigned long SCREENSAVER_DELAY = 20 * 60;  // power off the screen after 
 #define WHEN_PRESSED      (ONLOW) // pullup, active low buttons
 
 //#define OTA_PASSWD          "SomethingSecrit"
-WhiteNodev108 node = WhiteNodev108(MACHINE);
+WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 #ifdef OTA_PASSWD
 OTA ota = OTA(OTA_PASSWD);
@@ -47,7 +49,7 @@ ButtonDebounce * offButton, * menuButton;
 MachineState machinestate = MachineState();
 
 // Extra, hardware specific states
-MachineState::machinestate_t SCREENSAVER, INFODISPLAY, POWERED, RUNNING;
+MachineState::machinestate_t SCREENSAVER, INFODISPLAY, POWERED, RUNNING, CHECKINGCARD;
 
 
 unsigned long powered_total = 0, powered_last;
@@ -70,6 +72,7 @@ void setup() {
   digitalWrite(BUZZER, LOW);
   pinMode(BUZZER, OUTPUT);
 
+  CHECKINGCARD = machinestate.addState( "Checking card....", LED::LED_OFF, CARD_CHECK_WAIT*1000, MachineState::WAITINGFORCARD);
   SCREENSAVER = machinestate.addState( "Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER);
   INFODISPLAY = machinestate.addState( "User browsing info pages", LED::LED_OFF, 20 * 1000,  MachineState::WAITINGFORCARD);
   POWERED = machinestate.addState( "Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);
@@ -125,6 +128,8 @@ void setup() {
 
     if (current == MachineState::WAITINGFORCARD)
       node.updateDisplay("", "MORE", true);
+    else if (current == CHECKINGCARD)
+      node.updateDisplay("", "", true);
     else if (current == POWERED)
       node.updateDisplay("TURN OFF", "MORE", true);
     else if (current == RUNNING)
@@ -151,7 +156,8 @@ void setup() {
       machinestate.setState(MachineState::WAITINGFORCARD);
       Log.println("Aborting info, to handle swipe");
     };
-
+    digitalWrite(BUZZER, HIGH); delay(20); digitalWrite(BUZZER, LOW);
+    machinestate = CHECKINGCARD;
     // Let the core library handle the rest.
     return  ACBase::CMD_DECLINE;
   });
@@ -210,7 +216,6 @@ void setup() {
   node.begin();
 
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
-
 }
 
 void loop() {
@@ -222,7 +227,10 @@ void loop() {
 
     if (machinestate == POWERED) {
       String left = machinestate.timeLeftInThisState();
-      if (left.length() && machinestate.secondsInThisState() > 300) node.updateDisplayStateMsg("Auto off: " + left,1);
+      // Show the countdown to poweroff; only when the machine
+      // has been idle for a singificant bit of time.
+      //
+      if (left.length() && machinestate.secondsInThisState() > SHOW_COUNTDOWN_TIME_AFTER) node.updateDisplayStateMsg("Auto off: " + left, 1);
     };
 
     if (machinestate == MachineState::WAITINGFORCARD && machinestate.secondsInThisState() > SCREENSAVER_DELAY) {

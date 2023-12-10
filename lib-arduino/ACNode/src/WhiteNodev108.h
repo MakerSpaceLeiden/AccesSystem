@@ -55,6 +55,7 @@ const uint8_t SCREEN_RESET = -1;     //  Not wired up
 
 class WhiteNodev108 : public ACNode {
   public: 
+	WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
 	WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
 	void begin(bool hasScreen = true);
         void loop();
@@ -70,6 +71,7 @@ class WhiteNodev108 : public ACNode {
 	bool _hasScreen;
 	Adafruit_SH1106G * _display;
 	int _pageState;
+	void pop();
 
 typedef struct state {
   uint8_t pin; const char * label; int lst; int tpe;

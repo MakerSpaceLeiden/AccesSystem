@@ -217,7 +217,6 @@ private:
     void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
-    void pop();
     void checkClearEEPromAndCacheButtonPressed(uint8_t button);
 
     const char * state2str(int state);
@@ -231,6 +230,7 @@ private:
     std::list<ACSecurityHandler*> _security_handlers;
 
 protected:
+    void pop();
     ExpandedGPIO * gpio = NULL;
     const char * _ssid;
     const char * _ssid_passwd;

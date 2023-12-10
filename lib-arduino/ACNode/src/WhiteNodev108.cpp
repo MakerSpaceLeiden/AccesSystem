@@ -1,15 +1,27 @@
 #include "WhiteNodev108.h"
 #include "msl-logo.h"
 
-WhiteNodev108::WhiteNodev108(const char * machine, bool wired, acnode_proto_t proto)
-: ACNode(machine, wired, proto) {
+WhiteNodev108::WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) :
+	ACNode(machine,ssid,ssid_passwd,proto) {
+		pop();
+	};
+
+WhiteNodev108::WhiteNodev108(const char * machine, bool wired, acnode_proto_t proto) :
+	ACNode(machine,wired,proto) {
+		pop();
+	};
+
+void WhiteNodev108::pop() {
     // Non standard pins for i2c.
     Wire.begin(I2C_SDA, I2C_SCL);
     
     // All nodes have a build-in RFID reader; so fine to hardcode this.
     //
-    _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, -1); // RFID_IRQ);
+    // _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, -1); // RFID_IRQ);
+    _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
     addHandler(_reader);
+
+    ACNode::pop();
 };
 
 void WhiteNodev108::begin(bool hasScreen) {
@@ -27,8 +39,8 @@ void WhiteNodev108::begin(bool hasScreen) {
         _pageState = -2;
     };
     
-    
-    ETH.begin(ETH_PHY_ADDR, ETH_PHY_POWER, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_RTL8201, ETH_CLOCK_GPIO17_OUT);
+    if (_wired)    
+	    ETH.begin(ETH_PHY_ADDR, ETH_PHY_POWER, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_RTL8201, ETH_CLOCK_GPIO17_OUT);
     
     ACNode::begin(BOARD_NG);
     updateDisplay("","MORE", true);
@@ -126,7 +138,8 @@ void WhiteNodev108::updateInfoDisplay(int page) {
 }
 
 void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB fn) { 
-    _reader->onSwipe(fn);
+    if (_reader)
+	    _reader->onSwipe(fn);
 };
 
 void WhiteNodev108::loop() {

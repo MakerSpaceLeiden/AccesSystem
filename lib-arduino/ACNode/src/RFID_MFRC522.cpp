@@ -12,9 +12,9 @@ RFID_MFRC522::RFID_MFRC522(const byte sspin , const byte rstpin , const byte irq
 
    _spiDevice = new MFRC522_SPI(sspin, rstpin, &SPI);
    _mfrc522 = new MFRC522(_spiDevice);
+    _irqpin = irqpin;
 
    Log.println("MFRC522: SPI wired.");
-   RFID::registerCallback(irqpin);
 }
 
 RFID_MFRC522::~RFID_MFRC522() {
@@ -27,16 +27,30 @@ RFID_MFRC522::RFID_MFRC522(TwoWire *i2cBus, const byte i2caddr, const byte rstpi
 {
    _i2cDevice = new MFRC522_I2C(rstpin, i2caddr, *i2cBus);
    _mfrc522 = new MFRC522(_i2cDevice);
+   _irqpin = irqpin;
 
    Log.println("MFRC522: I2C wired.");
-   RFID::registerCallback(irqpin);
 }
+
+void RFID_MFRC522::clearInt() {
+        _mfrc522->PCD_WriteRegister(_mfrc522->ComIrqReg, 0x7F);
+	_mfrc522->PICC_HaltA();
+};
+
+void RFID_MFRC522::activateScanning() {
+    	_mfrc522->PCD_WriteRegister(_mfrc522->FIFODataReg, _mfrc522->PICC_CMD_REQA);
+	_mfrc522->PCD_WriteRegister(_mfrc522->CommandReg, _mfrc522->PCD_Transceive);
+	_mfrc522->PCD_WriteRegister(_mfrc522->BitFramingReg, 0x87); // start data transmission, last byte bits, 9.3.1.14
+};
 
 void RFID_MFRC522::begin() {
   _mfrc522->PCD_Init();     // Init MFRC522
 
-  if (true == _irqMode) {
-	_mfrc522->PCD_WriteRegister(_mfrc522->ComIEnReg, 0xA0 /* irq on read */);
+  if (_irqpin != 255) {
+	 /* Set1 | RxIrq (table 30, page 40) -- IRQ on read completed */
+	_mfrc522->PCD_WriteRegister(_mfrc522->ComIEnReg, 0xA0);
+	activateScanning();
+   	RFID::registerCallback(_irqpin);
 	cardScannedIrqSeen = false; 
 	Log.println("MFRC522: Now scanning in IRQ mode.");
    } else {
@@ -58,12 +72,11 @@ void RFID_MFRC522::loop() {
 	static unsigned long kick = 0;
 	if (millis() - kick > 500) {
 		kick = millis();
-    		_mfrc522->PCD_WriteRegister(_mfrc522->FIFODataReg, _mfrc522->PICC_CMD_REQA);
-		_mfrc522->PCD_WriteRegister(_mfrc522->CommandReg, _mfrc522->PCD_Transceive);
-		_mfrc522->PCD_WriteRegister(_mfrc522->BitFramingReg, 0x87); // start data transmission, last byte bits, 9.3.1.14
+		activateScanning();
 	};
-        return;
       };
+      if (!cardScannedIrqSeen)
+	return;
     } else {
 	// Polling mode does not require a re-arm; instead we check fi there is a card 'now;
        if (_mfrc522->PICC_IsNewCardPresent() == 0)
@@ -76,13 +89,14 @@ void RFID_MFRC522::loop() {
       _miss++;
     };
 
-    // Stop the reading.
-    _mfrc522->PICC_HaltA();
 
     // clear the interupt and re-arm the reader.
     if (_irqMode) {
-	_mfrc522->PCD_WriteRegister(_mfrc522->ComIrqReg, 0x7F);
+	clearInt();
     	cardScannedIrqSeen = false;
+    } else {
+    	// Stop the reading.
+    	_mfrc522->PICC_HaltA();
     };
     return;
 }

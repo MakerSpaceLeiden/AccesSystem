@@ -49,5 +49,8 @@ class RFID_MFRC522 : public RFID {
     MFRC522_SPI * _spiDevice;
     MFRC522_I2C * _i2cDevice;
     MFRC522 * _mfrc522;
+    uint8_t _irqpin = 255;
+    void activateScanning();
+    void clearInt();
 };
 #endif
