@@ -1,5 +1,5 @@
 /*
-      Copyright 2015-2018 Dirk-Willem van Gulik <dirkx@webweaving.org>
+      Copyright 2015-2018,2023 Dirk-Willem van Gulik <dirkx@webweaving.org>
                           Stichting Makerspace Leiden, the Netherlands.
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,28 +44,28 @@
           GPI35
 
 */
-#define GPB0 ( PIN_HPIO_MCP | ( 8 + 0))
-#define GPB3 ( PIN_HPIO_MCP | ( 8 + 3))
+#define GPB0 (PIN_HPIO_MCP | (8 + 0))
+#define GPB3 (PIN_HPIO_MCP | (8 + 3))
 
 #include <PowerNodeNGv103.h>
 
 // All of those are part of the normal libraries of Arduino.
 //
-#include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
-#include <ButtonDebounce.h>         // https://github.com/dirkx/ButtonDebounce.git
-#include <OptoDebounce.h>           // https://github.com/dirkx/OptoDebounce.git
+#include <CurrentTransformer.h>  // https://github.com/dirkx/CurrentTransformer
+#include <ButtonDebounce.h>      // https://github.com/dirkx/ButtonDebounce.git
+#include <OptoDebounce.h>        // https://github.com/dirkx/OptoDebounce.git
 
 #ifndef MACHINE
-#define MACHINE             "lintzaag"
+#define MACHINE "lintzaag"
 #endif
 
-#define OFF_BUTTON          (39)
-#define MAX_IDLE_TIME       (35 * 60 * 1000) // auto power off after 35 minutes of no use.
+#define OFF_BUTTON (39)
+#define MAX_IDLE_TIME (35 * 60 * 1000)  // auto power off after 35 minutes of no use.
 
 // Current reading whule runing 0.015 or higher
 // Current reading while idling 0.005
 // Current reading while off    0.020
-#define CURRENT_THRESHHOLD  (0.005)
+#define CURRENT_THRESHHOLD (0.005)
 
 CurrentTransformerWithCallbacks currentSensor = CurrentTransformerWithCallbacks(CURRENT_INPUT1);
 
@@ -84,42 +84,42 @@ OTA ota = OTA(OTA_PASSWD);
 
 
 const uint8_t RELAY_GPIO = GPB0;
-LED aartLed = LED(GPB3);    // defaults to the aartLed - otherwise specify a GPIO.
+LED aartLed = LED(GPB3);  // defaults to the aartLed - otherwise specify a GPIO.
 
 ButtonDebounce offButton(OFF_BUTTON, 150 /* mSeconds */);
 OptoDebounce opto1 = OptoDebounce(OPTO_COUPLER_INPUT1);
 
 typedef enum {
-  BOOTING, OUTOFORDER,      // device not functional.
-  REBOOT,                   // forcefull reboot
-  TRANSIENTERROR,           // hopefully goes away level error
-  NOCONN,                   // sort of fairly hopless (though we can cache RFIDs!)
-  WAITINGFORCARD,           // waiting for card.
+  BOOTING,
+  OUTOFORDER,      // device not functional.
+  REBOOT,          // forcefull reboot
+  TRANSIENTERROR,  // hopefully goes away level error
+  NOCONN,          // sort of fairly hopless (though we can cache RFIDs!)
+  WAITINGFORCARD,  // waiting for card.
   CHECKINGCARD,
   REJECTED,
-  POWERED,                  // this is where we engage the relay.
-  RUNNING,                  // this is when we detect a current.
+  POWERED,  // this is where we engage the relay.
+  RUNNING,  // this is when we detect a current.
 } machinestates_t;
 
 #define NEVER (0)
 
 struct {
-  const char * label;                   // name of this state
-  LED::led_state_t ledState;            // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
-  time_t maxTimeInMilliSeconds;         // how long we can stay in this state before we timeout.
-  machinestates_t failStateOnTimeout;   // what state we transition to on timeout.
-} state[RUNNING + 1] =
-{
-  { "Booting",              LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Out of order",         LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Rebooting",            LED::LED_ERROR,           120 * 1000, REBOOT },
-  { "Transient Error",      LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "No network",           LED::LED_FLASH,         NEVER       , NOCONN },           // should we reboot at some point ?
-  { "Waiting for card",     LED::LED_IDLE,          NEVER       , WAITINGFORCARD },
-  { "Checking card",        LED::LED_PENDING,           5 * 1000, WAITINGFORCARD },
-  { "Rejecting noise/card", LED::LED_ERROR,             5 * 1000, WAITINGFORCARD },
-  { "Powered - but idle",   LED::LED_ON,            NEVER       , WAITINGFORCARD },   // we leave poweroff idle to the code below.
-  { "Running",              LED::LED_ON,            NEVER       , WAITINGFORCARD },
+  const char* label;                   // name of this state
+  LED::led_state_t ledState;           // flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1.
+  time_t maxTimeInMilliSeconds;        // how long we can stay in this state before we timeout.
+  machinestates_t failStateOnTimeout;  // what state we transition to on timeout.
+} state[RUNNING + 1] = {
+  { "Booting", LED::LED_ERROR, 120 * 1000, REBOOT },
+  { "Out of order", LED::LED_ERROR, 120 * 1000, REBOOT },
+  { "Rebooting", LED::LED_ERROR, 120 * 1000, REBOOT },
+  { "Transient Error", LED::LED_ERROR, 5 * 1000, WAITINGFORCARD },
+  { "No network", LED::LED_FLASH, NEVER, NOCONN },  // should we reboot at some point ?
+  { "Waiting for card", LED::LED_IDLE, NEVER, WAITINGFORCARD },
+  { "Checking card", LED::LED_PENDING, 5 * 1000, WAITINGFORCARD },
+  { "Rejecting noise/card", LED::LED_ERROR, 5 * 1000, WAITINGFORCARD },
+  { "Powered - but idle", LED::LED_ON, NEVER, WAITINGFORCARD },  // we leave poweroff idle to the code below.
+  { "Running", LED::LED_ON, NEVER, WAITINGFORCARD },
 };
 
 unsigned long laststatechange = 0;
@@ -135,7 +135,7 @@ unsigned long idle_poweroff = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
-  Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
 
   // make sure the relay is off.
   node.xdigitalWrite(RELAY_GPIO, 0);
@@ -163,13 +163,13 @@ void setup() {
     Log.printf("Error %d\n", err);
     machinestate = TRANSIENTERROR;
   });
-  node.onApproval([](const char * machine) {
+  node.onApproval([](const char* machine) {
     machinestate = POWERED;
   });
-  node.onDenied([](const char * machine) {
+  node.onDenied([](const char* machine) {
     machinestate = REJECTED;
   });
-  node.onSwipe([](const char * tag) -> ACBase::cmd_result_t  {
+  node.onSwipe([](const char* tag) -> ACBase::cmd_result_t {
     // avoid swithing off a machine unless we have to.
     //
     if (machinestate < POWERED)
@@ -191,8 +191,9 @@ void setup() {
 
     if (machinestate < POWERED) {
       static unsigned long last = 0;
-      if (millis() - last > 1000)
+      if (millis() - last > 5000)
         Log.println("Very strange - current observed while we are 'off'. Should not happen.");
+      last = millis();
     }
   });
 
@@ -202,7 +203,6 @@ void setup() {
       machinestate = POWERED;
       Log.println("Motor stopped");
     };
-
   });
 
   offButton.setCallback([](int buttonOnOff) {
@@ -216,7 +216,8 @@ void setup() {
       Log.printf("Machine switched off with button while running (bad!)\n");
       bad_poweroff++;
     } else if (machinestate == POWERED) {
-      Log.printf("Machine switched OFF with the off-button.\n");;
+      Log.printf("Machine switched OFF with the off-button.\n");
+      ;
     } else {
       Log.printf("Off button pressed (currently in state %s). Weird.\n",
                  state[machinestate].label);
@@ -224,7 +225,7 @@ void setup() {
     machinestate = WAITINGFORCARD;
   });
 
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject& report) {
     report["state"] = state[machinestate].label;
 
     report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);
@@ -255,7 +256,7 @@ void setup() {
   // node.set_debug(true);
   // node.set_debugAlive(true);
   node.begin();
-  Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
 }
 
 void loop() {
@@ -282,8 +283,7 @@ void loop() {
     laststatechange = millis();
   }
 
-  if (state[machinestate].maxTimeInMilliSeconds != NEVER &&
-      (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
+  if (state[machinestate].maxTimeInMilliSeconds != NEVER && (millis() - laststatechange > state[machinestate].maxTimeInMilliSeconds)) {
     laststate = machinestate;
     machinestate = state[machinestate].failStateOnTimeout;
     Debug.printf("Time-out; transition from %s to %s\n",
