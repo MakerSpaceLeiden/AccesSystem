@@ -28,7 +28,7 @@ class RFID : public ACBase {
     bool _irqMode = false;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
     char lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
-    unsigned long lastswipe, _scan, _miss;
+    unsigned long lastswipe = 0, _scan = 0, _miss = 0;
 };
 
 #endif

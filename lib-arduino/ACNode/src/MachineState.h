@@ -3,6 +3,7 @@
 
 #include <ACNode-private.h>
 #include <ACBase.h>
+#include <LED.h>
 
 class MachineState : public ACBase {
   public:
@@ -66,13 +67,16 @@ class MachineState : public ACBase {
       LED::led_state_t ledState;            /* flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1. */
       time_t maxTimeInMilliSeconds;         /* how long we can stay in this state before we timeout. */
       machinestate_t failStateOnTimeout;   /* what state we transition to on timeout. */
-      unsigned long timeInState;
       unsigned long timeoutTransitions;
       unsigned long autoReportCycle;
 
       THandlerFunction_OnLoopCB onLoopCB;
       THandlerFunction_OnChangeCB onChangeCB;
       THandlerFunction_OnTimeoutCB onTimeoutCB;
+
+      // Bookkeeping
+      time_t timeInState;
+      unsigned long stateCnt;
     } state_t;
     state_t * _state2stateStruct[256];
 
@@ -82,14 +86,15 @@ class MachineState : public ACBase {
     state_t * _initState(uint8_t state, state_t dflt);
     state_t * _initState(uint8_t state, state_t * dflt);
     state_t * _initState(uint8_t state, const char * label, LED::led_state_t ledState, 
-	time_t timeout = NEVER, machinestate_t nextstate = NEVER, time_t timeInState = 0);
+	time_t timeout = NEVER, machinestate_t nextstate = NEVER);
    
+    LED * _led = NULL;
 
   public:
     const char * label();
     const char * label(uint8_t label);
     LED::led_state_t ledState() { return _state2stateStruct[machinestate]->ledState; }
-    MachineState();
+    MachineState(LED * led = NULL);
 
     machinestate_t state();
 
@@ -124,7 +129,6 @@ class MachineState : public ACBase {
 		LED::led_state_t ledState = LED::LED_ERROR,
 		time_t timeout = NEVER, 
 		machinestate_t nextstate = WAITINGFORCARD,
-	     	unsigned long timeInState = NEVER,
 		unsigned long timeoutTransitions = NEVER, 
 		unsigned long autoReportCycle = NEVER,
 		THandlerFunction_OnLoopCB onLoopCB = NULL, 

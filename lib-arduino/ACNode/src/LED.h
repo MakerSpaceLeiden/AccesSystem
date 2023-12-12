@@ -14,6 +14,7 @@ public:
    void _off();
    void _set(bool on);
    void _update();
+   void begin();
 
 private:
    unsigned int _pin,_tock;

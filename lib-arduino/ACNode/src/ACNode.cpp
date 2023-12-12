@@ -165,11 +165,6 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_
     if (!*moi)  
 	strncpy(moi, machine, sizeof(moi));
 
-    // If no one has yet set something - we're going to fall back to
-    // the Arduino baseline.
-    if (gpio = NULL)
-	gpio = new ExpandedGPIO();
-
 #define X { Serial.printf("Halting at %s:%d\n", __FILE__, __LINE__); delay(5000); }
 
 #if 0
@@ -442,7 +437,7 @@ void ACNode::loop() {
 	if (millis() - last > _report_period) {
 		last = millis();
 
-                DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(30) + 500);
+                DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(50) + 2000);
                 JsonObject out = jsonDoc.to<JsonObject>();
 
 		out[ "node" ] = moi;
@@ -493,10 +488,8 @@ void ACNode::loop() {
 
         String buff;
         serializeJson(jsonDoc, buff);
-        if (buff.length() > MAX_MSG) {
-            buff = buff.substring(0, MAX_MSG);
-        }
-		Log.println(buff);
+//        if (buff.length() > MAX_MSG) buff = buff.substring(0, MAX_MSG);
+	Log.println(buff);
         }
     }
     // XX to hook into a callback of the ethernet/wifi
@@ -576,8 +569,8 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
           return ACNode::CMD_CLAIMED;
       };
 
-      if (bc != _lastSwipe) {
-          Log.printf("Out of order energize/denied command received - ignored.\n");
+      if (bc != _lastSwipe && bc != _lastSwipe+1) {
+          Log.printf("Out of order energize/denied command received - ignored (got %lu, expected %lu)\n", bc, _lastSwipe);
           return ACNode::CMD_CLAIMED;
       };
 

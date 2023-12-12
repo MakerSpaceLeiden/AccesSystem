@@ -10,19 +10,21 @@
     }
 
     MachineState::state_t * MachineState::_initState(uint8_t state, 
-	const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, time_t timeInState) 
+	const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate)
     {
 	state_t s = {
 		.label = label,
 		.ledState = ledState,
       		.maxTimeInMilliSeconds = timeout,
       		.failStateOnTimeout = nextstate,
-      		.timeInState = timeInState,
       		.timeoutTransitions = 0,
       		.autoReportCycle = 0,
       		.onLoopCB = nullptr,
       		.onChangeCB = nullptr,
       		.onTimeoutCB = nullptr,
+		// Internal Bookkeeping
+      		.timeInState = 0,
+		.stateCnt = 0,
     	};
 	return _initState(state, &s);
       }
@@ -57,6 +59,7 @@
 
     void MachineState::setState(machinestate_t s) {
       machinestate = s;
+      if (_led) _led->set(ledState());
     }
 
     void MachineState::operator=(machinestate_t s) {
@@ -86,13 +89,13 @@
 
     MachineState::machinestate_t MachineState::addState(const char * label, machinestate_t nextstate) {
       return addState((state_t) {
-        label, LED::LED_ERROR, 5 * 10000, nextstate, 0, 0, 0, nullptr, nullptr, nullptr
+        label, LED::LED_ERROR, 5 * 10000, nextstate, 0, 0, nullptr, nullptr, nullptr
       });
     }
 
     MachineState::machinestate_t MachineState::addState(const char * label, time_t timeout, machinestate_t nextstate) {
       return addState((state_t) {
-        label, LED::LED_ERROR, timeout, nextstate, 0, 0, 0, nullptr, nullptr, nullptr
+        label, LED::LED_ERROR, timeout, nextstate, 0, 0, nullptr, nullptr, nullptr
       });
     }
 
@@ -102,7 +105,6 @@
 		.ledState = ledState,
       		.maxTimeInMilliSeconds = timeout,
       		.failStateOnTimeout = nextstate,
-      		.timeInState = NEVER,
       		.timeoutTransitions = 0,
       		.autoReportCycle = 0,
       		.onLoopCB = nullptr,
@@ -122,19 +124,20 @@
       return 255;
     };
 
-    MachineState::MachineState() {
+    MachineState::MachineState(LED * led) {
+      _led = led;
       for(int i = 0; i < 256; i++) 
 	_state2stateStruct[i] = NULL; 
 
-      _initState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD, 0            );
-      _initState(REBOOT, 	"Rebooting",            LED::LED_ERROR,   120 * 1000, REBOOT,         0            );
-      _initState(BOOTING, 	"Booting",              LED::LED_ERROR,   120 * 1000, REBOOT,         0            );
-      _initState(OUTOFORDER, 	"Out of order",         LED::LED_ERROR,   120 * 1000, REBOOT,         5 * 60 * 1000);
-      _initState(TRANSIENTERROR,"Transient Error",      LED::LED_ERROR,     5 * 1000, WAITINGFORCARD, 5 * 60 * 1000);
-      _initState(NOCONN, 	"No network",           LED::LED_FLASH,        NEVER, NOCONN,         0            );
-      _initState(CHECKINGCARD, 	"Checking card...",     LED::LED_IDLE,     10 * 1000, WAITINGFORCARD, 0            );
-      _initState(REJECTED, 	"Card rejected",        LED::LED_ERROR,     2 * 1000, WAITINGFORCARD, 0            );
-      _initState(ALL_STATES, 	"<default>",            LED::LED_IDLE,         NEVER, ALL_STATES,     0            );
+      _initState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD );
+      _initState(REBOOT, 	"Rebooting",            LED::LED_ERROR,   120 * 1000, REBOOT         );
+      _initState(BOOTING, 	"Booting",              LED::LED_ERROR,   120 * 1000, REBOOT         ); 
+      _initState(OUTOFORDER, 	"Out of order",         LED::LED_ERROR,   120 * 1000, REBOOT         );
+      _initState(TRANSIENTERROR,"Transient Error",      LED::LED_ERROR,     5 * 1000, WAITINGFORCARD );
+      _initState(NOCONN, 	"No network",           LED::LED_FLASH,        NEVER, NOCONN         );
+      _initState(CHECKINGCARD, 	"Checking card...",     LED::LED_IDLE,     10 * 1000, WAITINGFORCARD );
+      _initState(REJECTED, 	"Card rejected",        LED::LED_ERROR,     2 * 1000, WAITINGFORCARD );
+      _initState(ALL_STATES, 	"<default>",            LED::LED_IDLE,         NEVER, ALL_STATES     );
 
       laststate = OUTOFORDER;
       machinestate = BOOTING;
@@ -149,10 +152,15 @@
       setOnLoopCallback(REBOOT, [](MachineState::machinestate_t s) -> void {
         _acnode->delayedReboot();
       });
+      if (_led) _led->set(ledState());
     };
 
     void MachineState::report(JsonObject& report) {
       report["state"] = label();
+      JsonArray tis = report.createNestedArray("seconds_in_state");
+      for(int i = 0; i <= 255;i ++)
+	if (_state2stateStruct[i])
+		tis.add(_state2stateStruct[i]->timeInState);
     }
 
     void MachineState::loop()
@@ -170,10 +178,13 @@
         else if (_state2stateStruct[ALL_STATES]->onChangeCB)
           _state2stateStruct[ALL_STATES]->onChangeCB(laststate, machinestate);
 
-        if (_state2stateStruct[laststate])
+        if (_state2stateStruct[laststate]) {
         	_state2stateStruct[laststate]->timeInState += (millis() - laststatechange) / 1000;
+		_state2stateStruct[laststate]->stateCnt ++;
+	};
         laststate = machinestate;
         laststatechange = millis();
+        if (_led) _led->set(ledState());
         return;
       };
 
@@ -242,7 +253,6 @@
                 LED::led_state_t ledState,
                 time_t timeout,
                 machinestate_t nextstate,
-                unsigned long timeInState,
                 unsigned long timeoutTransitions,
                 unsigned long autoReportCycle,
                 THandlerFunction_OnLoopCB onLoopCB,
@@ -253,7 +263,20 @@
             Log.printf("BUG -- inpossible state (%d:%s)\n", state, label);
             return;
         };
-	state_t aState = { label, ledState, timeout, nextstate, timeInState,timeoutTransitions,autoReportCycle, onLoopCB,onChangeCB,onTimeoutCB };
+	state_t aState = { 
+                .label = label,
+                .ledState = ledState,
+                .maxTimeInMilliSeconds = timeout,
+                .failStateOnTimeout = nextstate,
+                .timeoutTransitions = timeoutTransitions,
+                .autoReportCycle = autoReportCycle,
+                .onLoopCB = onLoopCB,
+                .onChangeCB = onChangeCB,
+                .onTimeoutCB = onTimeoutCB,
+		// internal bookkeeping
+                .timeInState = 0,
+		.stateCnt = 0
+	};
         _initState(state , &aState);
     }
 

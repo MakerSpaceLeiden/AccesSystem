@@ -35,16 +35,6 @@ const uint16_t SCREEN_WIDTH = 128; // OLED display width, in pixels
 const uint16_t SCREEN_HEIGHT = 64; // OLED display height, in pixels
 const uint8_t OLED_RESET = -1;     //  Not wired up
 
-#define ETH_PHY_TYPE        ETH_PHY_LAN8720
-#define ETH_PHY_ADDR         0 // PHYAD0 tied to 0
-#define ETH_PHY_MDC         23
-#define ETH_PHY_MDIO        18
-#define ETH_PHY_POWER       12 /* board specific - can be jumpered to always on  */
-#define ETH_CLK_MODE        ETH_CLOCK_GPIO17_OUT
-
-#include <ETH.h>
-#include <WiredEthernet.h>
-
 #include "ACNode.h"
 
 class PurpleNodev107 : public ACNode {

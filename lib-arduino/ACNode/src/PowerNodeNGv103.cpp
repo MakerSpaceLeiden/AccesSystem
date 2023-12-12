@@ -4,22 +4,30 @@
 
 static const uint8_t CLEAR_EEPROM_AND_CACHE_BUTTON = 34;
 
+void PowerNodeNGv103::pop() {
+    // for recovery switch of NFC reader. We power it on
+    // early so we can init our RFID reader.
+    //
+    xpinMode(GPIOPORT_I2C_RECOVER_SWITCH, OUTPUT);
+    xdigitalWrite(GPIOPORT_I2C_RECOVER_SWITCH, 0);
+
+    // Non standard pins for i2c.
+    Wire.begin(PWNG_I2C_SDA, PWNG_I2C_SCL, 100 * 1000 /* 100 kHz */);
+
+    ACNode::pop();
+};
+
 void PowerNodeNGv103::begin() {
-	gpio = new ExpandedGPIO();
-	gpio->begin(MCP_I2C_ADDR);
+    _reader = new RFID_PN532_EX();
+    _reader->set_debug(false);
+    addHandler(_reader);
 
-  	// for recovery switch of NFC reader
-	//
-	xpinMode(GPIOPORT_I2C_RECOVER_SWITCH, OUTPUT);
-	xdigitalWrite(GPIOPORT_I2C_RECOVER_SWITCH, 0);
+    ExpandedGPIO::getInstance().addMCP(MCP_I2C_ADDR, &Wire);
 
-	_reader = new RFID_PN532_EX();
-	_reader->set_debug(false);
-        addHandler(_reader);
+    // ETH.begin(ETH_PHY_ADDR, -1 /* revision K, NRST is RC */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
+    ETH.begin();
 
-        ETH.begin(ETH_PHY_ADDR, -1 /* revision K, NRST is RC */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
-
-	ACNode::begin(BOARD_OLIMEX, CLEAR_EEPROM_AND_CACHE_BUTTON);
+    ACNode::begin(BOARD_OLIMEX, CLEAR_EEPROM_AND_CACHE_BUTTON);
 }
 
 void PowerNodeNGv103::loop() {
@@ -50,3 +58,9 @@ void PowerNodeNGv103::loop() {
 #endif
 	ACNode::loop();
 };
+
+void PowerNodeNGv103::onSwipe(RFID::THandlerFunction_SwipeCB fn) {
+	if (_reader)
+                _reader->onSwipe(fn);
+};
+

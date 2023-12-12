@@ -38,17 +38,6 @@ const uint8_t SCREEN_RESET = -1;     //  Not wired up
 // Needed for the screen
 #include <MachineState.h>
 
-#define ETH_PHY_TYPE        ETH_PHY_RTL8201
-#define ETH_PHY_ADDR         0 // PHYADxx all tied to 0
-#define ETH_PHY_MDC         23
-#define ETH_PHY_MDIO        18
-#define ETH_CLK_MODE        ETH_CLOCK_GPIO17_OUT
-
-#define ETH_PHY_POWER       -1 // powersafe in software
-#define ETH_PHY_RESET	    -1 // wired to EN/esp32 reset
-
-#include <ETH.h>
-#include <WiredEthernet.h>
 #include <RFID_MFRC522.h>
 
 #include "ACNode.h"

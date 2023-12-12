@@ -1,6 +1,18 @@
 #include "WhiteNodev108.h"
 #include "msl-logo.h"
 
+#define WN_ETH_PHY_TYPE        ETH_PHY_RTL8201
+#define WN_ETH_PHY_ADDR         0 // PHYADxx all tied to 0
+#define WN_ETH_PHY_MDC         23
+#define WN_ETH_PHY_MDIO        18
+#define WN_ETH_CLK_MODE        ETH_CLOCK_GPIO17_OUT
+
+#define WN_ETH_PHY_POWER       -1 // powersafe in software
+#define WN_ETH_PHY_RESET       -1 // wired to EN/esp32 reset
+
+#include <ETH.h>
+#include <WiredEthernet.h>
+
 WhiteNodev108::WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) :
 	ACNode(machine,ssid,ssid_passwd,proto) {
 		pop();
@@ -36,11 +48,11 @@ void WhiteNodev108::begin(bool hasScreen) {
                              (SCREEN_HEIGHT-msl_logo_height)/2,
                              msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
         _display->display();
-        _pageState = -2;
     };
+    _pageState = -2;
     
     if (_wired)    
-	    ETH.begin(ETH_PHY_ADDR, ETH_PHY_POWER, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_RTL8201, ETH_CLOCK_GPIO17_OUT);
+	    ETH.begin(WN_ETH_PHY_ADDR, WN_ETH_PHY_POWER, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_TYPE, WN_ETH_CLK_MODE);
     
     ACNode::begin(BOARD_NG);
     updateDisplay("","MORE", true);

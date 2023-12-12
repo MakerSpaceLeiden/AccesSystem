@@ -21,15 +21,25 @@ extern void expandedDigitalWrite(uint8_t pin, uint8_t val);
 
 class ExpandedGPIO {
     public:
-	ExpandedGPIO();
-	~ExpandedGPIO();
-
-	void begin(unsigned int mcp23addr, TwoWire * wire = &Wire);
-
+        static ExpandedGPIO& getInstance()
+        {
+            static ExpandedGPIO instance;
+            return instance;
+        }
+    private:
+        ExpandedGPIO() {}
+        ExpandedGPIO(ExpandedGPIO const&);              
+        void operator=(ExpandedGPIO const&);
+    public:
+//        ExpandedGPIO(ExpandedGPIO const&) = delete;
+//        void operator=(ExpandedGPIO const&) = delete;
+   
+	void addMCP(unsigned int mcp23addr, TwoWire * wire = &Wire);
+	// void addH2812(unsigned int i2caddr, TwoWire * wire = &Wire);
 	void xpinMode(uint8_t pin, uint8_t mode);
 	int xdigitalRead(uint8_t pin);
 	void xdigitalWrite(uint8_t pin, uint8_t val);
-
+    private:
 	Adafruit_MCP23X17 * mcp = NULL;
 };
 #endif

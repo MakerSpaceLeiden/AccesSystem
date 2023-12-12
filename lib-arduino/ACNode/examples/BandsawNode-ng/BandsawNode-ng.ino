@@ -22,30 +22,30 @@
       Olimex ESP32 PoE (without galvanic isolation usually)
 
    Wiring:
-      I2C for RFID
+      I2C for RFID (non standard/non defaults)
           SCK - GPIO16
           SDA - GPIO13
-          power control I2C: GPIO15; low is on; high is powered off.
+          power control I2C: GPIO15; low is on; high is powered off. (GPIOPORT_I2C_RECOVER_SWITCH)
 
       I2C expander
           SCK - GPIO16
           SDA - GPIO13
 
       RED led:
-          GPB3 of i2c expander
+          GPB3 of i2c expander (PWNG_LED)
 
-      Controlling Relay:
+      Controlling Relay: (PWNG_RELAY1)
           GPB0 of i2c expander
 
       Optocoupler 1
-          GPIO32
+          GPIO32 (PWNG_OPTO_COUPLER_INPUT1)
 
       Current coil (analog)
-          GPI35
+          GPI35 (PWNG_CURRENT_INPUT1)
 
+      Off button
+          GOA9 (PWNG_SWITCH1)
 */
-#define GPB0 (PIN_HPIO_MCP | (8 + 0))
-#define GPB3 (PIN_HPIO_MCP | (8 + 3))
 
 #include <PowerNodeNGv103.h>
 
@@ -59,7 +59,7 @@
 #define MACHINE "lintzaag"
 #endif
 
-#define OFF_BUTTON (39)
+#define OFF_BUTTON (PWNG_SWITCH1)
 #define MAX_IDLE_TIME (35 * 60 * 1000)  // auto power off after 35 minutes of no use.
 
 // Current reading whule runing 0.015 or higher
@@ -67,27 +67,19 @@
 // Current reading while off    0.020
 #define CURRENT_THRESHHOLD (0.005)
 
-CurrentTransformerWithCallbacks currentSensor = CurrentTransformerWithCallbacks(CURRENT_INPUT1);
+CurrentTransformerWithCallbacks currentSensor = CurrentTransformerWithCallbacks(PWNG_CURRENT_INPUT1);
 
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.
 // ACNode node = ACNode(MACHINE, true); // wired network (default).
 PowerNodeNGv103 node = PowerNodeNGv103(MACHINE);
 
-// RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, -1, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //polling
-// RFID reader = RFID(RFID_SELECT_PIN, RFID_RESET_PIN, RFID_IRQ_PIN, RFID_CLK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN); //iRQ
-RFID reader = RFID();
 
-#ifdef OTA_PASSWD
-OTA ota = OTA(OTA_PASSWD);
-#endif
-
-
-const uint8_t RELAY_GPIO = GPB0;
-LED aartLed = LED(GPB3);  // defaults to the aartLed - otherwise specify a GPIO.
+const uint8_t RELAY_GPIO = PWNG_RELAY1; // GPB0
+LED aartLed = LED(PWNG_LED);
 
 ButtonDebounce offButton(OFF_BUTTON, 150 /* mSeconds */);
-OptoDebounce opto1 = OptoDebounce(OPTO_COUPLER_INPUT1);
+OptoDebounce opto1 = OptoDebounce(PWNG_OPTO_COUPLER_INPUT1);
 
 typedef enum {
   BOOTING,
@@ -130,7 +122,7 @@ unsigned long powered_total = 0, powered_last;
 unsigned long running_total = 0, running_last;
 unsigned long bad_poweroff = 0;
 unsigned long idle_poweroff = 0;
-
+#define X { Serial.printf("Line %d\n", __LINE__);Serial.flush(); delay(100); }
 
 void setup() {
   Serial.begin(115200);
@@ -138,9 +130,10 @@ void setup() {
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
 
   // make sure the relay is off.
-  node.xdigitalWrite(RELAY_GPIO, 0);
-  node.xpinMode(RELAY_GPIO, OUTPUT);
-  node.xdigitalWrite(RELAY_GPIO, 0);
+  ExpandedGPIO::getInstance().addMCP(MCP_I2C_ADDR, &Wire);
+  expandedDigitalWrite(RELAY_GPIO, 0);
+  expandedPinMode(RELAY_GPIO, OUTPUT);
+  expandedDigitalWrite(RELAY_GPIO, 0);
 
   // the default is spacebus.makerspaceleiden.nl, prefix test
   // node.set_mqtt_host("mymqtt-server.athome.nl");
@@ -150,25 +143,31 @@ void setup() {
   // specify this when using your own `master'.
   //
   node.set_master("master");
+  aartLed.begin();
 
   // node.set_report_period(10 * 1000);
 
   node.onConnect([]() {
     machinestate = WAITINGFORCARD;
   });
+
   node.onDisconnect([]() {
     machinestate = NOCONN;
   });
+
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
     machinestate = TRANSIENTERROR;
   });
+
   node.onApproval([](const char* machine) {
     machinestate = POWERED;
   });
+
   node.onDenied([](const char* machine) {
     machinestate = REJECTED;
   });
+
   node.onSwipe([](const char* tag) -> ACBase::cmd_result_t {
     // avoid swithing off a machine unless we have to.
     //
@@ -225,7 +224,7 @@ void setup() {
     machinestate = WAITINGFORCARD;
   });
 
-  node.onReport([](JsonObject& report) {
+  node.onReport([](JsonObject & report) {
     report["state"] = state[machinestate].label;
 
     report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);
@@ -242,25 +241,21 @@ void setup() {
 #endif
   });
 
-  // This reports things such as FW version of the card; which can 'wedge' it. So we
-  // disable it unless we absolutely positively need that information.
-  //
-  reader.set_debug(false);
-  node.addHandler(&reader);
-
 
 #ifdef OTA_PASSWD
-  node.addHandler(&ota);
+  node.addHandler(new OTA(OTA_PASSWD));
 #endif
 
-  // node.set_debug(true);
-  // node.set_debugAlive(true);
   node.begin();
-  Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
+  Log.println("setup() complete: " __FILE__ " " __DATE__ " " __TIME__);
 }
 
 void loop() {
   static bool haveSeenPower = false;
+
+  int i = currentSensor.hasCurrent();
+  int j = offButton.state();
+  if (i == j && i) Serial.println("duH");
 
   node.loop();
   opto1.loop();

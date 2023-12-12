@@ -9,10 +9,13 @@ static void flipPin(LED * led) { led->_update(); }
 
 LED::LED(const byte pin, const bool inverted) : _pin(pin) ,_inverted(inverted) {
         if (_pin != -1) {
-	   expandedPinMode(_pin, OUTPUT);
   	   _ticker = Ticker();
-        }
+        };
 	_lastState = NEVERSET;
+};
+
+void LED::begin() {
+  	expandedPinMode(_pin, OUTPUT);
 	set(LED_FAST);
 }
 
