@@ -223,9 +223,6 @@ void setup() {
   });
 
   node.onReport([](JsonObject &report) {
-    report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);
-    report["running_time"] = running_total + ((machinestate == RUNNING) ? ((millis() - running_last) / 1000) : 0);
-
     report["idle_poweroff"] = idle_poweroff;
     report["bad_poweroff"] = bad_poweroff;
     report["manual_poweroff"] = manual_poweroff;

@@ -160,7 +160,7 @@
       JsonArray tis = report.createNestedArray("seconds_in_state");
       for(int i = 0; i <= 255;i ++)
 	if (_state2stateStruct[i])
-		tis.add(_state2stateStruct[i]->timeInState);
+		tis.add(_state2stateStruct[i]->timeInState + ((i == machinestate) ? (millis() - laststatechange) : 0)/1000);
     }
 
     void MachineState::loop()
