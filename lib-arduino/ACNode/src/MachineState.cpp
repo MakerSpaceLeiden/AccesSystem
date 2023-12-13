@@ -89,13 +89,29 @@
 
     MachineState::machinestate_t MachineState::addState(const char * label, machinestate_t nextstate) {
       return addState((state_t) {
-        label, LED::LED_ERROR, 5 * 10000, nextstate, 0, 0, nullptr, nullptr, nullptr
+		.label = label,
+		.ledState = LED::LED_ERROR,
+      		.maxTimeInMilliSeconds = 5 * 1000,
+      		.failStateOnTimeout = nextstate,
+      		.timeoutTransitions = 0,
+      		.autoReportCycle = 0,
+      		.onLoopCB = nullptr,
+      		.onChangeCB = nullptr,
+      		.onTimeoutCB = nullptr,
       });
     }
 
     MachineState::machinestate_t MachineState::addState(const char * label, time_t timeout, machinestate_t nextstate) {
       return addState((state_t) {
-        label, LED::LED_ERROR, timeout, nextstate, 0, 0, nullptr, nullptr, nullptr
+		.label = label,
+		.ledState = LED::LED_ERROR,
+      		.maxTimeInMilliSeconds = timeout,
+      		.failStateOnTimeout = nextstate,
+      		.timeoutTransitions = 0,
+      		.autoReportCycle = 0,
+      		.onLoopCB = nullptr,
+      		.onChangeCB = nullptr,
+      		.onTimeoutCB = nullptr,
       });
     }
 
@@ -201,7 +217,8 @@
         laststate = machinestate;
         machinestate = _state2stateStruct[machinestate]->failStateOnTimeout;
 
-        Log.printf("Time-out; transition from %d<%s> to %d<%s>\n",
+        Log.printf("Time-out (%f seconds); transition from %d<%s> to %d<%s>\n",
+		_state2stateStruct[laststate]->maxTimeInMilliSeconds/1000.,
 		laststate, label(laststate), 
 		machinestate, label(machinestate));
         return;
