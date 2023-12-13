@@ -82,15 +82,22 @@ void setup() {
   machinestate.setState(MachineState::BOOTING);
 
   pumpDetect = new ButtonDebounce(PUMP);
-  safetyDetect = new ButtonDebounce(SAFETY);
+  pumpDetect->setCallback([](const int newState) {
+    if (machinestate == CHECKINGCARD && newState == LOW)
+      machinestate = FAULTED;
+    if (machinestate == FAULTED && newState == HIGH)
+      machinestate = MachineState::WAITINGFORCARD;
+    Log.printf("Coolant pump now %s\n", newState ? "ON" : "OFF");
+  }, CHANGE);
 
+  safetyDetect = new ButtonDebounce(SAFETY);
   safetyDetect->setCallback([](const int newState) {
     if (machinestate == CHECKINGCARD && newState == LOW)
       machinestate = FAULTED;
     if (machinestate == FAULTED && newState == HIGH)
       machinestate = MachineState::WAITINGFORCARD;
-  },
-                            CHANGE);
+    Log.printf("Interlock power now %s\n", newState ? "ON" : "OFF");
+  },  CHANGE);
 
   offButton = new ButtonDebounce(OFF_BUTTON);
   offButton->setCallback([](const int newState) {
@@ -121,8 +128,7 @@ void setup() {
       return;
     };
     Log.println("Left button press ignored.");
-  },
-                         WHEN_PRESSED);
+  },  WHEN_PRESSED);
 
   menuButton = new ButtonDebounce(MENU_BUTTON);
   menuButton->setCallback([](const int newState) {
@@ -134,8 +140,7 @@ void setup() {
       machinestate = INFODISPLAY;
     }
     Log.println("Right button press ignored.");
-  },
-                          WHEN_PRESSED);
+  },  WHEN_PRESSED);
 
 
 
@@ -152,7 +157,7 @@ void setup() {
     else if (current == CHECKINGCARD)
       node.updateDisplay("", "", true);
     else if (current == POWERED)
-      node.updateDisplay("TURN OFF", "MORE", true);
+      node.updateDisplay("TURN OFF", "", true);
     else if (current == RUNNING) {
       node.updateDisplay(machinestate.label(), "", true);
       last_coolant_warn = 0;
@@ -222,7 +227,7 @@ void setup() {
     };
   });
 
-  node.onReport([](JsonObject &report) {
+  node.onReport([](JsonObject & report) {
     report["idle_poweroff"] = idle_poweroff;
     report["bad_poweroff"] = bad_poweroff;
     report["manual_poweroff"] = manual_poweroff;
@@ -249,7 +254,8 @@ void loop() {
   static unsigned long lst = 0;
   if (millis() - lst > 1000) {
     lst = millis();
-
+    Serial.printf("C0=%d\tC1=%d\tO0=%d\tO1=%d\n", 
+      analogRead(CURR0), analogRead(CURR1), analogRead(OPTO0), analogRead(OPTO1));
     if (machinestate == POWERED) {
       String left = machinestate.timeLeftInThisState();
       // Show the countdown to poweroff; only when the machine

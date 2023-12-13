@@ -20,6 +20,7 @@
 */
 #include <WhiteNodev108.h>
 #include <ButtonDebounce.h>
+#include <CurrentTransformer.h>
 
 #define MACHINE   "woodlathe"
 
@@ -32,7 +33,7 @@ const unsigned long SCREENSAVER_DELAY = 20 * 60;  // power off the screen after 
 #define OFF_BUTTON        (BUTT0)
 #define RELAY_GPIO        (OUT0)
 #define WHEN_PRESSED      (ONLOW) // pullup, active low buttons
-#define CURRENT_COIL      (CURR1)
+#define CURRENT_COIL      (CURR0)
 
 WhiteNodev108 node = WhiteNodev108(MACHINE);
 
@@ -43,8 +44,8 @@ OTA ota = OTA(OTA_PASSWD);
 LED errorLed = LED(LED_INDICATOR);
 
 ButtonDebounce * offButton;
-ButtonDebounce * currentCoil;
-
+//ButtonDebounce * currentCoil;
+CurrentTransformerWithCallbacks * currentCoil;
 MachineState machinestate = MachineState(&errorLed);
 
 // Extra, hardware specific states
@@ -73,7 +74,7 @@ void setup() {
 
   CHECKINGCARD = machinestate.addState( "Checking card....", LED::LED_OFF, CARD_CHECK_WAIT * 1000, MachineState::WAITINGFORCARD);
   POWERED = machinestate.addState( "Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);
-  RUNNING = machinestate.addState( "Lathe Running", LED::LED_ON, MachineState::NEVER);
+  RUNNING = machinestate.addState( "Lathe Running", LED::LED_ON, MachineState::NEVER, 0);
 
   pinMode(OFF_BUTTON, INPUT_PULLUP);
   offButton = new ButtonDebounce(OFF_BUTTON);
@@ -95,14 +96,18 @@ void setup() {
     Log.println("Left button press ignored.");
   }, WHEN_PRESSED);
 
-  currentCoil  = new ButtonDebounce(CURRENT_COIL);
-  currentCoil->setCallback([](const int newState) {
-    if (machinestate == RUNNING && newState == LOW) {
+  // pinMode(CURRENT_COIL, INPUT);
+  // currentCoil  = new ButtonDebounce(CURRENT_COIL);
+  //  currentCoil->setCallback([](const int newState) {
+  currentCoil = new CurrentTransformerWithCallbacks(CURRENT_COIL);
+  currentCoil->setOnLimit(0.002); // we should remove that resistor
+  currentCoil->onCurrentChange([](const int newState) {
+    if (machinestate == RUNNING && newState == CurrentTransformerWithCallbacks::OFF) {
       machinestate = POWERED;
       Log.println("Machine stopped");
       return;
     };
-    if (machinestate == POWERED && newState == HIGH) {
+    if (machinestate == POWERED && newState == CurrentTransformerWithCallbacks::ON) {
       Log.println("Machine turned on");
       machinestate = RUNNING;
       return;
@@ -118,7 +123,7 @@ void setup() {
     };
     digitalWrite(BUZZER, HIGH); delay(20); digitalWrite(BUZZER, LOW);
     machinestate = CHECKINGCARD;
-    
+
     // Let the core library handle the rest.
     return  ACBase::CMD_DECLINE;
   });
@@ -127,10 +132,22 @@ void setup() {
   node.set_master("master");
 
   node.onConnect([]() {
-    machinestate.setState(MachineState::WAITINGFORCARD);
+    // Kludge - until we understand how the ethernet and
+    // powerswitching interacts. Does honor the principle
+    // to not interfere with the machine when it is running.
+    if (machinestate.state() < MachineState::WAITINGFORCARD)
+      machinestate.setState(MachineState::WAITINGFORCARD);
+    else
+      Log.println("Ignore network (re)connecting");
   });
   node.onDisconnect([]() {
-    machinestate.setState(MachineState::NOCONN);
+    // Kludge - until we understand how the ethernet and
+    // powerswitching interacts. Does honor the principle
+    // to not interfere with the machine when it is running.
+    if (machinestate.state() <= MachineState::WAITINGFORCARD)
+      machinestate.setState(MachineState::NOCONN);
+    else
+      Log.println("Ignoring disconnect of network.");
   });
   node.onError([](acnode_error_t err) {
     Log.printf("Error %d\n", err);
@@ -172,12 +189,23 @@ void setup() {
 
 void loop() {
   node.loop();
+  currentCoil->loop();
 
+  { static unsigned long lst = 0;
+    if (millis() - lst > 1000) {
+      lst = millis();
+      Serial.printf("C0=%d\tC1=%d\tO0=%d\tO1=%d I=%f\n",
+                    analogRead(CURR0), analogRead(CURR1), analogRead(OPTO0), analogRead(OPTO1),
+                    currentCoil->sd());
+      Serial.printf("dC0=%d\tdC1=%d\tdO0=%d\tdO1=%d\n",
+                    digitalRead(CURR0), digitalRead(CURR1), digitalRead(OPTO0), digitalRead(OPTO1));
+    }
+  }
 
 #ifdef INTERLOCK
   if (digitalRead(INTERLOCK)) {
     static unsigned long last_warning = 0;
-    if (machinestate != MachineState::OUTOFORDER || last_warning == 0 || millis() - last_warning > 60 * 1000) {
+    if (machinestate != MachineState::OUTOFORDER || last_warning == 0 || millis/() - last_warning > 60 * 1000) {
       Log.printf("Problem with the interlock -- is the big green connector unseated ?\n");
       last_warning = millis();
     }
