@@ -32,6 +32,7 @@ const unsigned long SCREENSAVER_DELAY = 20 * 60;      // power off the screen af
 #define SAFETY (OPTO0)
 #define PUMP (OPTO1)
 #define RELAY_GPIO (OUT0)
+#define CURRENT_COIL (CURR0)
 
 #define MENU_BUTTON (BUTT0)
 #define OFF_BUTTON (BUTT1)
@@ -43,7 +44,7 @@ OTA ota = OTA(OTA_PASSWD);
 
 LED errorLed = LED(LED_INDICATOR);
 
-ButtonDebounce *offButton, *menuButton, *safetyDetect, *pumpDetect;
+ButtonDebounce *offButton, *menuButton, *safetyDetect, *pumpDetect, *currentCoil;
 
 MachineState machinestate = MachineState();
 
@@ -72,35 +73,60 @@ void setup() {
   digitalWrite(BUZZER, LOW);
   pinMode(BUZZER, OUTPUT);
 
-  FAULTED = machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER);
+  FAULTED = machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER,0);
   CHECKINGCARD = machinestate.addState("Checking card....", LED::LED_OFF, CARD_CHECK_WAIT * 1000, MachineState::WAITINGFORCARD);
-  SCREENSAVER = machinestate.addState("Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER);
+  SCREENSAVER = machinestate.addState("Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER,0);
   INFODISPLAY = machinestate.addState("User browsing info pages", LED::LED_OFF, 20 * 1000, MachineState::WAITINGFORCARD);
   POWERED = machinestate.addState("Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);
-  RUNNING = machinestate.addState("Saw Running", LED::LED_ON, MachineState::NEVER);
+  RUNNING = machinestate.addState("Saw Running", LED::LED_ON, MachineState::NEVER, 0);
 
   machinestate.setState(MachineState::BOOTING);
 
+  pinMode(PUMP, INPUT);  // optocoupler has its own pullup
   pumpDetect = new ButtonDebounce(PUMP);
+  pumpDetect->setAnalogThreshold(2500);
   pumpDetect->setCallback([](const int newState) {
-    if (machinestate == CHECKINGCARD && newState == LOW)
-      machinestate = FAULTED;
-    if (machinestate == FAULTED && newState == HIGH)
-      machinestate = MachineState::WAITINGFORCARD;
     Log.printf("Coolant pump now %s\n", newState ? "ON" : "OFF");
-  }, CHANGE);
+  },
+                          CHANGE);
 
+  pinMode(SAFETY, INPUT);  // optocoupler has its own pullup
   safetyDetect = new ButtonDebounce(SAFETY);
+  safetyDetect->setAnalogThreshold(2500);
   safetyDetect->setCallback([](const int newState) {
-    if (machinestate == CHECKINGCARD && newState == LOW)
+    if (machinestate == MachineState::WAITINGFORCARD && newState) {
+      Log.println("Detecting that the switch on the machine is on while we're in swipe-card mode.");
       machinestate = FAULTED;
-    if (machinestate == FAULTED && newState == HIGH)
+    };
+    if (machinestate == FAULTED && !newState) {
       machinestate = MachineState::WAITINGFORCARD;
-    Log.printf("Interlock power now %s\n", newState ? "ON" : "OFF");
-  },  CHANGE);
+      Log.println("Clearing fault - switch in safe off-position.");
+    };
+    Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
+  },
+                            CHANGE);
 
+  currentCoil = new ButtonDebounce(CURRENT_COIL);
+  currentCoil->setAnalogThreshold(500);
+  currentCoil->setCallback([](const int newState) {
+    if (machinestate == RUNNING && !newState) {
+      machinestate = POWERED;
+      Log.println("Machine stopped");
+      return;
+    };
+    if (machinestate == POWERED && newState) {
+      Log.println("Machine turned on");
+      machinestate = RUNNING;
+      return;
+    };
+    Log.printf("Odd current change (current=%s, state=%s). Ignored.\n",
+               newState ? "present" : "absent", machinestate.label());
+  });
+
+  pinMode(OFF_BUTTON, INPUT_PULLUP);
   offButton = new ButtonDebounce(OFF_BUTTON);
   offButton->setCallback([](const int newState) {
+    Log.println("Off button pressed");
     if (machinestate == SCREENSAVER) {
       machinestate = MachineState::WAITINGFORCARD;
       return;
@@ -128,10 +154,13 @@ void setup() {
       return;
     };
     Log.println("Left button press ignored.");
-  },  WHEN_PRESSED);
+  },
+                         WHEN_PRESSED);
 
+  pinMode(MENU_BUTTON, INPUT_PULLUP);
   menuButton = new ButtonDebounce(MENU_BUTTON);
   menuButton->setCallback([](const int newState) {
+    Log.println("Menu button pressed");
     if (machinestate == SCREENSAVER) {
       machinestate = MachineState::WAITINGFORCARD;
       return;
@@ -140,7 +169,8 @@ void setup() {
       machinestate = INFODISPLAY;
     }
     Log.println("Right button press ignored.");
-  },  WHEN_PRESSED);
+  },
+                          WHEN_PRESSED);
 
 
 
@@ -152,9 +182,11 @@ void setup() {
       node.updateDisplay("", "", true);
       Log.println("Machine poweron disabled - macine on/off switch in the 'on' position.");
       errors++;
-    } else if (current == MachineState::WAITINGFORCARD)
+    } else if (current == MachineState::WAITINGFORCARD) {
       node.updateDisplay("", "MORE", true);
-    else if (current == CHECKINGCARD)
+      if (safetyDetect == LOW)
+        machinestate = FAULTED;
+    } else if (current == CHECKINGCARD)
       node.updateDisplay("", "", true);
     else if (current == POWERED)
       node.updateDisplay("TURN OFF", "", true);
@@ -227,7 +259,7 @@ void setup() {
     };
   });
 
-  node.onReport([](JsonObject & report) {
+  node.onReport([](JsonObject &report) {
     report["idle_poweroff"] = idle_poweroff;
     report["bad_poweroff"] = bad_poweroff;
     report["manual_poweroff"] = manual_poweroff;
@@ -254,8 +286,8 @@ void loop() {
   static unsigned long lst = 0;
   if (millis() - lst > 1000) {
     lst = millis();
-    Serial.printf("C0=%d\tC1=%d\tO0=%d\tO1=%d\n", 
-      analogRead(CURR0), analogRead(CURR1), analogRead(OPTO0), analogRead(OPTO1));
+    if (0) Log.printf("C0=%d\tC1=%d\tO0=%d\tO1=%d\n", analogRead(CURR0), analogRead(CURR1), analogRead(OPTO0), analogRead(OPTO1));
+
     if (machinestate == POWERED) {
       String left = machinestate.timeLeftInThisState();
       // Show the countdown to poweroff; only when the machine
