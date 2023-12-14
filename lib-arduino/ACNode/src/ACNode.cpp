@@ -258,7 +258,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_
     _client = PubSubClient(_espClient);
 
     char buff[256];
-    snprintf(buff, sizeof(buff), "%s/logs/%s", mqtt_topic_prefix, moi);
+    snprintf(buff, sizeof(buff), "%s/log/%s", mqtt_topic_prefix, moi);
     mqttlogStream = new MqttStream(&_client, buff);
 
     Log.addPrintStream(std::make_shared<MqttStream>(*mqttlogStream));
