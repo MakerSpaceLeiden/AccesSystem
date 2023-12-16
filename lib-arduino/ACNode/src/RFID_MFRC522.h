@@ -52,5 +52,6 @@ class RFID_MFRC522 : public RFID {
     uint8_t _irqpin = 255;
     void activateScanning();
     void clearInt();
+    unsigned long _lastI2Ccheck  = 0;
 };
 #endif

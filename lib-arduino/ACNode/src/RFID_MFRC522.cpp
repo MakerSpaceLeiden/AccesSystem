@@ -1,4 +1,8 @@
 #include <RFID_MFRC522.h>
+#include <MFRC522.h>
+
+const unsigned long RFID_CHECK_INTERVAL = 100 * 1000;
+
 // https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf
 
 RFID_MFRC522::RFID_MFRC522(const byte sspin , const byte rstpin , const byte irqpin , const byte spiclk , const byte spimiso , const byte spimosi ) 
@@ -75,8 +79,18 @@ void RFID_MFRC522::loop() {
 		activateScanning();
 	};
       };
-      if (!cardScannedIrqSeen)
+
+      if (!cardScannedIrqSeen) {
+	if (millis() - lastswipe> RFID_CHECK_INTERVAL && millis() - _lastI2Ccheck > RFID_CHECK_INTERVAL) {
+		_lastI2Ccheck = millis();
+		byte version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
+		if (version < 0x80 && version > 0x100) {
+			Log.printf("Alert - RFID reader gave an odd response (%x) - resetting\n", version);
+			_mfrc522->PCD_Init();
+		};
+	};
 	return;
+      }
     } else {
 	// Polling mode does not require a re-arm; instead we check fi there is a card 'now;
        if (_mfrc522->PICC_IsNewCardPresent() == 0)
