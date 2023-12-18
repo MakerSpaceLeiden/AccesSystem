@@ -205,7 +205,8 @@ void loop() {
 #ifdef INTERLOCK
   if (digitalRead(INTERLOCK)) {
     static unsigned long last_warning = 0;
-    if (machinestate != MachineState::OUTOFORDER || last_warning == 0 || millis/() - last_warning > 60 * 1000) {
+    if (machinestate != MachineState::OUTOFORDER || last_warning == 0 || millis() - last_warning > 60 * 1000)
+     {
       Log.printf("Problem with the interlock -- is the big green connector unseated ?\n");
       last_warning = millis();
     }
