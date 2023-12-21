@@ -199,7 +199,9 @@ public:
     int xdigitalRead(uint8_t pin) { return ExpandedGPIO::getInstance().xdigitalRead(pin); };
     void xdigitalWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xdigitalWrite(pin, val); };
     void xpinMode(uint8_t pin, uint8_t mode) { ExpandedGPIO::getInstance().xpinMode(pin,mode); };
-    
+  
+    void report(JsonObject & report);
+ 
     PubSubClient _client;
 private:
     unsigned int log_destinations = LOG_DEST_DEFAULT;
