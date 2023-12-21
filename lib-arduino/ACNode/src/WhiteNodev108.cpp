@@ -269,6 +269,7 @@ static void _display_centred_title(char * title) {
     _display->print(" ");
     for(int i = 0; i < l; i++)
         _display->print("-");
+    _display->print("\n");
 };
 
 static void _display_QR(char * title, char * url) {
@@ -281,7 +282,7 @@ static void _display_QR(char * title, char * url) {
             // We cannot pass anything to this lambda; as it maps to C, rather than c++.
             // So we use the state of the cursor to dected an empty title.
             //
-            int oy = _display->getCursorY() ? (SCREEN_HEIGHT - p*s -2) : (SCREEN_HEIGHT - p*s)/2;
+            int oy = _display->getCursorY() ? (SCREEN_HEIGHT - p*s -1) : (SCREEN_HEIGHT - p*s)/2;
             for (int y = 0; y < s; y++)
                 for (int x = 0; x < s; x++)
                     if (p == 1)
