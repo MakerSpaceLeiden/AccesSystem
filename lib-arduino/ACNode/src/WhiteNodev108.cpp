@@ -278,8 +278,10 @@ static void _display_QR(char * title, char * url) {
             int p = 1;
             while ((s*(p+1) <= SCREEN_WIDTH) && (s*(p+1) <= (SCREEN_HEIGHT-6))) p++;
             int ox = (SCREEN_WIDTH - p*s)/2;
-//            int oy = title ? (SCREEN_HEIGHT - p*s -2) : (SCREEN_HEIGHT - p*s)/2;
-            int oy = (SCREEN_HEIGHT - p*s -2);
+            // We cannot pass anything to this lambda; as it maps to C, rather than c++.
+            // So we use the state of the cursor to dected an empty title.
+            //
+            int oy = _display->getCursorY() ? (SCREEN_HEIGHT - p*s -2) : (SCREEN_HEIGHT - p*s)/2;
             for (int y = 0; y < s; y++)
                 for (int x = 0; x < s; x++)
                     if (p == 1)
@@ -290,6 +292,8 @@ static void _display_QR(char * title, char * url) {
             .max_qrcode_version = 40,
             .qrcode_ecc_level = 2
     };
+    // Make sure above getCursorY() returns zero if there is no title.
+    _display->setCursor(0, 0);
     if (title)
         _display_centred_title(title);
     esp_qrcode_generate(&qrc,url);
