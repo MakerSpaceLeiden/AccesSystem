@@ -27,7 +27,6 @@ rcvar=master_enable
 load_rc_config $name
 : ${master_enable:="NO"}
 : ${master_config:="/usr/local/etc/master/acnode.ini"}
-: ${master_dbfile:="/usr/local/etc/master/keydb.txt"}
 : ${master_user:="master"}
 : ${master_pidfile:="/var/db/master/master.pid"}
 : ${master_flags:=""}
@@ -36,7 +35,7 @@ pidfile=${master_pidfile}
 
 command=/usr/local/AccesSystem/Master/master.py
 
-command_args="-c ${master_config} --dbfile ${master_dbfile} ${master_flags} --pidfile ${master_pidfile} --daemonize"
+command_args="-c ${master_config} ${master_flags} --pidfile ${master_pidfile} --daemonize"
 required_files="${master_config} ${master_dbfile}"
 
 extra_commands="reload"
