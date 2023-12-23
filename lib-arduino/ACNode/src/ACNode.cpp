@@ -31,7 +31,7 @@ uint8_t temprature_sens_read();
 #ifdef __cplusplus
 }
 #endif
-static double coreTemp() {
+double coreTemp() {
   double   temp_farenheit = temprature_sens_read();
   return ( temp_farenheit - 32. ) / 1.8;
 }
@@ -258,7 +258,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_
     _client = PubSubClient(_espClient);
 
     char buff[256];
-    snprintf(buff, sizeof(buff), "%s/log/%s", mqtt_topic_prefix, moi);
+    snprintf(buff, sizeof(buff), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
     mqttlogStream = new MqttStream(&_client, buff);
 
     Log.addPrintStream(std::make_shared<MqttStream>(*mqttlogStream));
@@ -396,50 +396,7 @@ _return_request_approval:
 
 float loopRate = 0;
 
-void ACNode::loop() {
-    {
-	static unsigned long last = 0, lastCntr = 0, Cntr = 0;
-	Cntr++;
-	if (millis() - last > (unsigned long)(30 * 1000)) {
-		float rate =  1000. * (Cntr - lastCntr)/(millis() - last) + 0.05;
-		loopRate = rate;
-		if (rate > 10)
-			Debug.printf("Loop rate: %.1f #/second\n", rate);
-		else
-			Log.printf("Warning: LOW Loop rate: %.1f #/second\n", rate);
-		last = millis();
-		lastCntr = Cntr;
-	}
-    }
-
-#if 0
-    if (_debug) {
-    	static unsigned long last = millis();
-	static unsigned long sw1, sw2, tock;
-	sw1  += xdigitalRead(SW1_BUTTON);
-	sw2  += xdigitalRead(SW1_BUTTON);
-	tock ++;
-	if (millis() - last > 1000) {
-	      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Triac %d\n",
-	                xdigitalRead(SW1_BUTTON),
-	                abs(tock - sw1),
-	                xdigitalRead(SW2_BUTTON),
-	                abs(tock - sw2),
-      	 	        xigitalRead(RELAY_GPIO),
-      	 	        xigitalRead(TRIAC_GPIO)
-      	      );
-    	      last = millis(); sw1 = sw2 = tock = 0;
-   	 }
-    }
-#endif
-
-    {	static unsigned long last = 0;
-	if (millis() - last > _report_period) {
-		last = millis();
-
-                DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(50) + 2000);
-                JsonObject out = jsonDoc.to<JsonObject>();
-
+void ACNode::report(JsonObject & out) {
 		out[ "node" ] = moi;
 		out[ "machine" ] = machine;
 
@@ -485,6 +442,52 @@ void ACNode::loop() {
 
 		if (_report_callback) 
 			_report_callback(out);	
+}
+
+void ACNode::loop() {
+    {
+	static unsigned long last = 0, lastCntr = 0, Cntr = 0;
+	Cntr++;
+	if (millis() - last > (unsigned long)(30 * 1000)) {
+		float rate =  1000. * (Cntr - lastCntr)/(millis() - last) + 0.05;
+		loopRate = rate;
+		if (rate > 10)
+			Debug.printf("Loop rate: %.1f #/second\n", rate);
+		else
+			Log.printf("Warning: LOW Loop rate: %.1f #/second\n", rate);
+		last = millis();
+		lastCntr = Cntr;
+	}
+    }
+
+#if 0
+    if (_debug) {
+    	static unsigned long last = millis();
+	static unsigned long sw1, sw2, tock;
+	sw1  += xdigitalRead(SW1_BUTTON);
+	sw2  += xdigitalRead(SW1_BUTTON);
+	tock ++;
+	if (millis() - last > 1000) {
+	      Debug.printf("SW1: %d %d SW2: %d %d Relay %d Triac %d\n",
+	                xdigitalRead(SW1_BUTTON),
+	                abs(tock - sw1),
+	                xdigitalRead(SW2_BUTTON),
+	                abs(tock - sw2),
+      	 	        xigitalRead(RELAY_GPIO),
+      	 	        xigitalRead(TRIAC_GPIO)
+      	      );
+    	      last = millis(); sw1 = sw2 = tock = 0;
+   	 }
+    }
+#endif
+
+    {	static unsigned long last = 0;
+	if (millis() - last > _report_period) {
+		last = millis();
+
+                DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(50) + 2000);
+                JsonObject out = jsonDoc.to<JsonObject>();
+		report(out);
 
         String buff;
         serializeJson(jsonDoc, buff);

@@ -17,12 +17,17 @@
 
    Compile settings:  EPS32 Dev Module (if it makes noise - you likely picked
    the wrong board- and a LED signal on GPIO2 drives the buzzer by accident).
+
+   Max reliable serial speed: 460800
+
 */
 #include <WhiteNodev108.h>
 #include <ButtonDebounce.h>
-#include <CurrentTransformer.h>
+// #include <CurrentTransformer.h>
 
+#ifndef MACHINE
 #define MACHINE   "woodlathe"
+#endif
 
 const unsigned long CARD_CHECK_WAIT =         3;  // wait up to 3 seconds for a card to be checked.
 const unsigned long MAX_IDLE_TIME =     35 * 60;  // auto power off the machine after 35 minutes of no use.
@@ -44,8 +49,9 @@ OTA ota = OTA(OTA_PASSWD);
 LED errorLed = LED(LED_INDICATOR);
 
 ButtonDebounce * offButton;
-//ButtonDebounce * currentCoil;
-CurrentTransformerWithCallbacks * currentCoil;
+ButtonDebounce * currentCoil;
+// CurrentTransformerWithCallbacks * currentCoil;
+
 MachineState machinestate = MachineState(&errorLed);
 
 // Extra, hardware specific states
@@ -96,18 +102,23 @@ void setup() {
     Log.println("Left button press ignored.");
   }, WHEN_PRESSED);
 
-  // pinMode(CURRENT_COIL, INPUT);
-  // currentCoil  = new ButtonDebounce(CURRENT_COIL);
-  //  currentCoil->setCallback([](const int newState) {
-  currentCoil = new CurrentTransformerWithCallbacks(CURRENT_COIL);
-  currentCoil->setOnLimit(0.002); // we should remove that resistor
-  currentCoil->onCurrentChange([](const int newState) {
-    if (machinestate == RUNNING && newState == CurrentTransformerWithCallbacks::OFF) {
+
+  pinMode(CURRENT_COIL, INPUT);
+
+  //  currentCoil = new CurrentTransformerWithCallbacks(CURRENT_COIL);
+  //  currentCoil->setOnLimit(0.002); // we should remove that resistor
+  //  currentCoil->onCurrentChange([](const int newState) {
+
+  currentCoil  = new ButtonDebounce(CURRENT_COIL);
+  currentCoil->setCallback([](const int newState) {
+    //    if (machinestate == RUNNING && newState == CurrentTransformerWithCallbacks::OFF) {
+    if (machinestate == RUNNING && !newState) {
       machinestate = POWERED;
       Log.println("Machine stopped");
       return;
     };
-    if (machinestate == POWERED && newState == CurrentTransformerWithCallbacks::ON) {
+    //    if (machinestate == POWERED && newState == CurrentTransformerWithCallbacks::ON) {
+    if (machinestate == POWERED && newState) {
       Log.println("Machine turned on");
       machinestate = RUNNING;
       return;
@@ -192,13 +203,10 @@ void loop() {
   currentCoil->loop();
 
   { static unsigned long lst = 0;
-    if (millis() - lst > 1000) {
+    if (millis() - lst > 2000) {
       lst = millis();
-      Serial.printf("C0=%d\tC1=%d\tO0=%d\tO1=%d I=%f\n",
-                    analogRead(CURR0), analogRead(CURR1), analogRead(OPTO0), analogRead(OPTO1),
-                    currentCoil->sd());
-      Serial.printf("dC0=%d\tdC1=%d\tdO0=%d\tdO1=%d\n",
-                    digitalRead(CURR0), digitalRead(CURR1), digitalRead(OPTO0), digitalRead(OPTO1));
+      Log.printf("dC0=%d\tdC1=%d\tdO0=%d\tdO1=%d\n",
+                 digitalRead(CURR0), digitalRead(CURR1), digitalRead(OPTO0), digitalRead(OPTO1));
     }
   }
 
@@ -206,7 +214,6 @@ void loop() {
   if (digitalRead(INTERLOCK)) {
     static unsigned long last_warning = 0;
     if (machinestate != MachineState::OUTOFORDER || last_warning == 0 || millis() - last_warning > 60 * 1000)
-     {
       Log.printf("Problem with the interlock -- is the big green connector unseated ?\n");
       last_warning = millis();
     }

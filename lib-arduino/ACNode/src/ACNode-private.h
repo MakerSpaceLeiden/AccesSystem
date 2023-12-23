@@ -199,7 +199,9 @@ public:
     int xdigitalRead(uint8_t pin) { return ExpandedGPIO::getInstance().xdigitalRead(pin); };
     void xdigitalWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xdigitalWrite(pin, val); };
     void xpinMode(uint8_t pin, uint8_t mode) { ExpandedGPIO::getInstance().xpinMode(pin,mode); };
-    
+  
+    void report(JsonObject & report);
+ 
     PubSubClient _client;
 private:
     unsigned int log_destinations = LOG_DEST_DEFAULT;
@@ -240,6 +242,9 @@ protected:
 // stat counters
    unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
 };
+
+extern double coreTemp();
+
 
 // Unfortunately - MQTT callbacks cannot yet pass
 // a pointer. So we need a 'global' variable; and
