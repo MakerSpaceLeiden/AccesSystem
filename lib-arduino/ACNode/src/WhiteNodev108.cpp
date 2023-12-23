@@ -14,6 +14,10 @@
 #include <WiredEthernet.h>
 #include <qrcode.h> // Part of the ESP32 package
 
+#ifndef ADAFRUIT_GFX_DEGREE_SYMBOL
+#define ADAFRUIT_GFX_DEGREE_SYMBOL (247)
+#endif
+            
 // Extra, hardware specific states
 MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED, CHECKINGCARD;
 
@@ -127,12 +131,12 @@ void WhiteNodev108::begin(bool hasScreen) {
              ))
             _offCallBack(newState);
         else
-            Log.println("Left button activity ignored.");
+            Debug.println("Left button activity ignored.");
     },  CHANGE);
     
     menuButton = new ButtonDebounce(MENU_BUTTON);
     menuButton->setCallback([&](const int newState) {
-        Log.printf("MENU button %s\n",newState ? "released" : "pressed");
+        Debug.printf("MENU button %s\n",newState ? "released" : "pressed");
         if (machinestate == SCREENSAVER) {
             machinestate = MachineState::WAITINGFORCARD;
             return;
@@ -156,11 +160,11 @@ void WhiteNodev108::begin(bool hasScreen) {
              ))
             _menuCallBack(newState);
         else
-            Log.println("Right button activity ignored.");
+            Debug.println("Right button activity ignored.");
     },  CHANGE);
     
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-        Log.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
+        Debug.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
         errorLed.set(machinestate.ledState());
         
         setDisplayScreensaver(current == SCREENSAVER);
@@ -319,6 +323,7 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
 #else
             _display->printf("Syslog :OFF\n");
 #endif
+            _display->printf("CPU    :%.1f%cC\n", coreTemp(),ADAFRUIT_GFX_DEGREE_SYMBOL);
             break;
         case PAGE_MQTT: {
             _display->println("    -- MQTT --");

@@ -31,7 +31,7 @@ uint8_t temprature_sens_read();
 #ifdef __cplusplus
 }
 #endif
-static double coreTemp() {
+double coreTemp() {
   double   temp_farenheit = temprature_sens_read();
   return ( temp_farenheit - 32. ) / 1.8;
 }

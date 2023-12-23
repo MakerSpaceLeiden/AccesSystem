@@ -243,6 +243,9 @@ protected:
    unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
 };
 
+extern double coreTemp();
+
+
 // Unfortunately - MQTT callbacks cannot yet pass
 // a pointer. So we need a 'global' variable; and
 // sort of treat this class as a singleton. And
