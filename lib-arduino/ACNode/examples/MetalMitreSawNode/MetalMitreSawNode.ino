@@ -18,7 +18,6 @@
    Compile settings:  EPS32 Dev Module
 */
 #include <WhiteNodev108.h>
-#include <ButtonDebounce.h>
 
 #ifndef MACHINE
 #define MACHINE "metalmitresaw"
@@ -33,12 +32,11 @@ const unsigned long COOLANT_NAG_TIMEOUT = 60;  // Start nagging after running fo
 
 WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
-//#define OTA_PASSWD          "SomethingSecrit"
-OTA ota = OTA(OTA_PASSWD);
+//#define OTA_PASSWD_MD5  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
 
 ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
 
-MachineState::machinestate_t RUNNING;
+MachineState::machinestate_t RUNNING;  // Extra state - when the saw is spinning (detected via the motorCurrent)
 
 unsigned long bad_poweroff = 0;
 unsigned long no_coolant = 0;
@@ -54,12 +52,14 @@ void setup() {
   digitalWrite(RELAY_GPIO, 0);
   pinMode(RELAY_GPIO, OUTPUT);
 
+  // Define a state other than powered; i.e. where the saw is actually spinning.
+  //
   RUNNING = node.machinestate.addState("Saw Running", LED::LED_ON, MachineState::NEVER, 0);
 
   pinMode(PUMP, INPUT);
   pumpDetect = new ButtonDebounce(PUMP);
   pumpDetect->setCallback([](const int newState) {
-    // remove nag from screen, if any.
+    // remove coolant nag from screen, if any.
     if (node.machinestate == RUNNING && !newState)
       node.updateDisplay(node.machinestate.label(), "", true);
 
@@ -74,18 +74,18 @@ void setup() {
       node.machinestate = FAULTED;
     if (node.machinestate == FAULTED && newState == HIGH)
       node.machinestate = MachineState::WAITINGFORCARD;
-    Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
+    Debug.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
   },
                             CHANGE);
 
   motorCurrent = new ButtonDebounce(MOTOR_CURRENT);
-  motorCurrent->setAnalogThreshold(600); // typical is 0-50 for off, 1200 for on.
+  motorCurrent->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
   motorCurrent->setCallback([](const int newState) {
     if (node.machinestate == POWERED && newState) {
-      Log.println("Detected current. Motor switched on");
+      Debug.println("Detected current. Motor switched on");
       node.machinestate = RUNNING;
     } else if (node.machinestate == RUNNING && !newState) {
-      Log.println("No more current; motor no longer on.");
+      Debug.println("No more current; motor no longer on.");
       node.machinestate = POWERED;
     } else {
       Log.printf("Unexpected change in motor current; state is %s and the current is %s\n",
@@ -94,24 +94,20 @@ void setup() {
   },
                             CHANGE);
 
+  node.begin();
+
   node.setOffCallback([](const int newState) {
     if (node.machinestate == RUNNING) {
       // Refuse to let the safety be used to power something off.
+      //
       Log.println("Bad poweroff attempt. Ignoring.");
-      digitalWrite(BUZZER, HIGH);
-      delay(500);
-      digitalWrite(BUZZER, LOW);
+      node.buzzerErr();
       bad_poweroff++;
       return;
     };
-    Log.println("Left button press ignored.");
+    Debug.println("Left button press ignored.");
   },
                       WHEN_PRESSED);
-
-  node.setMenuCallback([](const int newState) {
-    Log.println("Right button press ignored.");
-  },
-                       WHEN_PRESSED);
 
   node.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     if (current == RUNNING) {
@@ -120,53 +116,33 @@ void setup() {
     }
   });
 
-  node.onSwipe([](const char *tag) -> ACBase::cmd_result_t {
-    digitalWrite(BUZZER, HIGH);
-    delay(20);
-    digitalWrite(BUZZER, LOW);
-    // Let the core library handle the rest.
-    return ACBase::CMD_DECLINE;
-  });
-
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  node.onConnect([]() {
-    node.machinestate = MachineState::WAITINGFORCARD;
-  });
-  node.onDisconnect([]() {
-    node.machinestate = MachineState::NOCONN;
-  });
-  node.onError([](acnode_error_t err) {
-    Log.printf("Error %d\n", err);
-    node.machinestate = MachineState::TRANSIENTERROR;
-  });
-  node.onApproval([](const char *machine) {
-    Log.println("Approval callback");
-    if (node.machinestate != POWERED) {
-      node.buzzerErr();
-    };
-    node.machinestate = POWERED;
-  });
-  node.onDenied([](const char *machine) {
-    if (node.machinestate == SCREENSAVER) {
-      node.machinestate = MachineState::WAITINGFORCARD;
-      return;
-    };
-    node.machinestate = MachineState::REJECTED;
-    node.buzzerErr();
-  });
+#ifndef OTA_HASH
+#error "An OTA password MUST be set as a MD5. Sorry."
+// Generate with 'echo -n Password | openssl md5 or
+// use https://www.md5hashgenerator.com/. No \0,
+// cariage return or linefeed  at the end of the password.
+#endif
+  node.setOTAPasswordHash(OTA_HASH);
 
   node.onReport([](JsonObject &report) {
     report["bad_poweroff"] = bad_poweroff;
     report["no_coolant_longruns"] = no_coolant;
   });
 
-#ifdef OTA_PASSWD
-  node.addHandler(&ota);
-#endif
 
-  node.begin();
+  node.onApproval([](const char *machine) {
+    Log.println("Approval callback");
+    // We allow 'taking over a machine while it is on' -- hence this check for
+    // if it is powered.
+    if (node.machinestate != POWERED & node.machinestate != CHECKINGCARD) {
+      node.buzzerErr();
+      return;
+    };
+    node.machinestate = POWERED;
+  });
 
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
 }
@@ -174,11 +150,11 @@ void setup() {
 void loop() {
   node.loop();
 
- if (0)  {
+  if (0) {
     static unsigned long lst = 0;
     if (millis() - lst > 5000) {
       lst = millis();
-      Log.printf("Motor current: %d 0=%d 1=%d\n", motorCurrent->rawState(),analogRead(CURR0), analogRead(CURR1));
+      Log.printf("Motor current: %d 0=%d 1=%d\n", motorCurrent->rawState(), analogRead(CURR0), analogRead(CURR1));
     };
   }
   if ((node.machinestate == RUNNING) && (node.machinestate.secondsInThisState() > COOLANT_NAG_TIMEOUT) && (pumpDetect != 0) && (last_coolant_warn == 0)) {

@@ -84,6 +84,9 @@ void WhiteNodev108::buzzerErr() {
     digitalWrite(BUZZER, LOW);
 };
 
+void WhiteNodev108::setOTAPasswordHash(const char * md5) {
+    ArduinoOTA.setPasswordHash(md5);
+}
 
 void WhiteNodev108::begin(bool hasScreen) {
     _hasScreen = hasScreen;
@@ -107,13 +110,13 @@ void WhiteNodev108::begin(bool hasScreen) {
 
     offButton = new ButtonDebounce(OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
-        Log.printf("OFF button %s\n",newState ? "released" : "pressed");
+        Debug.printf("OFF button %s\n",newState ? "released" : "pressed");
         if (machinestate == SCREENSAVER) {
             machinestate = MachineState::WAITINGFORCARD;
             return;
         };
         if (machinestate == INFODISPLAY && newState == LOW) {
-            Log.println("Exiting INFO by button press");
+            Debug.println("Exiting INFO by button press");
             machinestate = MachineState::WAITINGFORCARD;
             return;
         };
@@ -142,7 +145,7 @@ void WhiteNodev108::begin(bool hasScreen) {
             return;
         };
         if (machinestate == MachineState::WAITINGFORCARD && newState == LOW) {
-            Log.println("Menu press on INFO");
+            Debug.println("Menu press on INFO");
             machinestate = INFODISPLAY;
             return;
         };
@@ -170,7 +173,7 @@ void WhiteNodev108::begin(bool hasScreen) {
         setDisplayScreensaver(current == SCREENSAVER);
         if (current == FAULTED) {
             updateDisplay("", "", true);
-            Log.println("Machine poweron disabled - machine on/off switch in the 'on' position.");
+            Debug.println("Machine poweron disabled - machine on/off switch in the 'on' position.");
             errors++;
         } else if (current == MachineState::WAITINGFORCARD) {
             updateDisplay("", "MORE", true);
@@ -191,17 +194,18 @@ void WhiteNodev108::begin(bool hasScreen) {
     });
     
     if (_reader) _reader->onSwipe([&](const char *tag) -> ACBase::cmd_result_t {
+        buzzerOk();
         if (machinestate < MachineState::WAITINGFORCARD) {
             Log.printf("Ignoring swipe; as the node is not yet ready for it\n");
             return ACBase::CMD_CLAIMED;
         };
         if (machinestate == SCREENSAVER) {
             machinestate.setState(MachineState::WAITINGFORCARD);
-            Log.println("Switching off the screensaver");
+            Debug.println("Switching off the screensaver");
         };
         if (machinestate == INFODISPLAY) {
             machinestate.setState(MachineState::WAITINGFORCARD);
-            Log.println("Aborting INFO screen to handle swipe");
+            Debug.println("Aborting INFO screen to handle swipe");
         };
         machinestate = CHECKINGCARD;
         if (_swipeCB)
@@ -209,8 +213,88 @@ void WhiteNodev108::begin(bool hasScreen) {
         
         return ACBase::CMD_DECLINE;
     });
-    
+   
+  onConnect([&]() {
+    machinestate = MachineState::WAITINGFORCARD;
+  });
+  onDisconnect([&]() {
+    machinestate = MachineState::NOCONN;
+  });
+  onError([&](acnode_error_t err) {
+    Log.printf("Error %d\n", err);
+    machinestate = MachineState::TRANSIENTERROR;
+  });
+
+  onDenied([&](const char *machine) {
+    if (machinestate == SCREENSAVER) {
+      machinestate = MachineState::WAITINGFORCARD;
+      return;
+    };
+    machinestate = MachineState::REJECTED;
+    buzzerErr();
+  });
+ 
     updateDisplay("","MORE", true);
+
+  ArduinoOTA.setHostname((_acnode->moi && _acnode->moi[0]) ? _acnode->moi : "unset-acnode");
+
+  ArduinoOTA.onStart([&]() {
+    if (machinestate != CHECKINGCARD && machinestate != SCREENSAVER) {
+        Log.println("CRITICAL: Rejected OTA updated as machine is currently in use.");
+	ArduinoOTA.end();
+	ArduinoOTA.begin();
+        return;
+    };
+
+    updateDisplay("","",true);
+    updateDisplayStateMsg("updating",1);
+    updateDisplayProgressbar(0,true);
+    setDisplayScreensaver(false);
+
+    if (strstr(_acnode->moi,"test")) 
+        Log.println("OTA process started (Not wiping private keys in test ode).");
+    else {
+        Log.println("OTA process started -- wiping private keys.");
+        wipe_eeprom();
+        Log.println("Keys wiped. Do not forget to reset the TOFU on the server.");
+    };
+    Serial.print("Progress: 0%");
+    Log.stop();
+    Debug.stop();
+  });
+  ArduinoOTA.onEnd([&]() {
+    updateDisplayStateMsg("ok, rebooting",1);
+    updateDisplayProgressbar(100);
+    Serial.println("..100% Done");
+    Log.println("OTA process completed. Resetting.");
+  });
+  ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
+    static int lp = 0;
+    int p = (int)(10. * progress / total + 0.5);
+    if (p != lp) {
+        int perc = (progress / (total / 100));
+        lp = p;
+        Serial.printf("..%u%%", perc);
+        updateDisplayProgressbar(perc);
+    };
+  });
+  ArduinoOTA.onError([&](ota_error_t error) {
+    Log.printf("Error[%u]: ", error);
+    updateDisplayStateMsg("FAIL, rebooting",1);
+    updateDisplayProgressbar(0, true);
+    if (error == OTA_AUTH_ERROR) Log.println("OTA: Auth failed");
+    else if (error == OTA_BEGIN_ERROR) Log.println("OTA: Begin failed");
+    else if (error == OTA_CONNECT_ERROR) Log.println("OTA: Connect failed");
+    else if (error == OTA_RECEIVE_ERROR) Log.println("OTA: Receive failed");
+    else if (error == OTA_END_ERROR) Log.println("OTA: End failed");
+    else {
+      Log.print("OTA: Error: ");
+      Log.println(error);
+    };
+  });
+  
+  ArduinoOTA.begin();
+  Debug.println("OTA Enabled");
 }
 
 void WhiteNodev108::setDisplayScreensaver(bool on) {
@@ -250,6 +334,21 @@ void WhiteNodev108::updateDisplay( String left, String right, bool rebuildFull) 
     };
     _display->display();
 };
+
+void WhiteNodev108::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {
+    if (!_hasScreen) return;
+
+    int y = SCREEN_HEIGHT-30;
+    int l = (SCREEN_WIDTH-4)*percentage / 100;
+
+    if (rebuildFull){
+       _display->fillRect(0, y, SCREEN_WIDTH, 20, SH110X_BLACK);
+       _display->drawRect(0, y, SCREEN_WIDTH, 12, SH110X_WHITE);
+     };
+
+    _display->fillRect(0+2+l, y+2, SCREEN_WIDTH, 12-4, SH110X_WHITE);
+    _display->display();
+}
 
 void WhiteNodev108::updateDisplayStateMsg(String msg, int line) {
     if (!_hasScreen) return;
@@ -305,6 +404,7 @@ static void _display_QR(char * title, char * url) {
 }
 
 void WhiteNodev108::updateInfoDisplay(page_t page) {
+    if (!_hasScreen) return;
     if (_pageState != page) {
         _display->clearDisplay();
         _display->setTextSize(1);
@@ -327,7 +427,7 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
             break;
         case PAGE_MQTT: {
             _display->println("    -- MQTT --");
-            char buff[16],*p = mqtt_server,*q="Host";
+            char buff[16],*p = mqtt_server,*q=(char*)"Host";
             while(*p) {
                 char * s = index(p,'.');
                 int l = 12;
@@ -336,7 +436,7 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
                 buff[l] = '\0';
                 p+=strlen(buff);
                 _display->printf("%s :%s\n",q,buff);
-                q = "    ";
+                q = (char *)"    ";
             };
             _display->printf("Port :%u\n",mqtt_port);
             _display->printf("Topic:%s/#\n",mqtt_topic_prefix);
@@ -352,7 +452,7 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
         case PAGE_LOG_QR: {
             char url[32];
             snprintf(url,sizeof(url),"http://%s/",String(localIP().toString()).c_str());
-            _display_QR("view log", url);
+            _display_QR((char *)"view log", url);
         };
             break;
         case PAGE_BUTT:
@@ -402,7 +502,8 @@ void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB swipeCB) {
 
 void WhiteNodev108::loop() {
     ACNode::loop();
-    
+    ArduinoOTA.handle();    
+
     // This is the ony dynamic page; the others are static once drawn; or
     // are only updated by explicit things like button presses.
     //
@@ -419,7 +520,7 @@ void WhiteNodev108::loop() {
     };
     
     if ((machinestate == MachineState::WAITINGFORCARD) && (machinestate.secondsInThisState() > SCREENSAVER_DELAY)) {
-        Log.println("Enabling screensaver");
+        Debug.println("Enabling screensaver");
         machinestate.setState(SCREENSAVER);
     };
 }
@@ -428,6 +529,8 @@ void WhiteNodev108::report(JsonObject & report) {
     report["manual_poweroff"] = manual_poweroff;
     report["idle_poweroff"] = idle_poweroff;
     report["errors"] = errors;
+
+    report["ota"] = true;
     
     ACNode::report(report);
 }

@@ -87,6 +87,11 @@ void ACNode::pop() {
 #ifdef SYSLOG_HOST
     Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 #endif
+    // We're more chatty over telnet and web - as that does not end up in
+    // log files and is likely to be used more in a 'debug' style sort
+    // of fashion.
+    Debug.addPrintStream(std::make_shared<TelnetSerialStream>(telnetSerialStream));
+    Debug.addPrintStream(std::make_shared<WebSerialStream>(webSerialStream));
 };
 
 IPAddress ACNode::localIP() {
