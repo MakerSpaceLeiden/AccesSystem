@@ -23,6 +23,17 @@
 #define MACHINE "metalmitresaw"
 #endif
 
+//#define OTA_PASSWD_MD5  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
+
+#ifndef OTA_PASSWD_HASH
+#error "An OTA password MUST be set as a MD5. Sorry."
+// Generate with 'echo -n Password | openssl md5 or
+// use https://www.md5hashgenerator.com/. No \0,
+// cariage return or linefeed  at the end of the
+// password; just the characters of the password
+// itself.
+#endif
+
 const unsigned long COOLANT_NAG_TIMEOUT = 60;  // Start nagging after running for over a minute with no coolant.
 
 #define SAFETY (OPTO1)
@@ -32,11 +43,13 @@ const unsigned long COOLANT_NAG_TIMEOUT = 60;  // Start nagging after running fo
 
 WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
-//#define OTA_PASSWD_MD5  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
-
 ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
 
-MachineState::machinestate_t RUNNING;  // Extra state - when the saw is spinning (detected via the motorCurrent)
+// Extra state above 'POWERED' - when the saw is spinning (detected via the motorCurrent) as
+// opposed to the safety circuitry being powered (i.e. relay has closed, so the interlock
+// circuit with the eStop allows the main contactor to be on.
+//
+MachineState::machinestate_t RUNNING;
 
 unsigned long bad_poweroff = 0;
 unsigned long no_coolant = 0;
@@ -65,18 +78,18 @@ void setup() {
 
     Log.printf("Coolant pump now %s\n", newState ? "OFF" : "ON");
   },
-                          CHANGE);
+  CHANGE);
 
   pinMode(SAFETY, INPUT);
   safetyDetect = new ButtonDebounce(SAFETY);
   safetyDetect->setCallback([](const int newState) {
-    if (node.machinestate == CHECKINGCARD && newState == LOW)
+    if (node.machinestate == MachineState::CHECKINGCARD && newState == LOW)
       node.machinestate = FAULTED;
     if (node.machinestate == FAULTED && newState == HIGH)
       node.machinestate = MachineState::WAITINGFORCARD;
     Debug.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
   },
-                            CHANGE);
+  CHANGE);
 
   motorCurrent = new ButtonDebounce(MOTOR_CURRENT);
   motorCurrent->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
@@ -92,7 +105,16 @@ void setup() {
                  node.machinestate.label(), newState ? "ON" : "OFF");
     }
   },
-                            CHANGE);
+  CHANGE);
+  
+  node.setOTAPasswordHash(OTA_PASSWD_HASH);
+  node.set_mqtt_prefix("ac");
+  node.set_master("master");
+
+  node.onReport([](JsonObject & report) {
+    report["bad_poweroff"] = bad_poweroff;
+    report["no_coolant_longruns"] = no_coolant;
+  });
 
   node.begin();
 
@@ -107,7 +129,7 @@ void setup() {
     };
     Debug.println("Left button press ignored.");
   },
-                      WHEN_PRESSED);
+  WHEN_PRESSED);
 
   node.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     if (current == RUNNING) {
@@ -116,28 +138,12 @@ void setup() {
     }
   });
 
-  node.set_mqtt_prefix("ac");
-  node.set_master("master");
-
-#ifndef OTA_HASH
-#error "An OTA password MUST be set as a MD5. Sorry."
-// Generate with 'echo -n Password | openssl md5 or
-// use https://www.md5hashgenerator.com/. No \0,
-// cariage return or linefeed  at the end of the password.
-#endif
-  node.setOTAPasswordHash(OTA_HASH);
-
-  node.onReport([](JsonObject &report) {
-    report["bad_poweroff"] = bad_poweroff;
-    report["no_coolant_longruns"] = no_coolant;
-  });
-
 
   node.onApproval([](const char *machine) {
     Log.println("Approval callback");
     // We allow 'taking over a machine while it is on' -- hence this check for
     // if it is powered.
-    if (node.machinestate != POWERED & node.machinestate != CHECKINGCARD) {
+    if (node.machinestate != POWERED & node.machinestate != MachineState::CHECKINGCARD) {
       node.buzzerErr();
       return;
     };
@@ -149,6 +155,14 @@ void setup() {
 
 void loop() {
   node.loop();
+  if (1) {
+    static unsigned long lst = 0;
+    if (millis() - lst > 5000) {
+      lst = millis();
+      Debug.println("Debug: tok");
+      Serial.println("Serial: tok");
+    };
+  }
 
   if (0) {
     static unsigned long lst = 0;

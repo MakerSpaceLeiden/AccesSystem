@@ -17,9 +17,11 @@
 #ifndef ADAFRUIT_GFX_DEGREE_SYMBOL
 #define ADAFRUIT_GFX_DEGREE_SYMBOL (247)
 #endif
+
+#define QR_URL_REDIRECT_TEMPLATE "https://wiki.makerspaceleiden.nl/mediawiki/index.php/QR_%s"
             
 // Extra, hardware specific states
-MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED, CHECKINGCARD;
+MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED;
 
 Adafruit_SH1106G * _display = NULL;
 
@@ -47,7 +49,6 @@ void WhiteNodev108::pop() {
     addHandler(_reader);
     
     FAULTED = machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER);
-    CHECKINGCARD = machinestate.addState("Checking card....", LED::LED_OFF, CARD_CHECK_WAIT * 1000, MachineState::WAITINGFORCARD);
     SCREENSAVER = machinestate.addState("Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER);
     INFODISPLAY = machinestate.addState("User browsing info pages", LED::LED_OFF, 20 * 1000, MachineState::WAITINGFORCARD);
     POWERED = machinestate.addState("Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);
@@ -57,7 +58,6 @@ void WhiteNodev108::pop() {
     
     pinMode(OFF_BUTTON, INPUT_PULLUP);
     pinMode(MENU_BUTTON, INPUT_PULLUP);
-
 
     ACNode::pop();
 };
@@ -177,9 +177,9 @@ void WhiteNodev108::begin(bool hasScreen) {
             errors++;
         } else if (current == MachineState::WAITINGFORCARD) {
             updateDisplay("", "MORE", true);
-            if (last == CHECKINGCARD)
+            if (last == MachineState::CHECKINGCARD)
                 buzzerErr();
-        } else if (current == CHECKINGCARD)
+        } else if (current == MachineState::CHECKINGCARD)
             updateDisplay("", "", true);
         else if (current == POWERED)
             updateDisplay("TURN OFF", "", true);
@@ -207,7 +207,7 @@ void WhiteNodev108::begin(bool hasScreen) {
             machinestate.setState(MachineState::WAITINGFORCARD);
             Debug.println("Aborting INFO screen to handle swipe");
         };
-        machinestate = CHECKINGCARD;
+        machinestate = MachineState::CHECKINGCARD;
         if (_swipeCB)
             return _swipeCB(tag);
         
@@ -239,15 +239,21 @@ void WhiteNodev108::begin(bool hasScreen) {
   ArduinoOTA.setHostname((_acnode->moi && _acnode->moi[0]) ? _acnode->moi : "unset-acnode");
 
   ArduinoOTA.onStart([&]() {
-    if (machinestate != CHECKINGCARD && machinestate != SCREENSAVER) {
-        Log.println("CRITICAL: Rejected OTA updated as machine is currently in use.");
-	ArduinoOTA.end();
-	ArduinoOTA.begin();
+    if ((machinestate.state() != MachineState::WAITINGFORCARD) && (machinestate.state() != SCREENSAVER)) {
+        Log.printf("CRITICAL: Rejected OTA updated as machine is currently in use (state %d:%s)\n",
+		machinestate.state(), machinestate.label());
+
+	// Until our pull requests makes it through - there appears to be no reliable
+        // way to abort an OTA upload forcefully. An .end() gets reset by the next
+        // valid UDP packet arriving. So in onProgress we keep messing with the state
+        // until it positively errors out.
+        _otaOK = false;
+	for(int i = 0; i < 100; i++) { ArduinoOTA.end(); delay(20); };
         return;
     };
 
     updateDisplay("","",true);
-    updateDisplayStateMsg("updating",1);
+    updateDisplayStateMsg("updating firmware",0);
     updateDisplayProgressbar(0,true);
     setDisplayScreensaver(false);
 
@@ -259,45 +265,69 @@ void WhiteNodev108::begin(bool hasScreen) {
         Log.println("Keys wiped. Do not forget to reset the TOFU on the server.");
     };
     Serial.print("Progress: 0%");
-    Log.stop();
-    Debug.stop();
+    // Log.stop();
+    // Debug.stop();
   });
   ArduinoOTA.onEnd([&]() {
-    updateDisplayStateMsg("ok, rebooting",1);
-    updateDisplayProgressbar(100);
-    Serial.println("..100% Done");
-    Log.println("OTA process completed. Resetting.");
+    if (_otaOK) {
+	    updateDisplayStateMsg("ok, rebooting",1);
+	    updateDisplayProgressbar(100);
+	    Serial.println("..100% Done");
+	    Log.println("OTA process completed, rebooting");
+    } else {
+	Log.println("Ignoring an OTA end (as we are trying to reject the OTA");
+    };
+    _otaOK = true;
   });
   ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
+    if (!_otaOK) {
+        Log.println("Ignoring OTA update; trying to block it.");
+	for(int i = 0; i < 100; i++) { ArduinoOTA.end(); delay(20); };
+	return;
+    };
     static int lp = 0;
-    int p = (int)(10. * progress / total + 0.5);
+    int p = (int)(30. * progress / total + 0.5);
     if (p != lp) {
-        int perc = (progress / (total / 100));
         lp = p;
+        int perc = (progress / (total / 100));
         Serial.printf("..%u%%", perc);
         updateDisplayProgressbar(perc);
     };
   });
   ArduinoOTA.onError([&](ota_error_t error) {
-    Log.printf("Error[%u]: ", error);
-    updateDisplayStateMsg("FAIL, rebooting",1);
+    String cause = String(error);
+
+    if (error == OTA_AUTH_ERROR) cause = "OTA: Auth failed";
+    else if (error == OTA_BEGIN_ERROR) cause = "OTA: Begin failed";
+    else if (error == OTA_CONNECT_ERROR) cause = "OTA: Connect failed";
+    else if (error == OTA_RECEIVE_ERROR) cause = "OTA: Receive failed";
+    else if (error == OTA_END_ERROR) cause = "OTA: End failed";
+
+    Log.println("OTA Failed: " + cause);
+
+    // If we did not reject the upload; then do not
+    // change state; to prevent us messing with the
+    // current machine state or the display.
+    //
+    if (_otaOK) {
+	    machinestate = MachineState::TRANSIENTERROR;
+    updateDisplay("","",true);
+    updateDisplayStateMsg("update failed",0);
+    updateDisplayStateMsg(cause,1);
     updateDisplayProgressbar(0, true);
-    if (error == OTA_AUTH_ERROR) Log.println("OTA: Auth failed");
-    else if (error == OTA_BEGIN_ERROR) Log.println("OTA: Begin failed");
-    else if (error == OTA_CONNECT_ERROR) Log.println("OTA: Connect failed");
-    else if (error == OTA_RECEIVE_ERROR) Log.println("OTA: Receive failed");
-    else if (error == OTA_END_ERROR) Log.println("OTA: End failed");
-    else {
-      Log.print("OTA: Error: ");
-      Log.println(error);
     };
+
+    _otaOK = true;
+    ArduinoOTA.begin();
   });
   
   ArduinoOTA.begin();
   Debug.println("OTA Enabled");
+  _otaOK = true;
 }
 
 void WhiteNodev108::setDisplayScreensaver(bool on) {
+    Debug.println(on ? "setDisplay(ON)" : "setDisplay(OFF)");
     if (!_hasScreen) return;
     _display->oled_command(on ? SH110X_DISPLAYOFF : SH110X_DISPLAYON);
 }
@@ -338,15 +368,15 @@ void WhiteNodev108::updateDisplay( String left, String right, bool rebuildFull) 
 void WhiteNodev108::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {
     if (!_hasScreen) return;
 
-    int y = SCREEN_HEIGHT-30;
-    int l = (SCREEN_WIDTH-4)*percentage / 100;
+    int y = SCREEN_HEIGHT-16;
+    int l = (SCREEN_WIDTH-4)*percentage / 100.;
 
     if (rebuildFull){
        _display->fillRect(0, y, SCREEN_WIDTH, 20, SH110X_BLACK);
        _display->drawRect(0, y, SCREEN_WIDTH, 12, SH110X_WHITE);
      };
 
-    _display->fillRect(0+2+l, y+2, SCREEN_WIDTH, 12-4, SH110X_WHITE);
+    _display->fillRect(0+2, y+2, l, 12-4, SH110X_WHITE);
     _display->display();
 }
 
@@ -380,7 +410,7 @@ static void _display_QR(char * title, char * url) {
         .display_func = ([](esp_qrcode_handle_t qrcode){
             int s = esp_qrcode_get_size(qrcode);
             int p = 1;
-            while ((s*(p+1) <= SCREEN_WIDTH) && (s*(p+1) <= (SCREEN_HEIGHT-6))) p++;
+            while ((s*(p+1) <= SCREEN_WIDTH) && (s*(p+1) <= (SCREEN_HEIGHT))) p++;
             int ox = (SCREEN_WIDTH - p*s)/2;
             // We cannot pass anything to this lambda; as it maps to C, rather than c++.
             // So we use the state of the cursor to dected an empty title.
@@ -394,13 +424,14 @@ static void _display_QR(char * title, char * url) {
                         _display->fillRect(ox+p*x,oy+p*y,p,p,esp_qrcode_get_module(qrcode, x, y) ? SH110X_WHITE : SH110X_BLACK);
         }),
             .max_qrcode_version = 40,
-            .qrcode_ecc_level = 2
+            .qrcode_ecc_level = 1,
     };
     // Make sure above getCursorY() returns zero if there is no title.
     _display->setCursor(0, 0);
     if (title)
         _display_centred_title(title);
     esp_qrcode_generate(&qrc,url);
+    Log.printf("Showing QR with text: <%s>\n", url);
 }
 
 void WhiteNodev108::updateInfoDisplay(page_t page) {
@@ -444,8 +475,8 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
         }
             break;
         case PAGE_QR: {
-            char url[32];
-            snprintf(url,sizeof(url),"http://wiki.makerspaceleiden.nl/Node_%s_redirect",moi);
+            char url[128];
+            snprintf(url,sizeof(url),QR_URL_REDIRECT_TEMPLATE,moi);
             _display_QR(NULL, url);
         };
             break;

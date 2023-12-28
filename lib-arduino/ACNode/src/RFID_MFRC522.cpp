@@ -1,7 +1,8 @@
 #include <RFID_MFRC522.h>
 #include <MFRC522.h>
 
-const unsigned long RFID_CHECK_INTERVAL = 100 * 1000;
+const unsigned long RFID_CHECK_INTERVAL = 240 * 1000;
+const unsigned long RFID_RESET_INTERVAL = 3600 * 1000;
 
 // https://www.nxp.com/docs/en/data-sheet/MFRC522.pdf
 
@@ -17,6 +18,7 @@ RFID_MFRC522::RFID_MFRC522(const byte sspin , const byte rstpin , const byte irq
    _spiDevice = new MFRC522_SPI(sspin, rstpin, &SPI);
    _mfrc522 = new MFRC522(_spiDevice);
     _irqpin = irqpin;
+    _rstpin = rstpin;
 
    Log.println("MFRC522: SPI wired.");
 }
@@ -32,6 +34,7 @@ RFID_MFRC522::RFID_MFRC522(TwoWire *i2cBus, const byte i2caddr, const byte rstpi
    _i2cDevice = new MFRC522_I2C(rstpin, i2caddr, *i2cBus);
    _mfrc522 = new MFRC522(_i2cDevice);
    _irqpin = irqpin;
+    _rstpin = rstpin;
 
    Log.println("MFRC522: I2C wired.");
 }
@@ -48,7 +51,7 @@ void RFID_MFRC522::activateScanning() {
 };
 
 void RFID_MFRC522::begin() {
-  _mfrc522->PCD_Init();     // Init MFRC522
+  reset();
 
   if (_irqpin != 255) {
 	 /* Set1 | RxIrq (table 30, page 40) -- IRQ on read completed */
@@ -64,6 +67,19 @@ void RFID_MFRC522::begin() {
    // Note: this seems to wedge certain cards.
    if (_debug)
 	_mfrc522->PCD_DumpVersionToSerial();
+}
+
+void RFID_MFRC522::reset() {
+  if (_rstpin != 255) {
+	digitalWrite(_rstpin,LOW);
+        Log.println("MFRC522: Reset (HW) and (re)init");
+  } else {
+        _mfrc522->PCD_Reset();
+        Log.println("MFRC522: Reset (Soft) and (re)init");
+  }
+  delay(50); // minimal 35 mS
+  _mfrc522->PCD_Init();     // Init MFRC522
+  delay(5);
 }
 
 void RFID_MFRC522::loop() {
@@ -83,10 +99,15 @@ void RFID_MFRC522::loop() {
       if (!cardScannedIrqSeen) {
 	if (millis() - lastswipe> RFID_CHECK_INTERVAL && millis() - _lastI2Ccheck > RFID_CHECK_INTERVAL) {
 		_lastI2Ccheck = millis();
-		byte version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
-		if (version < 0x80 && version > 0x100) {
-			Log.printf("Alert - RFID reader gave an odd response (%x) - resetting\n", version);
-			_mfrc522->PCD_Init();
+		if (millis() - _lastReset > RFID_RESET_INTERVAL) {
+			_lastReset = millis();
+			reset();
+                } else {
+			byte version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
+			if (version < 0x80 && version > 0x100) {
+				Log.printf("Alert - RFID reader gave an odd response (%x) - resetting\n", version);
+				reset();
+			}
 		};
 	};
 	return;
@@ -102,7 +123,6 @@ void RFID_MFRC522::loop() {
     } else {
       _miss++;
     };
-
 
     // clear the interupt and re-arm the reader.
     if (_irqMode) {

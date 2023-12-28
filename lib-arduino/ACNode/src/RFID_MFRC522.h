@@ -44,14 +44,15 @@ class RFID_MFRC522 : public RFID {
 
     void begin();
     void loop();
+    void reset();
 
   private:
     MFRC522_SPI * _spiDevice;
     MFRC522_I2C * _i2cDevice;
     MFRC522 * _mfrc522;
-    uint8_t _irqpin = 255;
+    uint8_t _irqpin = 255, _rstpin = 255;
     void activateScanning();
     void clearInt();
-    unsigned long _lastI2Ccheck  = 0;
+    unsigned long _lastI2Ccheck  = 0, _lastReset = 0;
 };
 #endif

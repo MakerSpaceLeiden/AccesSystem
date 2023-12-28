@@ -82,16 +82,18 @@ void ACNode::pop() {
     // It is safe to start logging early - as these won't emit anyting until
     // the network is known to be up.
     //
-    Log.addPrintStream(std::make_shared<TelnetSerialStream>(telnetSerialStream));
-    Log.addPrintStream(std::make_shared<WebSerialStream>(webSerialStream));
+   const std::shared_ptr<LOGBase> & th = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+   const std::shared_ptr<LOGBase> & wh = std::make_shared<WebSerialStream>(webSerialStream);
+
+   Log.addPrintStream(th);
+   Log.addPrintStream(wh);
+
+   Debug.addPrintStream(wh);
+   Debug.addPrintStream(th);
+
 #ifdef SYSLOG_HOST
     Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 #endif
-    // We're more chatty over telnet and web - as that does not end up in
-    // log files and is likely to be used more in a 'debug' style sort
-    // of fashion.
-    Debug.addPrintStream(std::make_shared<TelnetSerialStream>(telnetSerialStream));
-    Debug.addPrintStream(std::make_shared<WebSerialStream>(webSerialStream));
 };
 
 IPAddress ACNode::localIP() {

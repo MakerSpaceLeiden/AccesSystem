@@ -93,6 +93,8 @@ private:
     RFID_MFRC522 * _reader;
     bool _hasScreen;
     page_t _pageState;
+
+    bool _otaOK = true;
     
     ButtonDebounce *offButton, *menuButton;
     ButtonCallback _offCallBack, _menuCallBack = NULL;
@@ -107,7 +109,7 @@ private:
     
     const unsigned long CARD_CHECK_WAIT = 3;              // wait up to 3 seconds for a card to be checked.
     const unsigned long MAX_IDLE_TIME = 45 * 60;          // auto power off the machine after 45 minutes of no use.
-    const unsigned long SHOW_COUNTDOWN_TIME_AFTER = 600;  // Only start showing above idle to off countdown after 10 minutes of no use.
+    const unsigned long SHOW_COUNTDOWN_TIME_AFTER = 10 * 60;  // Only start showing above idle to off countdown after 10 minutes of no use.
     const unsigned long SCREENSAVER_DELAY = 20 * 60;      // power off the screen after some period of no swipe/interaction.
     
     unsigned long manual_poweroff = 0;
