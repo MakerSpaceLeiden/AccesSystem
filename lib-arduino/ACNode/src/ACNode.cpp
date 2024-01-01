@@ -73,11 +73,14 @@ void ACNode::pop() {
 
     moi[0] = 0;
     if (machine == NULL || machine[0] == 0)
-    	strncpy(machine, String("node-" + chipId() ).c_str(), sizeof(machine));
+    	strncpy(machine, String("test-" + chipId() ).c_str(), sizeof(machine));
 
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
     strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
+
+   Log.setIdentifier(moi);
+   Debug.setIdentifier(moi);
 
     // It is safe to start logging early - as these won't emit anyting until
     // the network is known to be up.
@@ -104,6 +107,15 @@ IPAddress ACNode::localIP() {
 #endif
         return WiFi.localIP();
 };
+
+String ACNode::getHostname() {
+#ifdef ESP32
+        if (_wired)
+            return ETH.getHostname();
+        else
+#endif
+        return WiFi.getHostname();
+}
 
 String ACNode::macAddressString() {
 #ifdef ESP32
@@ -172,36 +184,19 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_
     if (!*moi)  
 	strncpy(moi, machine, sizeof(moi));
 
-#define X { Serial.printf("Halting at %s:%d\n", __FILE__, __LINE__); delay(5000); }
+    if (strncmp(moi,"test-",5) == 0) 
+	snprintf(moi,sizeof(moi),"%s-%s",moi,chipId().c_str());
 
 #if 0
     if (_debug)
         debugFlash();
 #endif
-
     checkClearEEPromAndCacheButtonPressed(clear_button);
 
 #ifdef ESP32 
-    if (_wired)  {
+    if (_wired) 
        WiFi.onEvent(WiFiEvent);
-    }
 #endif
-#if 0
-       switch(board) {
-       case BOARD_NG:
-         ETH.begin(ETH_PHY_ADDR, ETH_PHY_RESET, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
-         break;
-       case BOARD_OLIMEX:
-         ETH.begin(ETH_PHY_ADDR, 12 /* power */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
-         break;
-       case BOARD_AART:
-         ETH.begin(1 /* address */, 17 /* power */, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLK_MODE);
-         break;
-       default:
-         ETH.begin();
-      }
-#endif
-
   
 #ifdef CONFIGAP
     configBegin();
@@ -233,10 +228,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_
         wifiManager.autoConnect();
     };
     
-    // Try up to del seconds to get a WiFi connection; and if that fails; reboot
-    // with a bit of a delay.
-    //
-    const int del = 10; // seconds.
+    const int del = 3; // seconds.
     unsigned long start = millis();
     Debug.print("Connecting..");
     while (!isConnected() && (millis() - start < del * 1000)) {
@@ -798,4 +790,16 @@ void ACNode::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
   }
 }
 
+String ACNode::uptime() {
+	unsigned long up = uptimeInSeconds();
+	String unit = "s";
+	if (!up)
+		return "unknown";
+	if (up > 300) { up /= 60; unit = "m"; 
+	if (up > 180) { up /= 60; unit = "h"; 
+	if (up > 50) { up /= 24; unit = "d"; 
+	if (up > 9) { up /= 30.5; unit = "m"; 
+	}; }; }; };
+	return String(up) + unit;
+}
 

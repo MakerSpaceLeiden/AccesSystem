@@ -46,7 +46,7 @@ const uint8_t SCREEN_RESET = -1;     //  Not wired up
 #include "ACNode.h"
 
 // Extra, hardware specific states
-extern MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED, CHECKINGCARD;
+extern MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED;
 
 // Global; as we have just one of them; and we have some plain C functions as calbacks.
 extern Adafruit_SH1106G * _display;

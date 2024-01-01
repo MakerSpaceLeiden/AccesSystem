@@ -41,7 +41,10 @@ const unsigned long COOLANT_NAG_TIMEOUT = 60;  // Start nagging after running fo
 #define RELAY_GPIO (OUT0)
 #define MOTOR_CURRENT (CURR0)
 
-WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
+// This node is currently not wired; instead it uses an AC/DC convertor
+// and is wired into the same 3P+N+E power as the saw itself.
+//
+WhiteNodev108 node = WhiteNodev108(MACHINE); // WIFI_NETWORK, WIFI_PASSWD);
 
 ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
 
@@ -114,30 +117,19 @@ void setup() {
   node.onReport([](JsonObject & report) {
     report["bad_poweroff"] = bad_poweroff;
     report["no_coolant_longruns"] = no_coolant;
+    report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
   });
 
   node.begin();
 
-  node.setOffCallback([](const int newState) {
-    if (node.machinestate == RUNNING) {
-      // Refuse to let the safety be used to power something off.
-      //
-      Log.println("Bad poweroff attempt. Ignoring.");
-      node.buzzerErr();
-      bad_poweroff++;
-      return;
-    };
-    Debug.println("Left button press ignored.");
-  },
-  WHEN_PRESSED);
-
   node.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-    if (current == RUNNING) {
+    if (current == RUNNING || current == POWERED) {
+      // We do not show the 'OFF' button - we expect the user to use
+      // the RED off button of the safety contactor.
       node.updateDisplay(node.machinestate.label(), "", true);
       last_coolant_warn = 0;
-    }
+    };
   });
-
 
   node.onApproval([](const char *machine) {
     Log.println("Approval callback");
@@ -155,22 +147,7 @@ void setup() {
 
 void loop() {
   node.loop();
-  if (1) {
-    static unsigned long lst = 0;
-    if (millis() - lst > 5000) {
-      lst = millis();
-      Debug.println("Debug: tok");
-      Serial.println("Serial: tok");
-    };
-  }
 
-  if (0) {
-    static unsigned long lst = 0;
-    if (millis() - lst > 5000) {
-      lst = millis();
-      Log.printf("Motor current: %d 0=%d 1=%d\n", motorCurrent->rawState(), analogRead(CURR0), analogRead(CURR1));
-    };
-  }
   if ((node.machinestate == RUNNING) && (node.machinestate.secondsInThisState() > COOLANT_NAG_TIMEOUT) && (pumpDetect != 0) && (last_coolant_warn == 0)) {
     // We've been running for a fair bit; but still
     // no coolant. Warn once during each lengthy run.

@@ -121,6 +121,7 @@ public:
     char mqtt_topic_prefix[MAX_NAME];
     
     IPAddress localIP();
+    String getHostname();
     String macAddressString();
     String chipId() {
 #ifdef ESP32
@@ -174,7 +175,10 @@ public:
     void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
 
     char * cloak(char *tag);
-    
+  
+    unsigned long uptimeInSeconds() { return _start_beat ?  beatCounter - _start_beat : 0; };
+    String uptime();
+  
     void set_debugAlive(bool debug);
     void set_log_destinations(unsigned int destinations);
     void set_debug_destinations(unsigned int destinations);

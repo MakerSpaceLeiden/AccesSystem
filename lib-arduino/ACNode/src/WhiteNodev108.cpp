@@ -120,13 +120,6 @@ void WhiteNodev108::begin(bool hasScreen) {
             machinestate = MachineState::WAITINGFORCARD;
             return;
         };
-        if (machinestate == POWERED) {
-            Log.println("Machine powered down by OFF button");
-            machinestate = MachineState::WAITINGFORCARD;
-            buzzerOk();
-            manual_poweroff++;
-            return;
-        };
         if (_offCallBack &&
             (_offCallBackMode == CHANGE ||
              (newState && (_offCallBackMode == ONHIGH || _offCallBackMode == RISING)) ||
@@ -181,8 +174,6 @@ void WhiteNodev108::begin(bool hasScreen) {
                 buzzerErr();
         } else if (current == MachineState::CHECKINGCARD)
             updateDisplay("", "", true);
-        else if (current == POWERED)
-            updateDisplay("TURN OFF", "", true);
         else if (current == INFODISPLAY) {
             updateInfoDisplay();
             return;
@@ -446,15 +437,17 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
     switch(page) {
         case PAGE_INFO:
             _display->println("    -- INFO --");
-            _display->printf("Node   :%s\n",moi);
-            _display->printf("IPv4   :%s\n", String(localIP().toString()).c_str());
-            _display->printf("Via    :%s\n", _wired ? "LAN" : "WiFi");
+            _display->printf("Node :%s\n",moi);
+            _display->printf("IPv4 :%s\n", String(localIP().toString()).c_str());
+            _display->printf("Via  :%s\n", _wired ? "LAN" : "WiFi");
 #ifdef SYSLOG_HOST
-            _display->printf("Syslog :%s\n", SYSLOG_HOST);
+            _display->printf("Syslg:%s\n", SYSLOG_HOST);
 #else
-            _display->printf("Syslog :OFF\n");
+            _display->printf("Syslg:OFF\n");
 #endif
-            _display->printf("CPU    :%.1f%cC\n", coreTemp(),ADAFRUIT_GFX_DEGREE_SYMBOL);
+            _display->printf("Up   :%s\n",uptime().c_str());
+            _display->printf("CPU  :%.1f%cC\n", coreTemp(),ADAFRUIT_GFX_DEGREE_SYMBOL);
+            _display->printf("Heap :%.1fkB\n", ESP.getFreeHeap() / 1024.);
             break;
         case PAGE_MQTT: {
             _display->println("    -- MQTT --");
