@@ -180,7 +180,7 @@ void WhiteNodev108::begin(bool hasScreen) {
         }
         else if (_onChangeCB && (current == _onChangeState || _onChangeState ==MachineState::ALL_STATES))
             _onChangeCB(last, current);
-        
+    
         updateDisplayStateMsg(machinestate.label());
     });
     

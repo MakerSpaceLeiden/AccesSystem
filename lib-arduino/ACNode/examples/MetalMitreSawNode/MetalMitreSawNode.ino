@@ -44,7 +44,7 @@ const unsigned long COOLANT_NAG_TIMEOUT = 60;  // Start nagging after running fo
 // This node is currently not wired; instead it uses an AC/DC convertor
 // and is wired into the same 3P+N+E power as the saw itself.
 //
-WhiteNodev108 node = WhiteNodev108(MACHINE); // WIFI_NETWORK, WIFI_PASSWD);
+WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
 
@@ -54,7 +54,7 @@ ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
 //
 MachineState::machinestate_t RUNNING;
 
-unsigned long bad_poweroff = 0;
+unsigned long bad_poweroff = 0, normal_poweroff = 0;
 unsigned long no_coolant = 0;
 unsigned long last_coolant_warn = 0;
 
@@ -86,11 +86,25 @@ void setup() {
   pinMode(SAFETY, INPUT);
   safetyDetect = new ButtonDebounce(SAFETY);
   safetyDetect->setCallback([](const int newState) {
-    if (node.machinestate == MachineState::CHECKINGCARD && newState == LOW)
-      node.machinestate = FAULTED;
-    if (node.machinestate == FAULTED && newState == HIGH)
+    Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
+    if (node.machinestate == MachineState::WAITINGFORCARD && newState == LOW) {
+      Log.printf("Someone pressed the ON buytton without swiping a (valid) card");
+    } else if (node.machinestate == POWERED && newState == HIGH) {
+      Log.println("Normal poweroff");
+      normal_poweroff++;
       node.machinestate = MachineState::WAITINGFORCARD;
-    Debug.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
+      node.buzzerOk();
+    }
+    else if (node.machinestate == RUNNING && newState == LOW) {
+      // Refuse to let the safety be used to power something off. As
+      // the relay is really not designed for this.
+      //
+      Log.println("Bad poweroff attempt. Ignoring.");
+      node.buzzerErr();
+      bad_poweroff++;
+    } else {
+      Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
+    };
   },
   CHANGE);
 
@@ -109,13 +123,14 @@ void setup() {
     }
   },
   CHANGE);
-  
+
   node.setOTAPasswordHash(OTA_PASSWD_HASH);
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
   node.onReport([](JsonObject & report) {
     report["bad_poweroff"] = bad_poweroff;
+    report["normal_poweroff"] = normal_poweroff;
     report["no_coolant_longruns"] = no_coolant;
     report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
   });
@@ -125,8 +140,8 @@ void setup() {
   node.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     if (current == RUNNING || current == POWERED) {
       // We do not show the 'OFF' button - we expect the user to use
-      // the RED off button of the safety contactor.
-      node.updateDisplay(node.machinestate.label(), "", true);
+      // the RED/Green on/off button of the safety contactor.
+      node.updateDisplay("", "", true);
       last_coolant_warn = 0;
     };
   });

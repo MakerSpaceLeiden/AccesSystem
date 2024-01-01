@@ -101,13 +101,13 @@ void setup() {
   });
 
   // This node does not have a safety contactor; instead it has a single (off) button
-  // that also contains the (error/aart) general indicator LED.
-  //
-  node.setOffCallback([](const int newState) {
+  // that also contains the (error/aart) general indicator LED. This button is
+  // wired to the MENU button.
+  node.setMenuCallback([](const int newState) {
     if (node.machinestate == POWERED && newState == LOW) {
       Log.println("Normal poweroff");
       normal_poweroff++;
-      node.machinestate = MachineState::CHECKINGCARD;
+      node.machinestate = MachineState::WAITINGFORCARD;
       node.buzzerOk();
     }
     else if (node.machinestate == RUNNING && newState == LOW) {
