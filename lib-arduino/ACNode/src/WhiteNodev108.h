@@ -64,7 +64,7 @@ public:
     void setDisplayScreensaver(bool on);
     void onSwipe(RFID::THandlerFunction_SwipeCB fn);
     
-    typedef enum { PAGE_NORMAL= 0, PAGE_QR, PAGE_LOG_QR, PAGE_INFO, PAGE_MQTT, PAGE_BUTT, PAGE_LAST} page_t;
+    typedef enum { PAGE_NORMAL= 0, PAGE_QR, PAGE_LOG_QR, PAGE_INFO, PAGE_SNTP, PAGE_MQTT, PAGE_BUTT, PAGE_LAST} page_t;
     void updateInfoDisplay(page_t page = PAGE_QR);
     
     typedef std::function<void(const int)> ButtonCallback;

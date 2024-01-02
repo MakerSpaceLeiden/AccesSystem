@@ -1,5 +1,8 @@
 #include "WhiteNodev108.h"
 #include "msl-logo.h"
+#include <esp_sntp.h>
+
+
 
 #define WN_ETH_PHY_TYPE        ETH_PHY_RTL8201
 #define WN_ETH_PHY_ADDR         0 // PHYADxx all tied to 0
@@ -105,6 +108,16 @@ void WhiteNodev108::begin(bool hasScreen) {
     
     if (_wired)
         ETH.begin(WN_ETH_PHY_ADDR, WN_ETH_PHY_POWER, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_TYPE, WN_ETH_CLK_MODE);
+
+#if 0
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(NTP_POOL);
+    esp_netif_sntp_init(&config);
+#else
+    configTime(0, 0, NTP_POOL);
+    setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
+    tzset();
+#endif
+    esp_sntp_servermode_dhcp(true);
     
     ACNode::begin(BOARD_NG);
 
@@ -427,7 +440,7 @@ static void _display_QR(char * title, char * url) {
 
 void WhiteNodev108::updateInfoDisplay(page_t page) {
     if (!_hasScreen) return;
-    if (_pageState != page) {
+    if (_pageState != page || page == PAGE_SNTP) {
         _display->clearDisplay();
         _display->setTextSize(1);
         _display->setTextColor(SH110X_WHITE);
@@ -436,7 +449,7 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
     _display->setFont(NULL); // Fairly large 5x7 font
     switch(page) {
         case PAGE_INFO:
-            _display->println("    -- INFO --");
+            _display->println("   -- INFO --");
             _display->printf("Node :%s\n",moi);
             _display->printf("IPv4 :%s\n", String(localIP().toString()).c_str());
             _display->printf("Via  :%s\n", _wired ? "LAN" : "WiFi");
@@ -448,6 +461,30 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
             _display->printf("Up   :%s\n",uptime().c_str());
             _display->printf("CPU  :%.1f%cC\n", coreTemp(),ADAFRUIT_GFX_DEGREE_SYMBOL);
             _display->printf("Heap :%.1fkB\n", ESP.getFreeHeap() / 1024.);
+            break;
+        case PAGE_SNTP:
+        {
+            time_t now = time(NULL);
+            struct tm * t = localtime(&now);
+	    char ds[10], ts[10]; 
+            strftime(ds,sizeof(ds),"%Y-%m-%d",t);
+            strftime(ts,sizeof(ts),"%H:%M:%S",t);
+            sntp_sync_status_t  s = sntp_get_sync_status();
+            _display->println("   -- SNTP --");
+            _display->printf("Date :%s\n",ds);
+            _display->printf("Time :%s\n",ts);
+            _display->printf("sNTP :%s\n",esp_sntp_enabled() ? 
+		(s == SNTP_SYNC_STATUS_COMPLETED ? "adjusting" : 
+			(s == SNTP_SYNC_STATUS_COMPLETED ? "OK" : "Pending")
+		) : "OFF");
+	    for(int i = 0, j = 0; i < 255  && j < 5; i++) {
+		const char * s = esp_sntp_getservername(i);
+		if (s) {
+			_display->printf("     :%s\n",s); 
+			j++;
+		};
+	    };
+        };
             break;
         case PAGE_MQTT: {
             _display->println("    -- MQTT --");
@@ -533,6 +570,9 @@ void WhiteNodev108::loop() {
     //
     if (_pageState == PAGE_BUTT)
         updateInfoDisplay(PAGE_BUTT);
+
+    if (_pageState == PAGE_SNTP) 
+        updateInfoDisplay(PAGE_SNTP);
     
     if (machinestate == POWERED) {
         String left = machinestate.timeLeftInThisState();

@@ -11,7 +11,7 @@
    Unless required by applicable law or agreed to in writing, softwareM
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF
-   ANY KIND, either express or implied.
+   ANY KIND, either express or implied. 
    See the License for the specific language governing permissions and
    limitations under the License.
 
@@ -23,10 +23,12 @@
 #define MACHINE             "lintzaag"
 #endif
 
-#define INTERLOCK (OPTO0)     // Detect voltage on the interlock/safety contactor.
-#define ONOFFSWITCH (OPTO1)   // Detects voltage on the normally-closed circuit of the front switch.
-#define RELAY_GPIO (OUT0)     // The relay that sits in the safety interlock of the contactor at the bottom of the saw
+#define INTERLOCK     (OPTO0) // Detect voltage on the interlock/safety contactor.
+#define ONOFFSWITCH   (OPTO1) // Detects voltage on the normally-closed circuit of the front switch.
 #define MOTOR_CURRENT (CURR0) // One of the 3-phase wires to the motor runs through this current coil.
+
+#define RELAY_GPIO    (OUT0)  // The relay that sits in the safety interlock of 
+                              // the contactor at the back-bottom of the saw.
 
 // Generate with 'echo -n Password | openssl md5 or
 // use https://www.md5hashgenerator.com/. No \0,
@@ -42,7 +44,8 @@
 
 WhiteNodev108 node = WhiteNodev108(MACHINE);
 
-unsigned long bad_poweroff = 0;
+unsigned long bad_poweroff = 0, normal_poweroff = 0;
+
 
 ButtonDebounce *interlockDetect, *motorCurrent, *onoffSwitchDetect;
 
@@ -96,21 +99,10 @@ void setup() {
     else if (node.machinestate == POWERED && newState == HIGH) {
       Log.println("Normal poweroff with the green button.");
       node.machinestate = MachineState::WAITINGFORCARD;
+      normal_poweroff++;
     }
     else
       Debug.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
-  }, CHANGE);
-
-  pinMode(ONOFFSWITCH, INPUT);
-  onoffSwitchDetect = new ButtonDebounce(ONOFFSWITCH);
-  onoffSwitchDetect->setCallback([](const int newState) {
-    if (node.machinestate == MachineState::WAITINGFORCARD && newState == HIGH) {
-      node.machinestate = FAULTED;
-    } else 
-    if (node.machinestate == FAULTED && newState == LOW) {
-      node.machinestate = MachineState::WAITINGFORCARD;
-    } else 
-    Debug.printf("Ignoring on-off switch change to %s\n", newState ? "off" : "on");
   }, CHANGE);
 
   motorCurrent = new ButtonDebounce(MOTOR_CURRENT);
@@ -134,32 +126,25 @@ void setup() {
 
   node.onReport([](JsonObject & report) {
     report["bad_poweroff"] = bad_poweroff;
+    report["normal_poweroff"] = normal_poweroff;
     report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
   });
 
   node.begin();
 
-  node.setOffCallback([](const int newState) {
-    // Refuse to let the safety be used to power something off.
-    if (node.machinestate == RUNNING) {
-      Log.println("Bad poweroff attempt. Ignoring.");
-      tellOff("Use the GREEN button to power off");
-      bad_poweroff++;
-      return;
-    };
-    Debug.println("Left button press ignored.");
-  }, WHEN_PRESSED);
-
   node.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-    if (current == RUNNING) {
-      node.updateDisplay(node.machinestate.label(), "", true);
-    }
+    if (current == RUNNING || current == POWERED) {
+      // We do not show the 'OFF' button - we expect the user to use
+      // the RED/Green on/off button of the safety contactor.
+      node.updateDisplay("", "", true);
+    };
   });
 
   node.onApproval([](const char *machine) {
     Log.println("Approval callback");
-    // We allow 'taking over a machine while it is on' -- hence this check for
-    // if it is powered.
+    // We allow 'taking over this achine while it is on' -- hence this check for
+    // if it is powered; and in that case -also- accepting a new approval.
+    //
     if (node.machinestate != POWERED & node.machinestate != MachineState::CHECKINGCARD) {
       node.buzzerErr();
       return;
