@@ -48,7 +48,8 @@ WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
 
-// Extra state above 'POWERED' - when the saw is spinning (detected via the motorCurrent) as
+// Extra 
+state above 'POWERED' - when the saw is spinning (detected via the motorCurrent) as
 // opposed to the safety circuitry being powered (i.e. relay has closed, so the interlock
 // circuit with the eStop allows the main contactor to be on.
 //
@@ -148,8 +149,9 @@ void setup() {
 
   node.onApproval([](const char *machine) {
     Log.println("Approval callback");
-    // We allow 'taking over a machine while it is on' -- hence this check for
-    // if it is powered.
+    // We allow 'taking over this achine while it is on' -- hence this check for
+    // if it is powered; and in that case -also- accepting a new approval.
+    //
     if (node.machinestate != POWERED & node.machinestate != MachineState::CHECKINGCARD) {
       node.buzzerErr();
       return;

@@ -1,8 +1,12 @@
 #include "WhiteNodev108.h"
 #include "msl-logo.h"
 #include <esp_sntp.h>
+#include <lwip/ip_addr.h>
+#include <qrcode.h> // Part of the ESP32 package
 
-
+#ifndef INET6_ADDRSTRLEN
+#define INET6_ADDRSTRLEN (48)
+#endif
 
 #define WN_ETH_PHY_TYPE        ETH_PHY_RTL8201
 #define WN_ETH_PHY_ADDR         0 // PHYADxx all tied to 0
@@ -15,7 +19,6 @@
 
 #include <ETH.h>
 #include <WiredEthernet.h>
-#include <qrcode.h> // Part of the ESP32 package
 
 #ifndef ADAFRUIT_GFX_DEGREE_SYMBOL
 #define ADAFRUIT_GFX_DEGREE_SYMBOL (247)
@@ -158,8 +161,8 @@ void WhiteNodev108::begin(bool hasScreen) {
         if (machinestate == INFODISPLAY && newState == LOW) {
             if (_pageState+1 == PAGE_LAST)
                 machinestate = MachineState::WAITINGFORCARD;
-                else
-            updateInfoDisplay((page_t)((int)_pageState+1));
+            else
+            	updateInfoDisplay((page_t)((int)_pageState+1));
             return;
         };
         if (_menuCallBack &&
@@ -477,8 +480,14 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
 		(s == SNTP_SYNC_STATUS_COMPLETED ? "adjusting" : 
 			(s == SNTP_SYNC_STATUS_COMPLETED ? "OK" : "Pending")
 		) : "OFF");
-	    for(int i = 0, j = 0; i < 255  && j < 5; i++) {
+	    for(int i = 0, j = 0; i < SNTP_MAX_SERVERS&& j < 5; i++) {
+		char buff[INET6_ADDRSTRLEN];
 		const char * s = esp_sntp_getservername(i);
+		if (!s) {
+            		ip_addr_t const *ip = esp_sntp_getserver(i);
+            		if (ipaddr_ntoa_r(ip, buff, INET6_ADDRSTRLEN) != NULL && !(ip_addr_isany(ip)))
+				s = buff;
+		};
 		if (s) {
 			_display->printf("     :%s\n",s); 
 			j++;
