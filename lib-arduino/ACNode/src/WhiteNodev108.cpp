@@ -334,7 +334,6 @@ void WhiteNodev108::begin(bool hasScreen) {
 }
 
 void WhiteNodev108::setDisplayScreensaver(bool on) {
-    Debug.println(on ? "setDisplay(ON)" : "setDisplay(OFF)");
     if (!_hasScreen) return;
     _display->oled_command(on ? SH110X_DISPLAYOFF : SH110X_DISPLAYON);
 }

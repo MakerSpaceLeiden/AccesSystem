@@ -173,10 +173,10 @@
 
     void MachineState::report(JsonObject& report) {
       report["state"] = label();
-      JsonArray tis = report.createNestedArray("seconds_in_state");
+      JsonObject tis = report.createNestedObject("seconds_in_state");
       for(int i = 0; i <= 255;i ++)
 	if (_state2stateStruct[i])
-		tis.add(_state2stateStruct[i]->timeInState + ((i == machinestate) ? (millis() - laststatechange) : 0)/1000);
+		tis[ _state2stateStruct[i]->label ] = _state2stateStruct[i]->timeInState + ((i == machinestate) ? (millis() - laststatechange) : 0)/1000;
     }
 
     void MachineState::loop()

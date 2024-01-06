@@ -87,7 +87,7 @@ void setup() {
     report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
   });
 
-  node.begin(false /* has no screen */);
+  node.begin(false /* this unit has no screen */);
 
   node.onApproval([](const char *machine) {
     Log.println("Approval callback");
