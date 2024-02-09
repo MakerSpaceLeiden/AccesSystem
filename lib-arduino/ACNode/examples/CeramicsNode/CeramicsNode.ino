@@ -186,13 +186,11 @@ void setup() {
 void loop() {
   node.loop();
 
-#ifdef FAKE
+
   static unsigned long lst = millis();
   static unsigned long cnt = 0;
-  if (millis() - lst > 1000 && cnt != whCounter) {
-    lst = millis(); cnt = whCounter;
+  if (millis() - lst > 60 * 1000 && cnt != whCounter) {
     Log.printf("kWh meter: %.3f\n", whCounter / 1000.);
-    node.buzzerOk();
+    lst = millis(); cnt = whCounter;
   }
-#endif
 }
