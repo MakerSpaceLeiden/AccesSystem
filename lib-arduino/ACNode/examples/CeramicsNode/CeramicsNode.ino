@@ -37,23 +37,35 @@
 //#define OTA_PASSWD_MD5  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
 
 #ifndef OTA_PASSWD_HASH
-#error "An OTA password MUST be set as a MD5. Sorry."
+#error "An OTA password MUST be set as an MD5. Sorry."
 #endif
 
-#define RELAY_NO_START  (OUT0)      // output -- NO is the 'START' signal for the safety contactor
-#define RELAY_NC_STOP   (OUT1)      // output -- NC is part of the interlock/safety circuit
+#define RELAY_NO_START (OUT0)  // output -- NO is the 'START' signal for the safety contactor
+#define RELAY_NC_STOP (OUT1)   // output -- NC is part of the interlock/safety circuit
 
-#define OVEN_CURRENT    (CURR0)      // Current of one of the 3 phases running to the oven control relay
-#define WHPULS_GPIO     (CURR1)      // Wh pulse, hard 4k7 pullup to 3v3; open Collector output of kWh meter
+#define WHPULS_GPIO (CURR0)   // Wh pulse, hard 4k7 pullup to 3v3; open Collector output of kWh meter
+#define OVEN_CURRENT (CURR1)  // Current of one of the 3 phases running to the oven control relay
 
-#define SAFETY          (OPTO0)     // Wired to the output of the interlock controlled relay/overcurrent switch
-#define VK2000_GPIO     (OPTO1)     // Wired to the second relay on the VK2000 - closes when heater is switched on by VK2000
+#define SAFETY (OPTO0)       // Wired to the output of the interlock controlled relay/overcurrent switch
+#define VK2000_GPIO (OPTO1)  // Wired to the second relay on the VK2000 - closes when heater is switched on by VK2000
+
+// GPIO header:
+//  1 - GND
+//  2 - CUR0
+//  3 - CUR1 -- wired to kWh meter - R82 has been removed
+//  4 - OPTO1
+//  5 - OPTO2
+//  6 - SPKR
+//  7 - ERR LED
+//  8 - 3v3
+//  9 - 5V
+// 10 - VPWR
 
 // Length to 'press' the safety buttons to swith the main safety
 // contactor on or off. Should not be too short; to allow for the
 // damping of the induction pulse.
 //
-#define SAFETY_RELAY_BUTTON_PRESS_LENGTH (300 /* mSeconds */)
+#define SAFETY_RELAY_BUTTON_PRESS_LENGTH (750 /* mSeconds */)
 
 // This node is currently not wired; instead it uses an AC/DC convertor
 // and is wired into the same 3P+N+E power as the oven itself.
@@ -65,7 +77,7 @@ WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 //
 MachineState::machinestate_t FIRING;
 
-ButtonDebounce *safetyDetect, *ovenCurrent, * vk2000detect;
+ButtonDebounce *safetyDetect, *ovenCurrent, *vk2000detect;
 
 unsigned long startWhCounter = 0;
 volatile unsigned long whCounter = 0;
@@ -95,24 +107,45 @@ void setup() {
 
   vk2000detect->setCallback([](const int newState) {
     Log.printf("VK2000 output now %s\n", newState ? "OFF" : "ON");
+    if (newState) {
+      if (node.machinestate == FIRING) {
+        Log.println("Firing ended");
+        node.machinestate = POWERED;
+      } else {
+        Log.println("Unexpected VK2000 stop.");
+      }
+    } else {
+      if (node.machinestate == POWERED) {
+        Log.println("Firing started");
+        node.machinestate = FIRING;
+      } else {
+        Log.println("Unexpected VK2000 start of firing");
+      }
+    }
   },
-  CHANGE);
+                            CHANGE);
 
   pinMode(SAFETY, INPUT);
   safetyDetect = new ButtonDebounce(SAFETY);
   safetyDetect->setCallback([](const int newState) {
     Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
+
     if (node.machinestate == MachineState::CHECKINGCARD && !newState) {
       Log.printf("Machine turned on by tag swipe.\n");
-    }
-    else if (node.machinestate == POWERED && newState) {
+      node.machinestate = POWERED;
+    } else if (node.machinestate == POWERED && newState) {
       Log.printf("Machine turned off\n");
-    };
-
-    // We are not policing the state here yet
-    node.machinestate = newState ?  POWERED : MachineState::WAITINGFORCARD;
+      node.machinestate = MachineState::WAITINGFORCARD;
+    } else if (newState) {
+      Log.printf("INTERLOCk lost - machine assumed off or in some error mode");
+      // Prolly should be an error.
+      node.machinestate = MachineState::WAITINGFORCARD;
+    } else {
+      Log.printf("Machine seems on - not quite expected this.");
+      node.machinestate = POWERED;
+    }
   },
-  CHANGE);
+                            CHANGE);
 
   pinMode(WHPULS_GPIO, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(WHPULS_GPIO), irqWattHourPulse, FALLING);
@@ -122,11 +155,11 @@ void setup() {
   ovenCurrent->setCallback([](const int newState) {
     Log.printf("Current to heating coil now %s\n", newState ? "OFF" : "ON");
   },
-  CHANGE);
+                           CHANGE);
 
   node.setOffCallback([](const int newState) {
     if (node.machinestate == POWERED) {
-      Log.println("Switching off power");
+      Log.println("Switching OFF power");
 
       // Break the safety interlock to power everything off. The
       // equivalent of pressing the red stop button.
@@ -141,13 +174,13 @@ void setup() {
     };
     Debug.printf("Left button %s ignored.", newState ? "release" : "press");
   },
-  WHEN_PRESSED);
+                      WHEN_PRESSED);
 
   node.setOTAPasswordHash(OTA_PASSWD_HASH);
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  node.onReport([](JsonObject & report) {
+  node.onReport([](JsonObject &report) {
     report["WhCounter"] = whCounter;
     report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
   });
@@ -161,6 +194,12 @@ void setup() {
   node.onApproval([](const char *machine) {
     Log.println("Approval callback");
 
+    if (node.machinestate == POWERED || node.machinestate == FIRING) {
+      Log.println("Ignoring approval - already running.");
+      node.buzzerErr();
+      return;
+    };
+
     if (node.machinestate != MachineState::CHECKINGCARD) {
       Log.println("Ignoring approval - not expected.");
       node.buzzerErr();
@@ -170,14 +209,10 @@ void setup() {
     // Jumper the safety interlock to switch things on; the equivalent
     // of pressing the 'green' button.
     //
+    Log.println("SWitching ON power");
     digitalWrite(RELAY_NO_START, HIGH);
     delay(SAFETY_RELAY_BUTTON_PRESS_LENGTH);
     digitalWrite(RELAY_NO_START, LOW);
-
-    // We rely on the change-state callback to see the
-    // power on the opto that is connected to the output
-    // of all contactor & current-limited; and have that
-    // trigger the change change to 'powered'
   });
 
   Log.println("Starting loop(): " __FILE__ " " __DATE__ " " __TIME__);
@@ -185,12 +220,12 @@ void setup() {
 
 void loop() {
   node.loop();
-
-
+  
   static unsigned long lst = millis();
   static unsigned long cnt = 0;
-  if (millis() - lst > 60 * 1000 && cnt != whCounter) {
+  if (millis() - lst > 10 * 1000 && cnt != whCounter) {
     Log.printf("kWh meter: %.3f\n", whCounter / 1000.);
-    lst = millis(); cnt = whCounter;
+    lst = millis();
+    cnt = whCounter;
   }
 }
