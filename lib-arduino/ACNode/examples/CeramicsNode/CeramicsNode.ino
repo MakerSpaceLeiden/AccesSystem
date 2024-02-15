@@ -100,7 +100,7 @@ void setup() {
   pinMode(RELAY_NC_STOP, OUTPUT);
   digitalWrite(RELAY_NC_STOP, LOW);
 
-  FIRING = node.machinestate.addState("Firing", LED::LED_ON, 60 * 60 * 1000, POWERED);
+  FIRING = node.machinestate.addState("Firing", LED::LED_ON, 0 /* NEVER */, POWERED);
 
   pinMode(VK2000_GPIO, INPUT);
   vk2000detect = new ButtonDebounce(VK2000_GPIO);
@@ -124,6 +124,8 @@ void setup() {
     }
   },
                             CHANGE);
+
+XX renove OFF on firing
 
   pinMode(SAFETY, INPUT);
   safetyDetect = new ButtonDebounce(SAFETY);
