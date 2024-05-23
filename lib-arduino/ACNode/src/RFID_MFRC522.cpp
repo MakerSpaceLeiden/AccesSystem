@@ -71,7 +71,7 @@ void RFID_MFRC522::begin() {
 
 void RFID_MFRC522::reset() {
   if (_rstpin != 255) {
-	digitalWrite(_rstpin,LOW);
+	xdigitalWrite(_rstpin,LOW);
         Log.println("MFRC522: Reset (HW) and (re)init");
   } else {
         _mfrc522->PCD_Reset();

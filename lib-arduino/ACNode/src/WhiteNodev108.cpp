@@ -33,21 +33,23 @@ Adafruit_SH1106G * _display = NULL;
 
 WhiteNodev108::WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) :
 ACNode(machine,ssid,ssid_passwd,proto) {
+    CONSTS();
     pop();
 };
 
 WhiteNodev108::WhiteNodev108(const char * machine, bool wired, acnode_proto_t proto) :
 ACNode(machine,wired,proto) {
+    CONSTS();
     pop();
 };
 
 void WhiteNodev108::pop() {
     Serial.begin(115200);
-    // Non standard pins for i2c.
-    Wire.begin(I2C_SDA, I2C_SCL);
-    
-    digitalWrite(BUZZER, LOW);
-    pinMode(BUZZER, OUTPUT);
+
+    errorLed = new LED(LED_INDICATOR);
+
+    xdigitalWrite(BUZZER, LOW);
+    xpinMode(BUZZER, OUTPUT);
     
     // All nodes have a build-in RFID reader; so fine to hardcode this.
     //
@@ -62,32 +64,32 @@ void WhiteNodev108::pop() {
     machinestate.setState(MachineState::BOOTING);
     addHandler(&machinestate);
     
-    pinMode(OFF_BUTTON, INPUT_PULLUP);
-    pinMode(MENU_BUTTON, INPUT_PULLUP);
+    xpinMode(OFF_BUTTON, INPUT_PULLUP);
+    xpinMode(MENU_BUTTON, INPUT_PULLUP);
 
     ACNode::pop();
 };
 
 void WhiteNodev108::buzzer(bool onOff) {
-    digitalWrite(BUZZER, onOff ? HIGH : LOW);
+    xdigitalWrite(BUZZER, onOff ? HIGH : LOW);
 }
 
 // Todo - move to a timer, etc. Or re-use the LED infra.
 //
 void WhiteNodev108::buzzerOk() {
-    digitalWrite(BUZZER, HIGH);
+    xdigitalWrite(BUZZER, HIGH);
     delay(50);
-    digitalWrite(BUZZER, LOW);
+    xdigitalWrite(BUZZER, LOW);
 };
 
 void WhiteNodev108::buzzerErr() {
-    digitalWrite(BUZZER, HIGH);
+    xdigitalWrite(BUZZER, HIGH);
     delay(50);
-    digitalWrite(BUZZER, LOW);
+    xdigitalWrite(BUZZER, LOW);
     delay(250);
-    digitalWrite(BUZZER, HIGH);
+    xdigitalWrite(BUZZER, HIGH);
     delay(50);
-    digitalWrite(BUZZER, LOW);
+    xdigitalWrite(BUZZER, LOW);
 };
 
 void WhiteNodev108::setOTAPasswordHash(const char * md5) {
@@ -177,7 +179,7 @@ void WhiteNodev108::begin(bool hasScreen) {
     
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         Debug.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
-        errorLed.set(machinestate.ledState());
+        errorLed->set(machinestate.ledState());
         
         setDisplayScreensaver(current == SCREENSAVER);
         if (current == FAULTED) {
@@ -529,10 +531,12 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
                 _display->println("    -- INPUTS --");
             };
             
-            for (int i = 0; i < 6; i++) {
+            for (int i = 0;; i++) {
                 state_t * s = &states[i];
+		if (!s->label) break;
+
                 int x =  2 + (i / 3)   * SCREEN_WIDTH / 2;
-                int y = 16 + (i % 3) *  (SCREEN_HEIGHT - 16) / 3;
+                int y = 16 + (i % 3) *  (SCREEN_HEIGHT - 16) / 4;
                 int val;
                 
 #if 0
@@ -540,13 +544,13 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
                     val = analogRead(s->pin) > 500 ? 1 : 0;
                 else
 #endif
-                    val = !digitalRead(s->pin); // they are all pullup style
+                    val = !xdigitalRead(s->pin); // they are all pullup style
                 
                 if (_pageState != page) {
                     _display->drawRect(x, y, 10, 10, SH110X_WHITE);
                     _display->setCursor(x + 12 , y + 1);
                     _display->print(s->label);
-                    // pinMode(s->pin, s->tpe);
+                    // xpinMode(s->pin, s->tpe);
                     s->lst = val;
                 };
                 
@@ -606,3 +610,91 @@ void WhiteNodev108::report(JsonObject & report) {
     
     ACNode::report(report);
 }
+
+void WhiteNodev108::setOffCallback(ButtonCallback callback, int mode ) {
+        _offCallBack = callback;
+        _offCallBackMode = mode;
+    };
+
+void WhiteNodev108::setMenuCallback(ButtonCallback callback, int mode ) {
+        _menuCallBack = callback;
+        _menuCallBackMode = mode;
+    }
+
+void WhiteNodev108::setOnChangeCallback(MachineState::machinestate_t state, MachineState::THandlerFunction_OnChangeCB onChangeCB) {
+        _onChangeState = state;
+        _onChangeCB =onChangeCB;
+    }
+
+BlackNodev111::BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) : WhiteNodev108(machine, ssid, ssid_passwd, proto)  
+{
+    CONSTS();
+};
+
+BlackNodev111::BlackNodev111(const char * machine, bool wired, acnode_proto_t proto ) : WhiteNodev108(machine,wired,proto) 
+{
+    CONSTS();
+};
+
+void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
+    if (num == OUT0)
+   	expectOut1 = val ? HIGH : LOW;
+    if (num == OUT1)
+   	expectOut2 = val ? HIGH : LOW;
+    xdigitalWrite(num,val);
+}
+
+void BlackNodev111::pop() {
+     ExpandedGPIO::getInstance().addAW9523();
+
+     xpinMode(LEDA,AW9523_LED_MODE);
+     xpinMode(LEDB,AW9523_LED_MODE);
+     xpinMode(LEDC,AW9523_LED_MODE);
+     xpinMode(LEDD,AW9523_LED_MODE);
+     xpinMode(LEDE,AW9523_LED_MODE);
+
+     // Reduce the current to a sensible level (Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5)
+     Wire.beginTransmission(0x58);
+     Wire.write(0x11);                 
+     Wire.write(3);                 
+     Wire.endTransmission();
+
+     xanalogWrite(LEDA,0);
+     xanalogWrite(LEDB,0);
+     xanalogWrite(LEDC,0);
+     xanalogWrite(LEDD,0);
+     xanalogWrite(LEDE,0);
+}
+
+void BlackNodev111::loop() {
+     WhiteNodev108::loop();
+
+     {
+     // Source and credits: https://github.com/adafruit/Adafruit_iCufflinks/tree/master
+     static const uint8_t cufflink_beat[] = {  1, 1, 2, 3, 5, 8, 11, 15, 20, 25, 30, 36, 43, 49, 56, 64, 72, 80, 88, 97, 105, 114, 123, 132, 141, 150, 158, 167, 175, 183, 191, 199, 206, 212, 219, 225, 230, 235, 240, 244, 247, 250, 252, 253, 254, 255, 254, 253, 252, 250, 247, 244, 240, 235, 230, 225, 219, 212, 206, 199, 191, 183, 175, 167, 158, 150, 141, 132, 123, 114, 105, 97, 88, 80, 72, 64, 56, 49, 43, 36, 30, 25, 20, 15, 11, 8, 5, 3, 2, 1, 0 };
+     static uint8_t i = 0;
+     xanalogWrite(LEDE,cufflink_beat[i]/3); i++; if (cufflink_beat[i] == 0) i = 0; 
+     };
+
+     if (expectOut1 != -1 && xdigitalRead(OUT0) != expectOut1) {
+		static unsigned long lst = 0;
+		if (millis() - lst > 5 * 60 * 1000) {
+			Log.printf("Warning - Output 2 measured as %s at hardware level; it should be %s.\n", 
+				xdigitalRead(OUT0) ? "HIGH" : "LOW", expectOut1  ? "HIGH" : "LOW");
+			lst = millis();
+		};
+        	errorLed->set(LED::LED_FAST);
+     };
+
+     if (expectOut2 != -1 && xdigitalRead(OUT1) != expectOut2) {
+		static unsigned long lst = 0;
+		if (millis() - lst > 5 * 60 * 1000) {
+			Log.printf("Warning - Output 2 measured as %s at hardware level; it should be %s.\n", 
+				xdigitalRead(OUT1) ? "HIGH" : "LOW", expectOut2  ? "HIGH" : "LOW");
+			lst = millis();
+		};
+        	errorLed->set(LED::LED_FAST);
+     };
+}
+	
+   

@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 
 #include "MakerSpaceMQTT.h"
+#include <ExpandedGPIO.h>
 
 typedef unsigned long beat_t;
 extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
@@ -50,6 +51,13 @@ public:
     virtual cmd_result_t handle_cmd(ACRequest * req) { return CMD_DECLINE; };
     
     virtual void set_debug(bool debug);
+
+   // Convenience shorthands
+    int xdigitalRead(uint8_t pin) { return ExpandedGPIO::getInstance().xdigitalRead(pin); };
+    void xdigitalWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xdigitalWrite(pin, val); };
+    void xanalogWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xanalogWrite(pin, val); };
+    void xpinMode(uint8_t pin, uint8_t mode) { ExpandedGPIO::getInstance().xpinMode(pin,mode); };
+
 protected:
     bool _debug;
     // protected:

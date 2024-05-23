@@ -751,7 +751,7 @@ void ACNode::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
   prevSecs = MAX_WAIT_TIME_BUTTON_PRESSED / 1000;
   Log.print(prevSecs);
   Log.print(" s");
-  while (digitalRead(button) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
+  while (xdigitalRead(button) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
     if ((millis() - ButtonPressedTime) >= MAX_WAIT_TIME_BUTTON_PRESSED) {
       if (firstTime == true) {
         Log.print("\rPlease release button");
@@ -779,7 +779,7 @@ void ACNode::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
     prepareCache(true);
     Log.println("Cache cleared!");
     // wait until button is released, than reboot
-    while (digitalRead(button) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
+    while (xdigitalRead(button) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
       // do nothing here
     }
     Log.println("Node will be restarted");
