@@ -232,6 +232,7 @@ private:
 
 protected:
     void pop();
+    void CONSTS();
     const char * _ssid;
     const char * _ssid_passwd;
     unsigned long _report_period;

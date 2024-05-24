@@ -51,10 +51,8 @@ public:
 		STEP_DIR, STEP_STEP, STEP_SLP;
 
     void CONSTS() {
-	// ACNode::CONSTS();
-
-        // Non standard pins for i2c.
-        Wire.begin(I2C_SDA, I2C_SCL);
+    Serial.printf("WhiteNodev108::pop - Wire.setPins(%d,%d)", I2C_SDA, I2C_SCL);
+    Wire.setPins(I2C_SDA, I2C_SCL);
 
         LED_INDICATOR = 12;
         OUT0 = 16;
@@ -113,8 +111,9 @@ protected:
         uint8_t pin; const char * label; int lst; int tpe;
     } state_t;
     state_t * states;
-
     LED * errorLed;
+    void pop();
+     
     
 private:
     // reader build into the board - so only one type; and it is hardcoded.
@@ -143,7 +142,6 @@ private:
     unsigned long idle_poweroff = 0;
     unsigned long errors = 0;
     
-    void pop();
     
     void report(JsonObject & out);
    
@@ -212,7 +210,7 @@ public:
        };
        states = (state *) &_s;
     };
-
+    void begin(bool hasScreen = true);
     void pop();
     void loop();
 

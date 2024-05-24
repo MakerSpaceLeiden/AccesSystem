@@ -32,20 +32,12 @@ MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED;
 Adafruit_SH1106G * _display = NULL;
 
 WhiteNodev108::WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) :
-ACNode(machine,ssid,ssid_passwd,proto) {
-    CONSTS();
-    pop();
-};
+ACNode(machine,ssid,ssid_passwd,proto) { CONSTS(); pop(); }
 
 WhiteNodev108::WhiteNodev108(const char * machine, bool wired, acnode_proto_t proto) :
-ACNode(machine,wired,proto) {
-    CONSTS();
-    pop();
-};
+ACNode(machine,wired,proto) { CONSTS(); pop(); };
 
 void WhiteNodev108::pop() {
-    Serial.begin(115200);
-
     errorLed = new LED(LED_INDICATOR);
 
     xdigitalWrite(BUZZER, LOW);
@@ -67,7 +59,7 @@ void WhiteNodev108::pop() {
     xpinMode(OFF_BUTTON, INPUT_PULLUP);
     xpinMode(MENU_BUTTON, INPUT_PULLUP);
 
-    ACNode::pop();
+    Serial.println("WhiteNodev11 popped");
 };
 
 void WhiteNodev108::buzzer(bool onOff) {
@@ -97,9 +89,9 @@ void WhiteNodev108::setOTAPasswordHash(const char * md5) {
 }
 
 void WhiteNodev108::begin(bool hasScreen) {
-    _hasScreen = hasScreen;
-    if (_hasScreen && !_display) {
-        _display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
+    Serial.println("WhiteNodev108 begin");
+
+    if (hasScreen && !_display && (_display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
         _display->setRotation(2); // for purple/white boards - OLED is upside down.
         _display->begin(SCREEN_Address, true);
         _display->clearDisplay();
@@ -108,6 +100,8 @@ void WhiteNodev108::begin(bool hasScreen) {
                              (SCREEN_HEIGHT-msl_logo_height)/2,
                              msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
         _display->display();
+        _hasScreen = true;
+    	Serial.println("WhiteNodev108 init screen");
     };
     _pageState = PAGE_LAST; // basically the logo
     
@@ -478,7 +472,7 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
             _display->printf("Date :%s\n",ds);
             _display->printf("Time :%s\n",ts);
             _display->printf("sNTP :%s\n",esp_sntp_enabled() ? 
-		(s == SNTP_SYNC_STATUS_COMPLETED ? "adjusting" : 
+		(s == SNTP_SYNC_STATUS_IN_PROGRESS ? "adjusting" : 
 			(s == SNTP_SYNC_STATUS_COMPLETED ? "OK" : "Pending")
 		) : "OFF");
 	    for(int i = 0, j = 0; i < SNTP_MAX_SERVERS&& j < 5; i++) {
@@ -510,8 +504,8 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
                 q = (char *)"    ";
             };
             _display->printf("Port :%u\n",mqtt_port);
-            _display->printf("Topic:%s/#\n",mqtt_topic_prefix);
-            _display->printf("\n%s/%s/%s/#\n",mqtt_topic_prefix,logpath,moi);
+            _display->printf("Topic:%s/%s\n",mqtt_topic_prefix,logpath);
+            _display->printf(" /%s/#\n",moi);
         }
             break;
         case PAGE_QR: {
@@ -535,8 +529,8 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
                 state_t * s = &states[i];
 		if (!s->label) break;
 
-                int x =  2 + (i / 3)   * SCREEN_WIDTH / 2;
-                int y = 16 + (i % 3) *  (SCREEN_HEIGHT - 16) / 4;
+                int x =  2 + (i / 4)   * SCREEN_WIDTH / 2;
+                int y = 12 + (i % 4) * 11;
                 int val;
                 
 #if 0
@@ -626,15 +620,11 @@ void WhiteNodev108::setOnChangeCallback(MachineState::machinestate_t state, Mach
         _onChangeCB =onChangeCB;
     }
 
-BlackNodev111::BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) : WhiteNodev108(machine, ssid, ssid_passwd, proto)  
-{
-    CONSTS();
-};
+BlackNodev111::BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) 
+	: WhiteNodev108(machine, ssid, ssid_passwd, proto)  { CONSTS(); pop(); };
 
-BlackNodev111::BlackNodev111(const char * machine, bool wired, acnode_proto_t proto ) : WhiteNodev108(machine,wired,proto) 
-{
-    CONSTS();
-};
+BlackNodev111::BlackNodev111(const char * machine, bool wired, acnode_proto_t proto ) 
+	: WhiteNodev108(machine,wired,proto) { CONSTS(); pop(); };
 
 void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
     if (num == OUT0)
@@ -644,7 +634,11 @@ void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
     xdigitalWrite(num,val);
 }
 
-void BlackNodev111::pop() {
+void BlackNodev111::pop() {};
+
+void BlackNodev111::begin(bool hasScreen) {
+     Serial.println("BlackNodev11 begin.");
+
      ExpandedGPIO::getInstance().addAW9523();
 
      xpinMode(LEDA,AW9523_LED_MODE);
@@ -664,14 +658,26 @@ void BlackNodev111::pop() {
      xanalogWrite(LEDC,0);
      xanalogWrite(LEDD,0);
      xanalogWrite(LEDE,0);
+
+     Serial.println("BlackNodev11 began");
+
+     WhiteNodev108::begin(hasScreen);
 }
 
 void BlackNodev111::loop() {
      WhiteNodev108::loop();
 
      {
-     // Source and credits: https://github.com/adafruit/Adafruit_iCufflinks/tree/master
-     static const uint8_t cufflink_beat[] = {  1, 1, 2, 3, 5, 8, 11, 15, 20, 25, 30, 36, 43, 49, 56, 64, 72, 80, 88, 97, 105, 114, 123, 132, 141, 150, 158, 167, 175, 183, 191, 199, 206, 212, 219, 225, 230, 235, 240, 244, 247, 250, 252, 253, 254, 255, 254, 253, 252, 250, 247, 244, 240, 235, 230, 225, 219, 212, 206, 199, 191, 183, 175, 167, 158, 150, 141, 132, 123, 114, 105, 97, 88, 80, 72, 64, 56, 49, 43, 36, 30, 25, 20, 15, 11, 8, 5, 3, 2, 1, 0 };
+     // Source and credits: https://github.com/adafruit/Adafruit_iCufflinks/tree/master -
+     // Copy of the first generating on/off button of apple macs.
+     static const uint8_t cufflink_beat[] = {  
+		1, 1, 2, 3, 5, 8, 11, 15, 20, 25, 30, 36, 43, 49, 56, 64, 72, 80, 88, 97, 105, 
+		114, 123, 132, 141, 150, 158, 167, 175, 183, 191, 199, 206, 212, 219, 225, 230, 
+		235, 240, 244, 247, 250, 252, 253, 254, 255, 254, 253, 252, 250, 247, 244, 240, 
+		235, 230, 225, 219, 212, 206, 199, 191, 183, 175, 167, 158, 150, 141, 132, 123, 
+		114, 105, 97, 88, 80, 72, 64, 56, 49, 43, 36, 30, 25, 20, 15, 11, 8, 5, 3, 2, 1, 
+		0 
+     };
      static uint8_t i = 0;
      xanalogWrite(LEDE,cufflink_beat[i]/3); i++; if (cufflink_beat[i] == 0) i = 0; 
      };
@@ -696,5 +702,4 @@ void BlackNodev111::loop() {
         	errorLed->set(LED::LED_FAST);
      };
 }
-	
    
