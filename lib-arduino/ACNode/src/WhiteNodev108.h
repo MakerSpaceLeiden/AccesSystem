@@ -85,7 +85,7 @@ public:
     MachineState machinestate;
 
     void setOTAPasswordHash(const char * ota_md5);
-    void begin(bool hasScreen = true);
+    void begin();
     void loop();
 
     void setDisplayScreensaver(bool on);
@@ -210,7 +210,7 @@ public:
        };
        states = (state *) &_s;
     };
-    void begin(bool hasScreen = true);
+    void begin();
     void pop();
     void loop();
 

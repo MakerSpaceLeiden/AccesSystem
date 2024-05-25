@@ -59,6 +59,11 @@ void WhiteNodev108::pop() {
     xpinMode(OFF_BUTTON, INPUT_PULLUP);
     xpinMode(MENU_BUTTON, INPUT_PULLUP);
 
+    xpinMode(OPTO0, INPUT);
+    xpinMode(OPTO1, INPUT);
+
+    _pageState = PAGE_LAST; // basically the logo
+
     Serial.println("WhiteNodev11 popped");
 };
 
@@ -88,10 +93,10 @@ void WhiteNodev108::setOTAPasswordHash(const char * md5) {
     ArduinoOTA.setPasswordHash(md5);
 }
 
-void WhiteNodev108::begin(bool hasScreen) {
+void WhiteNodev108::begin() {
     Serial.println("WhiteNodev108 begin");
 
-    if (hasScreen && !_display && (_display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
+    if (!_display && (_display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
         _display->setRotation(2); // for purple/white boards - OLED is upside down.
         _display->begin(SCREEN_Address, true);
         _display->clearDisplay();
@@ -101,9 +106,11 @@ void WhiteNodev108::begin(bool hasScreen) {
                              msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
         _display->display();
         _hasScreen = true;
-    	Serial.println("WhiteNodev108 init screen");
+    	Log.println("LCD/OLED screen found and initialized.");
+    } else {
+    	Log.println("No LCD/OLED screen found");
+        _hasScreen = false;
     };
-    _pageState = PAGE_LAST; // basically the logo
     
     if (_wired)
         ETH.begin(WN_ETH_PHY_ADDR, WN_ETH_PHY_POWER, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_TYPE, WN_ETH_CLK_MODE);
@@ -636,7 +643,7 @@ void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
 
 void BlackNodev111::pop() {};
 
-void BlackNodev111::begin(bool hasScreen) {
+void BlackNodev111::begin() {
      Serial.println("BlackNodev11 begin.");
 
      ExpandedGPIO::getInstance().addAW9523();
@@ -646,6 +653,11 @@ void BlackNodev111::begin(bool hasScreen) {
      xpinMode(LEDC,AW9523_LED_MODE);
      xpinMode(LEDD,AW9523_LED_MODE);
      xpinMode(LEDE,AW9523_LED_MODE);
+
+     xpinMode(OPTO0, INPUT);
+     xpinMode(OPTO1, INPUT);
+     xpinMode(OPTO2, INPUT);
+     xpinMode(OPTO3, INPUT);
 
      // Reduce the current to a sensible level (Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5)
      Wire.beginTransmission(0x58);
@@ -661,7 +673,7 @@ void BlackNodev111::begin(bool hasScreen) {
 
      Serial.println("BlackNodev11 began");
 
-     WhiteNodev108::begin(hasScreen);
+     WhiteNodev108::begin();
 }
 
 void BlackNodev111::loop() {
@@ -678,28 +690,41 @@ void BlackNodev111::loop() {
 		114, 105, 97, 88, 80, 72, 64, 56, 49, 43, 36, 30, 25, 20, 15, 11, 8, 5, 3, 2, 1, 
 		0 
      };
-     static uint8_t i = 0;
-     xanalogWrite(LEDE,cufflink_beat[i]/3); i++; if (cufflink_beat[i] == 0) i = 0; 
+     static uint8_t i = 0; // intentionally using the beat rather than time - so we can visually see slowdown.
+     xanalogWrite(LEDE,cufflink_beat[i]/2); i++; if (cufflink_beat[i] == 0) i = 0; 
      };
 
-     if (expectOut1 != -1 && xdigitalRead(OUT0) != expectOut1) {
+     // Quite hardware specific; the relay can only be forced 'on' - either by a GPIO or
+     // by a switch. It cannot be forced off. So we can only sensibly detect an 'illegal' on; 
+     // while it was expected to be off.
+     //
+     if (expectOut1 == LOW) {
 		static unsigned long lst = 0;
-		if (millis() - lst > 5 * 60 * 1000) {
-			Log.printf("Warning - Output 2 measured as %s at hardware level; it should be %s.\n", 
-				xdigitalRead(OUT0) ? "HIGH" : "LOW", expectOut1  ? "HIGH" : "LOW");
-			lst = millis();
-		};
-        	errorLed->set(LED::LED_FAST);
+		xpinMode(OUT0,INPUT);
+		if ( xdigitalRead(OUT0) != expectOut1) {
+			if (lst == 0 || millis() - lst > 5 * 60 * 1000) {
+				Log.printf("Warning - Output 1 measured as %s at hardware level; it should be %s.\n", 
+					xdigitalRead(OUT0) ? "HIGH" : "LOW", expectOut1  ? "HIGH" : "LOW");
+				lst = millis();
+			};
+        		errorLed->set(LED::LED_FAST);
+			xanalogWrite(LEDA,255);
+		} else lst = 0;
+		xpinMode(OUT0,OUTPUT);
      };
 
-     if (expectOut2 != -1 && xdigitalRead(OUT1) != expectOut2) {
+     if (expectOut2 == LOW) {
 		static unsigned long lst = 0;
-		if (millis() - lst > 5 * 60 * 1000) {
-			Log.printf("Warning - Output 2 measured as %s at hardware level; it should be %s.\n", 
-				xdigitalRead(OUT1) ? "HIGH" : "LOW", expectOut2  ? "HIGH" : "LOW");
-			lst = millis();
-		};
-        	errorLed->set(LED::LED_FAST);
+		xpinMode(OUT1,INPUT);
+		if (digitalRead(OUT1) != expectOut2) {
+			if (lst == 0 || millis() - lst > 5 * 60 * 1000) {
+				Log.printf("Warning - Output 2 measured as %s at hardware level; it should be %s.\n", 
+					xdigitalRead(OUT1) ? "HIGH" : "LOW", expectOut2  ? "HIGH" : "LOW");
+				lst = millis();
+			};
+        		errorLed->set(LED::LED_FAST);     
+			xanalogWrite(LEDA,255);
+		} else lst = 0;
+		xpinMode(OUT1,OUTPUT);
      };
 }
-   
