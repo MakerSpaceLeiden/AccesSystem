@@ -174,8 +174,6 @@ void WhiteNodev108::begin() {
              (!newState &&(_menuCallBackMode == ONLOW || _menuCallBackMode == FALLING))
              ))
             _menuCallBack(newState);
-        else
-            Debug.println("Right button activity ignored.");
     },  CHANGE);
     
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {

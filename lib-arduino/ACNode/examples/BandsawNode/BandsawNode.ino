@@ -15,7 +15,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-   Compile settings:  EPS32 Dev Module
+   Compile settings:  ESP32-WROOM-DA Module (or ESP32 Dev)
 
   QR code shown:
 
@@ -31,7 +31,7 @@
 #define ONOFFSWITCH   (node.OPTO1) // Detects voltage on the normally-closed circuit of the front switch.
 #define MOTOR_CURRENT (node.CURR0) // One of the 3-phase wires to the motor runs through this current coil.
 
-// The relay that sits in the safety interlock of 
+// The relay that sits in the safety interlock of
 // the contactor at the back-bottom of the saw.
 #define RELAY_GPIO    (node.OUT0)
 
@@ -50,11 +50,9 @@
 // WhiteNodev108 node = WhiteNodev108(MACHINE);
 BlackNodev111 node = BlackNodev111(MACHINE);
 
-unsigned long bad_poweroff = 0, normal_poweroff = 0, normal_poweron = 0;
-
+unsigned long bad_poweroff = 0, normal_poweroff = 0, normal_poweron = 0, idle_poweroff = 0;
 
 ButtonDebounce *interlockDetect, *motorCurrent, *onoffSwitchDetect;
-
 
 // Extra state - when the safety contactor has actually been unlocked
 // but the RED button has not been pressed yet.
@@ -64,9 +62,11 @@ const unsigned int MAX_SECS_WAIT_FOR_RED_BUTTON = 100;
 
 // Extra state above 'POWERED' - when the saw is spinning (detected via the motorCurrent) as
 // opposed to the safety circuitry being powered (i.e. relay has closed, so the interlock
-// circuit with the eStop allows the main contactor to be on.
+// circuit with the eStop allows the main contactor to be on). We use this for the logic
+// of locking the machine off after so many hours of no use.
 //
 MachineState::machinestate_t RUNNING;
+const unsigned int MAX_SECS_IDLE = 3600;
 
 // Extra state af the user has pressed the green button to de-activate the safety
 // interlock. To both separate the events for EMC reasons and make the shutdown
@@ -86,19 +86,19 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
-  
+
   // Init the hardware and get it into a safe state.
   // Init the hardware and get it into a safe state.
   //
   pinMode(RELAY_GPIO, OUTPUT);
-  digitalWrite(RELAY_GPIO, 0);
+  node.setMonitoredOutput(RELAY_GPIO, 0);
 
   ACTIVATED =  node.machinestate.addState("Waiting for Safety", LED::LED_ON,
                                           MAX_SECS_WAIT_FOR_RED_BUTTON * 1000,  MachineState::WAITINGFORCARD);
   RUNNING = node.machinestate.addState("Saw Running", LED::LED_ON,
                                        MachineState::NEVER, MachineState::WAITINGFORCARD);
   SHUTTINGDOWN =  node.machinestate.addState("Locking machine",
-                  LED::LED_ON, 5 * 1000, MachineState::WAITINGFORCARD);
+                  LED::LED_ON, 60 * 1000, MachineState::WAITINGFORCARD);
 
   pinMode(INTERLOCK, INPUT);
   interlockDetect = new ButtonDebounce(INTERLOCK);
@@ -151,10 +151,11 @@ void setup() {
   node.set_master("master");
 
   node.onReport([](JsonObject & report) {
+    report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
     report["bad_poweroff"] = bad_poweroff;
     report["normal_poweroff"] = normal_poweroff;
-    report["normal_poweron"] = normal_poweron;
-    report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
+    report["idle_poweron"] = idle_poweroff;
+    report["normal_poweroff"] = normal_poweroff;
   });
 
   node.begin();
@@ -170,15 +171,20 @@ void setup() {
   });
 
   node.onApproval([](const char *machine) {
-    Log.println("Approval callback");
+    Log.println("Approval received from the server.");
     // We allow 'taking over this achine while it is on' -- hence this check for
     // if it is powered; and in that case -also- accepting a new approval.
     //
-    if (node.machinestate != POWERED & node.machinestate != MachineState::CHECKINGCARD && node.machinestate != ACTIVATED) {
+    if ((node.machinestate != POWERED) &&
+        (node.machinestate != MachineState::CHECKINGCARD) &&
+        (node.machinestate != ACTIVATED) &&
+        (node.machinestate != SHUTTINGDOWN)
+       ) {
       node.buzzerErr();
       return;
     };
-    node.machinestate = ACTIVATED;
+    if (node.machinestate != POWERED)
+      node.machinestate = ACTIVATED;
   });
 
   Log.println("Starting loop(): " __FILE__ " " __DATE__ " " __TIME__);
@@ -186,6 +192,7 @@ void setup() {
 
 void loop() {
   node.loop();
+
   if (node.machinestate == ACTIVATED || node.machinestate == SHUTTINGDOWN) {
     static unsigned long lst = millis();
     if (millis() - lst > 1000) {
@@ -194,9 +201,18 @@ void loop() {
         node.updateDisplayStateMsg("in", 1);
       else
         node.updateDisplayStateMsg("Press GREEN on back", 1);
+
       node.updateDisplayStateMsg(node.machinestate.timeLeftInThisState(), 2);
     }
-  }
-  digitalWrite(RELAY_GPIO,
-               ((node.machinestate == POWERED) || (node.machinestate == RUNNING) || (node.machinestate == ACTIVATED) || (node.machinestate == SHUTTINGDOWN)) ? HIGH : LOW);
+  };
+
+  if (node.machinestate == ACTIVATED && node.machinestate.secondsInThisState() > MAX_SECS_IDLE) {
+    Log.println("Power off after beeing idle too long.");
+    node.buzzerErr();
+    node.machinestate = SHUTTINGDOWN;
+    idle_poweroff++;
+  };
+
+  node.setMonitoredOutput(RELAY_GPIO,
+                          ((node.machinestate == POWERED) || (node.machinestate == RUNNING) || (node.machinestate == ACTIVATED) || (node.machinestate == SHUTTINGDOWN)) ? HIGH : LOW);
 }
