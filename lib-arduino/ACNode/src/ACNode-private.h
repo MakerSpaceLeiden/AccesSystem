@@ -199,11 +199,6 @@ public:
     //
     void process(const char * topic, const char * payload);
    
-    // Convenience shorthands
-    int xdigitalRead(uint8_t pin) { return ExpandedGPIO::getInstance().xdigitalRead(pin); };
-    void xdigitalWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xdigitalWrite(pin, val); };
-    void xpinMode(uint8_t pin, uint8_t mode) { ExpandedGPIO::getInstance().xpinMode(pin,mode); };
-  
     void report(JsonObject & report);
  
     PubSubClient _client;
@@ -237,6 +232,7 @@ private:
 
 protected:
     void pop();
+    void CONSTS();
     const char * _ssid;
     const char * _ssid_passwd;
     unsigned long _report_period;

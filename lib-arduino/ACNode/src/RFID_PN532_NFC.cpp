@@ -11,8 +11,6 @@ RFID_PN532_NFC::RFID_PN532_NFC()
 
 void RFID_PN532_NFC::begin() {
   Log.println("Searching for PN532_NFC reader:");
-  // Wire.begin();
-  delay(100);
 
   if (!_nfc->begin()) {
 	Log.println(" FAIL\nERROR: no NFC reader found.");

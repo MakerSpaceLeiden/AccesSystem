@@ -66,6 +66,12 @@ void ACNode::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
 void ACNode::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
 void ACNode::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
 
+void ACNode::CONSTS() { 
+	Serial.begin(115200); 
+	while(!Serial) { delay(10); };
+	Serial.println("\n\n" __DATE__ " - " __TIME__ "\nACNode started");
+};
+
 void ACNode::pop() {
     strncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
     mqtt_port = MQTT_DEFAULT_PORT;
@@ -132,6 +138,7 @@ ACNode::ACNode(const char * m, bool wired, acnode_proto_t proto) :
     _acnode = this;
     if (m && *m)
       strncpy(machine,m, sizeof(machine));
+    CONSTS();
     pop();
 }
 
@@ -141,6 +148,7 @@ ACNode::ACNode(const char *m, const char * ssid , const char * ssid_passwd, acno
     _acnode = this;
     if (m && *m)
       strncpy(machine,m, sizeof(machine));
+    CONSTS();
     pop();
 }
 

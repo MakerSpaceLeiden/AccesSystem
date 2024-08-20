@@ -27,12 +27,13 @@
 #define MACHINE             "lintzaag"
 #endif
 
-#define INTERLOCK     (OPTO0) // Detect voltage on the interlock/safety contactor.
-#define ONOFFSWITCH   (OPTO1) // Detects voltage on the normally-closed circuit of the front switch.
-#define MOTOR_CURRENT (CURR0) // One of the 3-phase wires to the motor runs through this current coil.
+#define INTERLOCK     (node.OPTO0) // Detect voltage on the interlock/safety contactor.
+#define ONOFFSWITCH   (node.OPTO1) // Detects voltage on the normally-closed circuit of the front switch.
+#define MOTOR_CURRENT (node.CURR0) // One of the 3-phase wires to the motor runs through this current coil.
 
-#define RELAY_GPIO    (OUT0)  // The relay that sits in the safety interlock of 
+// The relay that sits in the safety interlock of 
 // the contactor at the back-bottom of the saw.
+#define RELAY_GPIO    (node.OUT0)
 
 // Generate with 'echo -n Password | openssl md5 or
 // use https://www.md5hashgenerator.com/. No \0,
@@ -46,7 +47,8 @@
 #error "An OTA password hash(md5) MUST be set. Sorry."
 #endif
 
-WhiteNodev108 node = WhiteNodev108(MACHINE);
+// WhiteNodev108 node = WhiteNodev108(MACHINE);
+BlackNodev111 node = BlackNodev111(MACHINE);
 
 unsigned long bad_poweroff = 0, normal_poweroff = 0, normal_poweron = 0;
 
@@ -84,7 +86,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
-
+  
   // Init the hardware and get it into a safe state.
   // Init the hardware and get it into a safe state.
   //
@@ -102,7 +104,7 @@ void setup() {
   interlockDetect = new ButtonDebounce(INTERLOCK);
   interlockDetect->setCallback([](const int newState) {
     if (node.machinestate == MachineState::CHECKINGCARD && newState == LOW) {
-      Log.println("Alert: Powere on the interlock observed while " MACHINE " should be locked.");
+      Log.println("Alert: Power on the interlock observed while " MACHINE " should be locked.");
       node.machinestate = FAULTED;
     }
     else if (node.machinestate == FAULTED && newState == HIGH) {

@@ -20,6 +20,7 @@
 extern void expandedPinMode(uint8_t pin, uint8_t mode);
 extern int  expandedDigitaRead(uint8_t pin);
 extern void expandedDigitalWrite(uint8_t pin, uint8_t val);
+extern void expandedAnalogWrite(uint8_t pin, uint8_t val);
 
 class ExpandedGPIO {
     public:
@@ -36,15 +37,17 @@ class ExpandedGPIO {
 //        ExpandedGPIO(ExpandedGPIO const&) = delete;
 //        void operator=(ExpandedGPIO const&) = delete;
    
-	void addMCP(unsigned int mcp23addr = 0x20, TwoWire * wire = &Wire);
-	void addAW5239(unsigned int mcp23addr = 0x58, TwoWire * wire = &Wire);
+	void addMCP(unsigned int i2c_addr = 0x20, TwoWire * wire = &Wire);
+	void addAW9523(unsigned int i2c_addr = 0x58, TwoWire * wire = &Wire);
 	// void addH2812(unsigned int i2caddr, TwoWire * wire = &Wire);
+
 	void xpinMode(uint8_t pin, uint8_t mode);
 	int xdigitalRead(uint8_t pin);
 	void xdigitalWrite(uint8_t pin, uint8_t val);
+	void xanalogWrite(uint8_t pin, uint8_t val);
     private:
 	Adafruit_MCP23X17 * mcp = NULL;
-        Adafruit_AW9523 * aw = NULL;
+        Adafruit_AW9523 * awp = NULL;
 };
 #endif
 
