@@ -4,14 +4,16 @@
 #include <Wire.h>
 
 #include "Adafruit_MCP23X17.h"
+#include <Adafruit_AW9523.h>
 
 // Use the top 2 bits for marking  the local/extended output.
 //
-#define	PIN_GPIO_MASK  (3 << 6)
-#define PIN_HPIO_PLAIN (0 << 6)
-#define PIN_HPIO_MCP   (1 << 6)
-#define PIN_HPIO_RES3  (2 << 6)
-#define PIN_HPIO_RES4  (3 << 6)
+#define	PIN_GPIO_MASK   (3 << 6)
+
+#define PIN_HPIO_PLAIN  (0 << 6)
+#define PIN_HPIO_MCP    (1 << 6)
+#define PIN_HPIO_AW5293 (2 << 6)
+#define PIN_HPIO_RES4   (3 << 6)	// not yet used.
 
 // Convinience functions that rely on a auto created
 // singleton.
@@ -34,13 +36,15 @@ class ExpandedGPIO {
 //        ExpandedGPIO(ExpandedGPIO const&) = delete;
 //        void operator=(ExpandedGPIO const&) = delete;
    
-	void addMCP(unsigned int mcp23addr, TwoWire * wire = &Wire);
+	void addMCP(unsigned int mcp23addr = 0x20, TwoWire * wire = &Wire);
+	void addAW5239(unsigned int mcp23addr = 0x58, TwoWire * wire = &Wire);
 	// void addH2812(unsigned int i2caddr, TwoWire * wire = &Wire);
 	void xpinMode(uint8_t pin, uint8_t mode);
 	int xdigitalRead(uint8_t pin);
 	void xdigitalWrite(uint8_t pin, uint8_t val);
     private:
 	Adafruit_MCP23X17 * mcp = NULL;
+        Adafruit_AW9523 * aw = NULL;
 };
 #endif
 

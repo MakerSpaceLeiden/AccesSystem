@@ -11,10 +11,17 @@ void expandedDigitalWrite(uint8_t pin, uint8_t val) { __exp.xdigitalWrite(pin, v
 static int wp = 0;
 static const int MAXREPORT=50;
 
-void ExpandedGPIO::addMCP(unsigned int mcp23addr, TwoWire * wire) {
+void ExpandedGPIO::addMCP(unsigned int i2caddr, TwoWire * wire) {
 	if (mcp == NULL) {
 		mcp = new Adafruit_MCP23X17();
-		mcp->begin_I2C(mcp23addr,wire);
+		mcp->begin_I2C(i2caddr,wire);
+	};
+}
+
+void ExpandedGPIO::addAW5293(unsigned int i2caddr, TwoWire * wire) {
+	if (awp  == NULL) {
+		awp= new Adafruit_MCP23X17();
+		awp->begin(i2caddr,wire);
 	};
 }
 
@@ -27,6 +34,18 @@ void ExpandedGPIO::xpinMode(uint8_t pin, uint8_t mode) {
 		mcp->pinMode(pin & ~PIN_GPIO_MASK, mode);
 		return;
 	};
+	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW5293) && awp) {
+#if 0
+  // Something odd with the init - pinMode does not seem to work.
+  //
+  aw.reset(); // all pins in open-drain; output mode
+  aw.openDrainPort0(false);
+  // aw.configureLEDMode((1 << LEDA) | (1 << LEDB) | (1 << LEDC) | (1 << LEDD) | (1 << LEDE));
+  aw.configureDirection((1 << LEDA) | (1 << LEDB) | (1 << LEDC) | (1 << LEDD) | (1 << LEDE));
+#endif
+		awp->pinMode(pin & ~PIN_GPIO_MASK, mode);
+		return;
+        };
 
 	if (wp++<MAXREPORT) 
 	Log.printf("No expanded pinMode() for pin 0x%x, ignored.\n", pin);
@@ -39,6 +58,8 @@ int ExpandedGPIO::xdigitalRead(uint8_t pin) {
 
 	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) && mcp) 
 		return mcp->digitalRead(pin & ~PIN_GPIO_MASK) ? HIGH : LOW;
+	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW5293) && awp) 
+		return awp->digitalRead(pin & ~PIN_GPIO_MASK) ? HIGH : LOW;
 
 	if (wp++<MAXREPORT) 
 	Log.printf("No expanded digitalRead() for pin 0x%x, ignored.\n", pin);
@@ -51,8 +72,8 @@ void ExpandedGPIO::xdigitalWrite(uint8_t pin, uint8_t val) {
 		digitalWrite(pin,val);
 		return;
 	};
-	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) && mcp) {
-		mcp->digitalWrite(pin & ~PIN_GPIO_MASK, val);
+	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW5293) && awp) {
+		awp->digitalWrite(pin & ~PIN_GPIO_MASK, val);
 		return;
 	};
 	if (wp++<MAXREPORT) 
