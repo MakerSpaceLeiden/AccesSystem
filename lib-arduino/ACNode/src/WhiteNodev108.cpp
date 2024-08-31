@@ -547,7 +547,7 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
             
             for (int i = 0;; i++) {
                 state_t * s = &states[i];
-		if (!s->label) break;
+                if (!s->label) break;
 
                 int x =  2 + (i / 4)   * SCREEN_WIDTH / 2;
                 int y = 12 + (i % 4) * 11;
@@ -575,6 +575,13 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
                 }
             };
             break;
+        case PAGE_LED:
+            _display->println("-- LED showtime --");
+            static uint8_t _pins[] = { BUZZER, ERROR_LED, LEDA, LEDB, LEDC, LEDD, LEDE, 255};
+            bool onOff = (millis()>>1024) & 1;
+            for(uint8_t * p = _pins; *p != 255; p++)
+                xdigitalWrite(*p, onOff);
+            break;
         default:
             _display->println("Bug - page not defined");
             break;
@@ -591,10 +598,10 @@ void WhiteNodev108::loop() {
     ACNode::loop();
     ArduinoOTA.handle();    
 
-    // This is the ony dynamic page; the others are static once drawn; or
-    // are only updated by explicit things like button presses.
+    // Some pages are dynamic; and need to be updated
+    // constantly.
     //
-    if (_pageState == PAGE_BUTT)
+    if (_pageState == PAGE_BUTT || _pageState == PAGE_LED)
         updateInfoDisplay(PAGE_BUTT);
 
     if (_pageState == PAGE_SNTP) 

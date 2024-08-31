@@ -146,7 +146,7 @@ public:
     void setDisplayScreensaver(bool on);
     void onSwipe(RFID::THandlerFunction_SwipeCB fn);
     
-    typedef enum { PAGE_NORMAL= 0, PAGE_QR, PAGE_LOG_QR, PAGE_INFO, PAGE_SNTP, PAGE_MQTT, PAGE_BUTT, PAGE_LAST} page_t;
+    typedef enum { PAGE_NORMAL= 0, PAGE_QR, PAGE_LOG_QR, PAGE_INFO, PAGE_SNTP, PAGE_MQTT, PAGE_BUTT, PAGE_LED, PAGE_LAST} page_t;
     void updateInfoDisplay(page_t page = PAGE_QR);
     void updateDisplay(String left, String right, bool rebuildFull = false);
     void updateDisplayStateMsg(String msg,int line = 0);
