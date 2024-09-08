@@ -5,25 +5,29 @@
 #include <functional>
 
 // Relies on https://github.com/Seeed-Studio/PN532
+//
 // Which is not part of the Arduino ecosystem.
 // Requires PN532_I2C and PN532 to be in Arduino/libraries
 //
+// Cannot yet be moved to Adafruit_PN532 - as this requires a
+// wired reset and IRQ pin at this time.
+///
 #include <PN532.h>
 #include <PN532_I2C.h>
 
 #include "RFID.h"
 
 class RFID_PN532_EX: public RFID {
-  public:
+public:
     RFID_PN532_EX();
-
+    
     const char * name() { return "NFC-EX"; };
-
+    
     void begin() ;
     void loop();
-
+    
     bool alive();
-  private:
+private:
     PN532_I2C * _i2cNFCDevice;
     PN532 * _nfc532;
 };

@@ -6,7 +6,7 @@
 #  include <ESPmDNS.h>
 #  include <WiFiUdp.h>
 #  include "WiredEthernet.h"
-#  include <esp32-hal-gpio.h> // digitalWrite and friends L	.
+#  include <esp32-hal-gpio.h> // digitalWrite and friends.
 #else
 #  include <ESP8266WiFi.h>
 #endif
@@ -82,7 +82,6 @@ typedef enum {
 
 typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
 
-
 // Clear EEProm + Cache button
 // Press BUT1 on Olimex ESP32 PoE module before (re)boot of node
 // keep BUT1 pressed for at least 5 s
@@ -91,27 +90,23 @@ typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
 #define CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED   (LOW)
 #define MAX_WAIT_TIME_BUTTON_PRESSED            (4000)  // in ms
 
-class ACNode : public ACBase {
+class ACNodeBase : public ACBase {
 public:
-    ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
-    ACNode(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
-
-    const char * name() { return "ACNode"; }
-
+    ACNodeBase(const char * machine, const char * ssid, const char * ssid_passwd);
+    ACNodeBase(const char * machine = NULL, bool wired = true);
+    
+    const char * name() { return "ACNodeBase"; }
+    
     void set_report_period(const unsigned long period) { _report_period = period; };
     void set_mqtt_host(const char *p);
     void set_mqtt_port(uint16_t p);
     void set_mqtt_prefix(const char *p);
     void set_mqtt_log(const char *p);
-
-#ifdef HAS_SIG2
-    void add_trusted_node(const char *node);
-#endif
-
+    
     void set_moi(const char *p);
     void set_machine(const char *p);
     void set_master(const char *p);
-
+    
     uint16_t mqtt_port;
     char moi[MAX_NAME];
     char mqtt_server[MAX_HOST];
@@ -125,82 +120,71 @@ public:
     String macAddressString();
     String chipId() {
 #ifdef ESP32
-                uint64_t chipid = ESP.getEfuseMac();
-                // We can't do 64 bit straight to string.
-                uint32_t low = chipid & 0xFFFFFFFF;
-                uint32_t high = chipid >> 32;
-                return String(high, HEX) + String(low, HEX);
+        uint64_t chipid = ESP.getEfuseMac();
+        // We can't do 64 bit straight to string.
+        uint32_t low = chipid & 0xFFFFFFFF;
+        uint32_t high = chipid >> 32;
+        return String(high, HEX) + String(low, HEX);
 #else
-                uint32_t chipid = ESP.getChipId();
-                return String(chipid);
+        uint32_t chipid = ESP.getChipId();
+        return String(chipid);
 #endif
     };
-
+    
     void delayedReboot();
- 
+    
     // Callbacks.
     typedef std::function<void(acnode_error_t)> THandlerFunction_Error;
-    ACNode& onError(THandlerFunction_Error fn)
-    	    { _error_callback = fn; return *this; };
+    ACNodeBase& onError(THandlerFunction_Error fn)
+    { _error_callback = fn; return *this; };
     
     typedef std::function<void(void)> THandlerFunction_Connect;
-    ACNode& onConnect(THandlerFunction_Connect fn)
-	    { _connect_callback = fn; return *this; };
+    ACNodeBase& onConnect(THandlerFunction_Connect fn)
+    { _connect_callback = fn; return *this; };
     
     typedef std::function<void(void)> THandlerFunction_Disconnect;
-    ACNode& onDisconnect(THandlerFunction_Disconnect fn)
-	    { _disconnect_callback = fn; return *this; };
+    ACNodeBase& onDisconnect(THandlerFunction_Disconnect fn)
+    { _disconnect_callback = fn; return *this; };
     
     typedef std::function<cmd_result_t(const char *cmd, const char * rest)> THandlerFunction_Command;
-    ACNode& onValidatedCmd(THandlerFunction_Command fn)
-	    { _command_callback = fn; return *this; };
-
+    ACNodeBase& onValidatedCmd(THandlerFunction_Command fn)
+    { _command_callback = fn; return *this; };
+    
     typedef std::function<void(const char *msg)> THandlerFunction_SimpleCallback;
-    ACNode& onApproval(THandlerFunction_SimpleCallback fn)
-	    { _approved_callback = fn; return *this; };
-    ACNode& onDenied(THandlerFunction_SimpleCallback fn)
-	    { _denied_callback = fn; return *this; };
+    ACNodeBase& onApproval(THandlerFunction_SimpleCallback fn)
+    { _approved_callback = fn; return *this; };
+    
+    ACNodeBase& onDenied(THandlerFunction_SimpleCallback fn)
+    { _denied_callback = fn; return *this; };
     
     typedef std::function<void(JsonObject &report)> THandlerFunction_Report;
     void onReport(THandlerFunction_Report fn)
-            { _report_callback = fn; return; };
-
+    { _report_callback = fn; return; };
+    
     void loop();
     void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
     cmd_result_t handle_cmd(ACRequest * req);
-   
+    
     void addHandler(ACBase *handler);
-    void addSecurityHandler(ACSecurityHandler *handler);
-   
-    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
-
-    char * cloak(char *tag);
-  
-    unsigned long uptimeInSeconds() { return _start_beat ?  beatCounter - _start_beat : 0; };
+    
+    virtual void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
+    
+    unsigned long uptimeInSeconds();
     String uptime();
-  
+    
     void set_debugAlive(bool debug);
     void set_log_destinations(unsigned int destinations);
     void set_debug_destinations(unsigned int destinations);
     bool isConnected(); // ethernet/wifi is up with valid IP.
     bool isUp(); // MQTT et.al also running.
     
-    void send_helo(char * tokenOrNull = NULL);
-
-    // Public - so it can be called from our fake
-    // singleton. Once that it solved it should really
-    // become private again.
-    //
-    void send(const char * payload) { send(NULL, payload, false); };
-    void send(const char * topic, const char * payload, bool raw = false);
-
     // This function should be private - but we're calling
     // it from a C callback in the mqtt subsystem.
     //
     void process(const char * topic, const char * payload);
-   
+    
     void report(JsonObject & report);
- 
+    
     PubSubClient _client;
 private:
     unsigned int log_destinations = LOG_DEST_DEFAULT;
@@ -211,15 +195,15 @@ private:
     THandlerFunction_SimpleCallback _approved_callback, _denied_callback;
     THandlerFunction_Command _command_callback;
     THandlerFunction_Report _report_callback;
-
-    beat_t _lastSwipe;    
+    
+    beat_t _lastSwipe;
     WiFiClient _espClient;
     
     void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
     void checkClearEEPromAndCacheButtonPressed(uint8_t button);
-
+    
     const char * state2str(int state);
     
     // We register a bunch of handlers - rather than calling them
@@ -228,8 +212,7 @@ private:
     // small enough for the ESP and ENC+Arduino versions.
     //
     std::list<ACBase *> _handlers;
-    std::list<ACSecurityHandler*> _security_handlers;
-
+    
 protected:
     void pop();
     void CONSTS();
@@ -239,12 +222,51 @@ protected:
     bool _wired;
     acnode_proto_t _proto;
     char _lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
-// stat counters
-   unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
+    // stat counters
+    unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
+    
+    void _complete_begin(uint8_t clear_button = -1);
+    void _begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
+};
+
+class ACNode : public ACNodeBase {
+public:
+    ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
+    ACNode(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
+
+#ifdef HAS_SIG2
+    void add_trusted_node(const char *node);
+#endif
+
+    void addSecurityHandler(ACSecurityHandler *handler);
+   
+    char * cloak(char *tag);
+    void send_helo(char * tokenOrNull = NULL);
+
+    unsigned long uptimeInSeconds() { return _start_beat ?  beatCounter - _start_beat : 0; };
+
+    // Public - so it can be called from our fake
+    // singleton. Once that it solved it should really
+    // become private again.
+    //
+    void send(const char * payload) { send(NULL, payload, false); };
+    void send(const char * topic, const char * payload, bool raw = false);
+
+    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
+
+    // This function should be private - but we're calling
+    // it from a C callback in the mqtt subsystem.
+    //
+    void process(const char * topic, const char * payload);
+   
+private:
+    std::list<ACSecurityHandler*> _security_handlers;
+
+protected:
+    acnode_proto_t _proto;
 };
 
 extern double coreTemp();
-
 
 // Unfortunately - MQTT callbacks cannot yet pass
 // a pointer. So we need a 'global' variable; and

@@ -12,17 +12,17 @@ void expandedAnalogWrite(uint8_t pin, uint8_t val) { __exp.xanalogWrite(pin, val
 static int wp = 0;
 static const int MAXREPORT=500;
 
-void ExpandedGPIO::addMCP(unsigned int i2c_addr, TwoWire * wire) {
+void ExpandedGPIO::addMCP(unsigned int i2caddr, TwoWire * wire) {
 	if (mcp == NULL) {
 		mcp = new Adafruit_MCP23X17();
-		mcp->begin_I2C(i2c_addr,wire);
+		mcp->begin_I2C(i2caddr,wire);
 	};
 }
 
-void ExpandedGPIO::addAW9523(unsigned int i2c_addr, TwoWire * wire) {
+void ExpandedGPIO::addAW9523(unsigned int i2caddr, TwoWire * wire) {
 	if (awp  == NULL) {
 		awp= new Adafruit_AW9523();
-		awp->begin(i2c_addr,wire);
+		awp->begin(i2caddr,wire);
   		// Something odd with the init - pinMode does not seem to work.
 		//
 		awp->reset(); // all pins in open-drain; output mode
@@ -40,7 +40,14 @@ void ExpandedGPIO::xpinMode(uint8_t pin, uint8_t mode) {
 		return;
 	};
 	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) {
+#if 0
+  // Something odd with the init - pinMode does not seem to work.
+  //
+  aw.reset(); // all pins in open-drain; output mode
+  aw.openDrainPort0(false);
   // aw.configureLEDMode((1 << LEDA) | (1 << LEDB) | (1 << LEDC) | (1 << LEDD) | (1 << LEDE));
+  aw.configureDirection((1 << LEDA) | (1 << LEDB) | (1 << LEDC) | (1 << LEDD) | (1 << LEDE));
+#endif
 		awp->pinMode(pin & ~PIN_GPIO_MASK, mode);
 		return;
         };
@@ -70,8 +77,8 @@ void ExpandedGPIO::xdigitalWrite(uint8_t pin, uint8_t val) {
 		digitalWrite(pin,val);
 		return;
 	};
-	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) && mcp) {
-		mcp->digitalWrite(pin & ~PIN_GPIO_MASK, val);
+	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) {
+		awp->digitalWrite(pin & ~PIN_GPIO_MASK, val);
 		return;
  	};
 	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) {

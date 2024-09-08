@@ -38,47 +38,47 @@ bool RFID_PN532_EX::alive() {
 
 void RFID_PN532_EX::loop() {
     uint8_t uid[RFID_MAX_TAG_LEN];
-    uint8_t uidLength; 
-
+    uint8_t uidLength;
+    
     unsigned long s = micros();
     static unsigned long d = 0;
-
-{
-	// forever is a bit of a misnomer it seems - so rearm it every 10 seconds or so.
-	static unsigned long lst = 0;
-	if (millis() - lst > 10*1000) {
-		lst = millis();
-		Log.printf("Average read: %lu microSeconds\n", d);
-	};
-};
-
-
+    
+    {
+        // forever is a bit of a misnomer it seems - so rearm it every 10 seconds or so.
+        static unsigned long lst = 0;
+        if (millis() - lst > 10*1000) {
+            lst = millis();
+            Log.printf("Average read: %lu microSeconds\n", d);
+        };
+    };
+    
+    
     if (true == _irqMode) {
-	// forever is a bit of a misnomer it seems - so rearm it every 5 seconds or so.
-	static unsigned long lst = 0;
-	if (millis() - lst > 5*1000) {
-		lst = millis();
-		_nfc532->setPassiveActivationRetries(FOREVER);
-	};
+        // forever is a bit of a misnomer it seems - so rearm it every 5 seconds or so.
+        static unsigned long lst = 0;
+        if (millis() - lst > 5*1000) {
+            lst = millis();
+            _nfc532->setPassiveActivationRetries(FOREVER);
+        };
         if (!cardScannedIrqSeen)
-             return;
+            return;
         cardScannedIrqSeen = false;
     } else {
         if (!_nfc532->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, RFID_TIMEOUT)) {
-          unsigned long t = micros() - s;
-	   d = (d * 10 + t)/11;
-	   return;
-	};
+            unsigned long t = micros() - s;
+            d = (d * 10 + t)/11;
+            return;
+        };
     };
-
+    
     if (!uidLength || uidLength > RFID_MAX_TAG_LEN) {
-	Log.println("Missed/malformed scan");
+        Log.println("Missed/malformed scan");
         _miss++;
-	return;
+        return;
     };
-
+    
     RFID::processAndRateLimitCard(uid, uidLength);
     _scan++;
-
+    
     return;
 }
