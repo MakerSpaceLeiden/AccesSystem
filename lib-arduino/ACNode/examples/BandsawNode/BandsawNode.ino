@@ -90,7 +90,7 @@ void setup() {
   // Init the hardware and get it into a safe state.
   // Init the hardware and get it into a safe state.
   //
-  pinMode(RELAY_GPIO, OUTPUT);
+  expandedPinMode(RELAY_GPIO, OUTPUT);
   node.setMonitoredOutput(RELAY_GPIO, 0);
 
   ACTIVATED =  node.machinestate.addState("Waiting for Safety", LED::LED_ON,
@@ -100,10 +100,12 @@ void setup() {
   SHUTTINGDOWN =  node.machinestate.addState("Locking machine",
                   LED::LED_ON, 60 * 1000, MachineState::WAITINGFORCARD);
 
-  pinMode(INTERLOCK, INPUT);
+  expandedPinMode(INTERLOCK, INPUT);
   interlockDetect = new ButtonDebounce(INTERLOCK);
+  interlockDetect->setDigitalReadFunction(&expandedDigitalRead);
+  
   interlockDetect->setCallback([](const int newState) {
-    if (node.machinestate == MachineState::CHECKINGCARD && newState == LOW) {
+    if ((node.machinestate == MachineState::CHECKINGCARD || node.machinestate == MachineState::WAITINGFORCARD) && newState == LOW) {
       Log.println("Alert: Power on the interlock observed while " MACHINE " should be locked.");
       node.machinestate = FAULTED;
     }
@@ -128,7 +130,7 @@ void setup() {
       normal_poweron++;
     }
     else
-      Debug.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
+      Debug.printf("Interlock power now %s (State: %s)\n", newState ? "OFF" : "ON", node.machinestate.label());
   }, CHANGE);
 
   motorCurrent = new ButtonDebounce(MOTOR_CURRENT);

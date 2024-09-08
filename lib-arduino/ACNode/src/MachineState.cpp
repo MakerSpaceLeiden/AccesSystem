@@ -39,7 +39,11 @@
       else
         memset(s,0,sizeof(s)); // *s = {};
 
+      if (s->label) s->label = strdup(s->label);
+
       _state2stateStruct[state] = s;
+      // Serial.printf("State: %d - %p\n", state, _state2stateStruct[state]); // ->label ? _state2stateStruct[state]->label : "????");
+      // Serial.printf("State: %d\n", state);
       return s;
     }
 

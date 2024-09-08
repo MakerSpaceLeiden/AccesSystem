@@ -689,7 +689,7 @@ void BlackNodev111::loop() {
 		0 
      };
      static uint8_t i = 0; // intentionally using the beat rather than time - so we can visually see slowdown.
-     xanalogWrite(LEDE,cufflink_beat[i]/2); i++; if (cufflink_beat[i] == 0) i = 0; 
+     xanalogWrite(LEDE,cufflink_beat[i]/4); i++; if (cufflink_beat[i] == 0) i = 0; 
      };
 
      // Quite hardware specific; the relay can only be forced 'on' - either by a GPIO or
@@ -721,8 +721,10 @@ void BlackNodev111::loop() {
 				lst = millis();
 			};
         		errorLed->set(LED::LED_FAST);     
+			// Will stay on 'forever'.
 			xanalogWrite(LEDA,255);
 		} else lst = 0;
 		xpinMode(OUT1,OUTPUT);
      };
+     xanalogWrite(LEDB, (machinestate == FAULTED) ? MAX(50, 255-machinestate.secondsInThisState())  : 0);
 }

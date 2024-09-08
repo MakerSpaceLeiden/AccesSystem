@@ -5,7 +5,7 @@
 //
 static ExpandedGPIO &__exp = ExpandedGPIO::getInstance();
 void expandedPinMode(uint8_t pin, uint8_t mode) { __exp.xpinMode(pin, mode); };
-int  expandedDigitaRead(uint8_t pin) { return __exp.xdigitalRead(pin); };
+int  expandedDigitalRead(uint8_t pin) { return __exp.xdigitalRead(pin); };
 void expandedDigitalWrite(uint8_t pin, uint8_t val) { __exp.xdigitalWrite(pin, val); };
 void expandedAnalogWrite(uint8_t pin, uint8_t val) { __exp.xanalogWrite(pin, val); };
 

@@ -18,7 +18,7 @@
 // Convinience functions that rely on a auto created
 // singleton.
 extern void expandedPinMode(uint8_t pin, uint8_t mode);
-extern int  expandedDigitaRead(uint8_t pin);
+extern int  expandedDigitalRead(uint8_t pin);
 extern void expandedDigitalWrite(uint8_t pin, uint8_t val);
 extern void expandedAnalogWrite(uint8_t pin, uint8_t val);
 

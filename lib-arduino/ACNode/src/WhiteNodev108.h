@@ -6,6 +6,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SH110X.h>
+#include <ExpandedGPIO.h>
 #include <ButtonDebounce.h>
 
 // White / 1.08

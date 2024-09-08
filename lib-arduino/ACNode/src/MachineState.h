@@ -97,6 +97,9 @@ class MachineState : public ACBase {
     MachineState(LED * led = NULL);
 
     machinestate_t state();
+    operator const char* () { return label(); };
+    operator machinestate_t () { return state(); };
+    // operator uint8_t () { return state(); };
 
     void operator=(machinestate_t s);
     void setState(machinestate_t s);
@@ -105,6 +108,7 @@ class MachineState : public ACBase {
     bool operator ==(machinestate_t s) { return s == machinestate; };
     bool operator !=(machinestate_t s) { return s != machinestate; };
     bool operator >(machinestate_t s) { return s < machinestate; };
+
 
     void setOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
 
