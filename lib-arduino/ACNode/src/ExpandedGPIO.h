@@ -12,7 +12,7 @@
 
 #define PIN_HPIO_PLAIN  (0 << 6)
 #define PIN_HPIO_MCP    (1 << 6)
-#define PIN_HPIO_AW5293 (2 << 6)
+#define PIN_HPIO_AW9523 (2 << 6)
 #define PIN_HPIO_RES4   (3 << 6)	// not yet used.
 
 // Convinience functions that rely on a auto created
@@ -23,31 +23,31 @@ extern void expandedDigitalWrite(uint8_t pin, uint8_t val);
 extern void expandedAnalogWrite(uint8_t pin, uint8_t val);
 
 class ExpandedGPIO {
-    public:
-        static ExpandedGPIO& getInstance()
-        {
-            static ExpandedGPIO instance;
-            return instance;
-        }
-    private:
-        ExpandedGPIO() {}
-        ExpandedGPIO(ExpandedGPIO const&);              
-        void operator=(ExpandedGPIO const&);
-    public:
-//        ExpandedGPIO(ExpandedGPIO const&) = delete;
-//        void operator=(ExpandedGPIO const&) = delete;
-   
-	void addMCP(unsigned int i2c_addr = 0x20, TwoWire * wire = &Wire);
-	void addAW9523(unsigned int i2c_addr = 0x58, TwoWire * wire = &Wire);
-	// void addH2812(unsigned int i2caddr, TwoWire * wire = &Wire);
-
-	void xpinMode(uint8_t pin, uint8_t mode);
-	int xdigitalRead(uint8_t pin);
-	void xdigitalWrite(uint8_t pin, uint8_t val);
-	void xanalogWrite(uint8_t pin, uint8_t val);
-    private:
-	Adafruit_MCP23X17 * mcp = NULL;
-        Adafruit_AW9523 * awp = NULL;
+public:
+    static ExpandedGPIO& getInstance()
+    {
+        static ExpandedGPIO instance;
+        return instance;
+    }
+private:
+    ExpandedGPIO() {}
+    ExpandedGPIO(ExpandedGPIO const&);              
+    void operator=(ExpandedGPIO const&);
+public:
+    //        ExpandedGPIO(ExpandedGPIO const&) = delete;
+    //        void operator=(ExpandedGPIO const&) = delete;
+    
+    void addMCP(unsigned int i2c_addr = 0x20, TwoWire * wire = &Wire);
+    void addAW9523(unsigned int i2c_addr = 0x58, TwoWire * wire = &Wire);
+    // void addH2812(unsigned int i2caddr, TwoWire * wire = &Wire);
+    
+    void xpinMode(uint8_t pin, uint8_t mode);
+    int xdigitalRead(uint8_t pin);
+    void xdigitalWrite(uint8_t pin, uint8_t val);
+    void xanalogWrite(uint8_t pin, uint8_t val);
+private:
+    Adafruit_MCP23X17 * mcp = NULL;
+    Adafruit_AW9523 * awp = NULL;
 };
 #endif
 

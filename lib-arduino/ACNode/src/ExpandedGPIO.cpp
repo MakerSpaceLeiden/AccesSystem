@@ -19,9 +19,9 @@ void ExpandedGPIO::addMCP(unsigned int i2caddr, TwoWire * wire) {
 	};
 }
 
-void ExpandedGPIO::addAW5293(unsigned int i2caddr, TwoWire * wire) {
+void ExpandedGPIO::addAW9523(unsigned int i2caddr, TwoWire * wire) {
 	if (awp  == NULL) {
-		awp= new Adafruit_MCP23X17();
+		awp= new Adafruit_AW9523();
 		awp->begin(i2caddr,wire);
   		// Something odd with the init - pinMode does not seem to work.
 		//
@@ -39,7 +39,7 @@ void ExpandedGPIO::xpinMode(uint8_t pin, uint8_t mode) {
 		mcp->pinMode(pin & ~PIN_GPIO_MASK, mode);
 		return;
 	};
-	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW5293) && awp) {
+	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) {
 #if 0
   // Something odd with the init - pinMode does not seem to work.
   //
@@ -63,7 +63,7 @@ int ExpandedGPIO::xdigitalRead(uint8_t pin) {
 
 	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) && mcp) 
 		return mcp->digitalRead(pin & ~PIN_GPIO_MASK) ? HIGH : LOW;
-	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW5293) && awp) 
+	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) 
 		return awp->digitalRead(pin & ~PIN_GPIO_MASK) ? HIGH : LOW;
 
 	if (0) if (wp++<MAXREPORT) 
@@ -77,7 +77,7 @@ void ExpandedGPIO::xdigitalWrite(uint8_t pin, uint8_t val) {
 		digitalWrite(pin,val);
 		return;
 	};
-	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW5293) && awp) {
+	if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) {
 		awp->digitalWrite(pin & ~PIN_GPIO_MASK, val);
 		return;
  	};

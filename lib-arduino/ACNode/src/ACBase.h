@@ -63,7 +63,6 @@ protected:
     // protected:
 };
 
-
 class ACSecurityHandler : public ACBase {
 public:
     virtual const char * name() { return "ACSecurityHandler"; }
