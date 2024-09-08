@@ -1,4 +1,4 @@
-#include <RFID_MFRC522.h>
+#include <RFID/RFID_MFRC522.h>
 #include <MFRC522.h>
 
 const unsigned long RFID_CHECK_INTERVAL = 60 * 1000;

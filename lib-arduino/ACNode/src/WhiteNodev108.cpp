@@ -98,6 +98,7 @@ void WhiteNodev108::pop() {
     _pageState = PAGE_LAST; // basically the logo
     
     Serial.println("WhiteNodev11 popped");
+    buzzerErr();
 };
 
 void WhiteNodev108::buzzer(bool onOff) {
@@ -128,7 +129,7 @@ void WhiteNodev108::setOTAPasswordHash(const char * md5) {
 
 void WhiteNodev108::begin() {
     Serial.println("WhiteNodev108 begin");
-    
+
     if (!_display && (_display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
         _display->setRotation(2); // for purple/white boards - OLED is upside down.
         _display->begin(SCREEN_Address, true);
@@ -157,7 +158,7 @@ void WhiteNodev108::begin() {
     tzset();
 #endif
     esp_sntp_servermode_dhcp(true);
-    
+
     ACNode::begin(BOARD_NG);
     
     offButton = new ButtonDebounce(OFF_BUTTON);
@@ -283,7 +284,7 @@ void WhiteNodev108::begin() {
     
     updateDisplay("","MORE", true);
     
-    ArduinoOTA.setHostname((_acnode->moi && _acnode->moi[0]) ? _acnode->moi : "unset-acnode");
+    ArduinoOTA.setHostname((_acnodebase->moi && _acnodebase->moi[0]) ? _acnodebase->moi : "unset-acnode");
     
     ArduinoOTA.onStart([&]() {
         if ((machinestate.state() != MachineState::WAITINGFORCARD) && (machinestate.state() != SCREENSAVER)) {
@@ -304,7 +305,7 @@ void WhiteNodev108::begin() {
         updateDisplayProgressbar(0,true);
         setDisplayScreensaver(false);
         
-        if (strstr(_acnode->moi,"test"))
+        if (strstr(_acnodebase->moi,"test"))
             Log.println("OTA process started (Not wiping private keys in test ode).");
         else {
             Log.println("OTA process started -- wiping private keys.");
@@ -371,6 +372,8 @@ void WhiteNodev108::begin() {
     ArduinoOTA.begin();
     Debug.println("OTA Enabled");
     _otaOK = true;
+
+    buzzerOk();
 }
 
 void WhiteNodev108::setDisplayScreensaver(bool on) {

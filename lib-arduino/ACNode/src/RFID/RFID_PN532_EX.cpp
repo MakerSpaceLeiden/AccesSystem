@@ -1,4 +1,4 @@
-#include <RFID_PN532_EX.h>
+#include <RFID/RFID_PN532_EX.h>
 #include <Wire.h>
 
 const uint8_t FOREVER = 255;

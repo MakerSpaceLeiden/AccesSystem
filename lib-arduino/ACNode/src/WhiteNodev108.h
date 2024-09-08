@@ -18,7 +18,7 @@
 // Needed for the screen
 #include <MachineState.h>
 
-#include <RFID_MFRC522.h>
+#include <RFID/RFID_MFRC522.h>
 #include "ACNode.h"
 
 // Extra, hardware specific states
@@ -56,7 +56,8 @@ public:
     
     void CONSTS() {
         ACNode::CONSTS();
-        Serial.printf("WhiteNodev108::pop - Wire.setPins(%d,%d)", I2C_SDA, I2C_SCL);
+        
+        Serial.printf("WhiteNodev108::CONSTS - Wire.setPins(%d,%d)\n", I2C_SDA, I2C_SCL);
         Wire.setPins(I2C_SDA, I2C_SCL);
         
         LED_INDICATOR = 12;

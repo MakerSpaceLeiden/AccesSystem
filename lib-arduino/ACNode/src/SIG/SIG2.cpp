@@ -1,10 +1,11 @@
-#include <ACNode-private.h>
-#include "MakerSpaceMQTT.h" // needed for MAX_MSG
 #include <unordered_map>
 #include <Arduino.h> // min() macro
 #include <EEPROM.h>
 
-#include "SIG2.h"
+#include "SIG/ACNode-private.h"
+#include "SIG/SIG2.h"
+
+#include "MakerSpaceMQTT.h" // needed for MAX_MSG
 
 #include <mbedtls/aes.h>
 #include <mbedtls/base64.h>
@@ -228,7 +229,7 @@ void SIG2::loop() {
     uint32_t seed = trng();
     mbedtls_entropy_update_manual(&entropy,(const unsigned char*)&seed,sizeof(seed));
     
-    if (!_acnode->isConnected()) {
+    if (!_acnodebase->isConnected()) {
         // force re-connecting, etc post reconnect.
         if (init_done > 4) init_done = 4;
         return;
@@ -287,7 +288,7 @@ void SIG2::loop() {
         Debug.println("Full init. Ready for crypto");
         return;
     };
-    if (init_done == 2 && _acnode->isUp() && sig2_active()) {
+    if (init_done == 2 && _acnodebase->isUp() && sig2_active()) {
         init_done = 3;
         Log.println("SIG/2 ready, connected to mqtt, have private key and am announcing.");
         _acnode->send_helo();
@@ -314,7 +315,7 @@ ACSecurityHandler::acauth_result_t SIG2::verify(ACRequest * req) {
         return ACSecurityHandler::FAIL;
     };
     sender++; // Skip '/'.
-    bool sendIsMaster = !strcmp(_acnode->master, sender);
+    bool sendIsMaster = !strcmp(_acnodebase->master, sender);
     
     // We only accept things starting with SIG/2*<space>hex<space>
     if (len < 72 || strncmp(req->payload, "SIG/2.", 6) != 0)
@@ -728,8 +729,8 @@ void SIG2::request_trust(int i) {
     
     char topic[MAX_TOPIC];
     snprintf(topic, sizeof(topic), "%s/%s/%s",
-             _acnode->mqtt_topic_prefix, _acnode->moi, trust[i].node);
-    _acnode->_client.subscribe(topic);
+             _acnodebase->mqtt_topic_prefix, _acnodebase->moi, trust[i].node);
+    _acnodebase->_client.subscribe(topic);
     
     Debug.printf("Subscribing to %s for the trusted messages.>\n", topic);
 };
@@ -740,7 +741,7 @@ SIG2::acauth_result_t SIG2::helo(ACRequest * req) {
         return ACSecurityHandler::DECLINE;
     };
     
-    IPAddress myIp = _acnode->localIP();
+    IPAddress myIp = _acnodebase->localIP();
     char buff[MAX_MSG];
     if (snprintf(buff, sizeof(buff), "%s %d.%d.%d.%d", req->payload, myIp[0], myIp[1], myIp[2], myIp[3]) < 0)
         return FAIL;

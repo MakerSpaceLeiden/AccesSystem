@@ -1,18 +1,21 @@
-#include <ACNode-private.h>
+#include <ACBaseNode.h>
+#include <SIG/ACNode.h>
 
 #if MQTT_MAX_PACKET_SIZE < 256
 #error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
 #endif
 
+#if 0
 // Glue - TBD
 void send(const char * topic, const char * payload) {
-    if (_acnode)
+    if (_acnodebase)
         _acnode->send(topic,payload);
 }
 void send_helo(const char * payload) {
-    if (_acnode)
+    if (_acnodebase)
         _acnode->send_helo((char *)payload);
 }
+#endif
 
 // We're having a bit of an issue with publishing within/near the reconnect and mqtt callback. So we
 // queue the message up - to have them send in the runloop; much later. We also do the signing that
@@ -26,7 +29,6 @@ typedef struct publish_rec {
 } publish_rec_t;
 
 publish_rec_t *publish_queue = NULL;
-
 
 void ACNode::send(const char * topic, const char * payload, bool _raw) {
     char _topic[MAX_TOPIC];
@@ -111,7 +113,7 @@ void ACNodeBase::reconnectMQTT() {
             Log.println("WARNING - buffer size could not be increased to a large enough value. All things may go wrong.");
     
     Log.printf("Connecting <%s> to %s:%d (MQTT State : %s)\n",
-               moi, mqtt_server, mqtt_port, 
+               moi, mqtt_server, mqtt_port,
                state2str(_client.state()));
     
     if (!_client.connect(moi)) {
@@ -123,16 +125,21 @@ void ACNodeBase::reconnectMQTT() {
     
     Debug.println("(re)connected ");
     _mqtt_reconnects ++;
+}
+
+void ACNode::reconnectMQTT() {
+    ACNodeBase::reconnectMQTT();
     
     char topic[MAX_TOPIC];
+
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
     _client.subscribe(topic);
-    Debug.print("Subscribed to ");
+    Debug.print("master to me -- subscribed to ");
     Debug.println(topic);
     
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, master);
     _client.subscribe(topic);
-    Debug.print("Subscribed to ");
+    Debug.print("master bcast -- Subscribed to ");
     Debug.println(topic);
     
     send_helo(NULL);
@@ -177,7 +184,7 @@ void ACNode::send_helo(char * token) {
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
 
-void ACNodeBase::configureMQTT()  {
+void ACNode::configureMQTT()  {
     if (moi == NULL || *moi == 0)
         strncpy(moi,"no-mqtt-client-id-set",sizeof(moi));
     
@@ -188,24 +195,7 @@ void ACNodeBase::configureMQTT()  {
     _client.setCallback(mqtt_callback);
 }
 
-char * strsepspace(char **p) {
-    char *q = *p;
-    if (p == NULL || *p == NULL)
-        return NULL;
-    //while(**p == ' ') (*p)++;
-    while (**p && **p != ' ') {
-        (*p)++;
-    };
-    if (**p && **p == ' ') {
-        // while(**p == ' ') (*p)++;
-        **p = 0;
-        (*p)++;
-        return q;
-    }
-    if (*q)
-        return q;
-    return NULL;
-}
+
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     char payload[MAX_MSG], *q = payload;
@@ -220,7 +210,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     };
     *q = 0;
     
-    _acnode->process(topic, payload);
+    _acnodebase->process(topic, payload);
 }
 
 bool ACNodeBase::isUp() {

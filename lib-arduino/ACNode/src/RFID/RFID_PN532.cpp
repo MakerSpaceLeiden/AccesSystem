@@ -1,4 +1,4 @@
-#include <RFID_PN532.h>
+#include <RFID/RFID_PN532.h>
 #include <Wire.h>
 
 RFID_PN532::RFID_PN532(TwoWire *i2cBus, const byte i2caddr, const byte rstpin, const byte irqpin) 

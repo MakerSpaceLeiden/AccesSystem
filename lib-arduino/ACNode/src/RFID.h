@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <functional>
 
-#include <ACNode-private.h>
+#include <ACBaseNode.h>
 #include <ACBase.h>
 #include <Wire.h>
 

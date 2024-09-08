@@ -5,7 +5,7 @@
 #include <functional>
 
 #include <MFRC522.h>
-#include "RFID.h"
+#include <RFID.h>
 
 // SPI based RFID reader
 #ifndef RFID_MOSI_PIN

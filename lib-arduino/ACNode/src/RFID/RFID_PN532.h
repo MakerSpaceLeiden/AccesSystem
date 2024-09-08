@@ -5,7 +5,7 @@
 #include <functional>
 
 #include <Adafruit_PN532.h>
-#include "RFID.h"
+#include <RFID.h>
 
 class RFID_PN532: public RFID {
   public:

@@ -1,8 +1,7 @@
-#ifndef _H_BEAT
-#define _H_BEAT
+#ifndef _H_SIG_BEAT
+#define _H_SIG_BEAT
 
 #include <ACBase.h>
-#include <ACNode-private.h>
 
 class Beat : public ACSecurityHandler {
 public:

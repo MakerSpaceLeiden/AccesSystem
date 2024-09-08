@@ -6,7 +6,7 @@
 #include <functional>
 #include <DFRobot_PN532.h>
 
-#include "RFID.h"
+#include <RFID.h>
 
 class RFID_PN532_NFC: public RFID {
   public:

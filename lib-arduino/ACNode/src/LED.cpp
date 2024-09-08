@@ -1,4 +1,4 @@
-#include <ACNode-private.h>
+#include <ACBaseNode.h>
 #include <ExpandedGPIO.h>
 
 #include "LED.h"

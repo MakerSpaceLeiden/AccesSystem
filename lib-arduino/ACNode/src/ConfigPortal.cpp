@@ -1,4 +1,4 @@
-#include <ACNode-private.h>
+#include <ACBaseNode.h>
 #include "ConfigPortal.h"
 #ifdef CONFIGAP
 
@@ -67,18 +67,18 @@ void configPortal() {
 
   char mqtt_port_buff[5];
   char passwd_buff[MAX_NAME];
-  snprintf(mqtt_port_buff, sizeof(mqtt_port_buff), "%d", _acnode->mqtt_port);
+  snprintf(mqtt_port_buff, sizeof(mqtt_port_buff), "%d", _acnodebase->mqtt_port);
   passwd_buff[0] = 0; // force user to (re)set the password; rather than reveal anything.
 
   WiFiManagerParameter custom_mqtt_server("server", "mqtt server", 
-	_acnode->mqtt_server, sizeof(_acnode->mqtt_server));
+	_acnodebase->mqtt_server, sizeof(_acnodebase->mqtt_server));
   WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port_buff, sizeof(mqtt_port_buff));
-  WiFiManagerParameter custom_node("node", "node name", _acnode->moi, sizeof(_acnode->moi));
-  WiFiManagerParameter custom_machine("machine", "machine", _acnode->machine, sizeof(_acnode->machine));
-  WiFiManagerParameter custom_prefix("topic_prefix", "topix prefix", _acnode->mqtt_topic_prefix, sizeof(_acnode->mqtt_topic_prefix));
+  WiFiManagerParameter custom_node("node", "node name", _acnodebase->moi, sizeof(_acnodebase->moi));
+  WiFiManagerParameter custom_machine("machine", "machine", _acnodebase->machine, sizeof(_acnodebase->machine));
+  WiFiManagerParameter custom_prefix("topic_prefix", "topix prefix", _acnodebase->mqtt_topic_prefix, sizeof(_acnodebase->mqtt_topic_prefix));
   WiFiManagerParameter custom_passwd("passwd", "shared secret", passwd_buff, sizeof(passwd_buff));
-  WiFiManagerParameter custom_master("master", "master node", _acnode->master, sizeof(_acnode->master));
-  WiFiManagerParameter custom_logpath("logpath", "logpath", _acnode->logpath, sizeof(_acnode->logpath));
+  WiFiManagerParameter custom_master("master", "master node", _acnodebase->master, sizeof(_acnodebase->master));
+  WiFiManagerParameter custom_logpath("logpath", "logpath", _acnodebase->logpath, sizeof(_acnodebase->logpath));
 
   wifiManager.addParameter(&custom_mqtt_server);
   wifiManager.addParameter(&custom_mqtt_port);
@@ -161,18 +161,18 @@ int configLoad() {
     if (str) { strncpy((d),str,sizeof((d))); defined++; }; \
     Debug.printf("%s=\"%s\" ==> %s\n", v, str ? (strcmp(v,"passwd") ? str : "****") : "\\0",  (strcmp(v,"passwd") ? d : "****"));\
   }
-  JSONR(_acnode->mqtt_server, "mqtt_server");
+  JSONR(_acnodebase->mqtt_server, "mqtt_server");
   JSONR(tmp_port, "mqtt_port");
-  JSONR(_acnode->moi, "moi");
-  JSONR(_acnode->mqtt_topic_prefix, "prefix");
-//  JSONR(_acnode->passwd, "passwd");
-  JSONR(_acnode->logpath, "logpath");
-  JSONR(_acnode->master, "master");
-  JSONR(_acnode->machine, "machine");
+  JSONR(_acnodebase->moi, "moi");
+  JSONR(_acnodebase->mqtt_topic_prefix, "prefix");
+//  JSONR(_acnodebase->passwd, "passwd");
+  JSONR(_acnodebase->logpath, "logpath");
+  JSONR(_acnodebase->master, "master");
+  JSONR(_acnodebase->machine, "machine");
 
   int p = atoi(tmp_port);
   if (p == 0) p = MQTT_DEFAULT_PORT;
-  if (p < 65564) _acnode->mqtt_port = p;
+  if (p < 65564) _acnodebase->mqtt_port = p;
 
   return defined == 8;
 }

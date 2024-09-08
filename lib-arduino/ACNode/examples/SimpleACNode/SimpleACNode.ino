@@ -19,7 +19,7 @@
 //
 #include <PowerNodeV11.h>
 #include <ACNode.h>
-#include <RFID.h>   // SPI version
+#include <RFID.h>
 
 #include <CurrentTransformer.h>     // https://github.com/dirkx/CurrentTransformer
 #include <ButtonDebounce.h>         // https://github.com/craftmetrics/esp32-button
@@ -33,8 +33,6 @@
 
 CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
 
-#include <ACNode.h>
-#include <RFID.h>   // SPI version
 
 // ACNode node = ACNode(MACHINE, WIFI_NETWORK, WIFI_PASSWD); // wireless, fixed wifi network.
 // ACNode node = ACNode(MACHINE, false); // wireless; captive portal for configure.

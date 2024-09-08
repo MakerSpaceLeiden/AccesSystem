@@ -1,4 +1,4 @@
-#include <ACNode-private.h>
+#include <ACBaseNode.h>
 
 #ifdef ESP32
 #include <ETH.h>
@@ -28,7 +28,7 @@ void WiFiEvent(WiFiEvent_t event)
       break;
     case EV(ETH_START):
       Log.println("ETH Started");
-      ETH.setHostname(_acnode->moi);
+      ETH.setHostname(_acnodebase->moi);
       break;
     case EV(ETH_CONNECTED):
       Log.println("ETH Connected");

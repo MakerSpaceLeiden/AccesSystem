@@ -1,4 +1,4 @@
-#include <ACNode-private.h>
+#include <ACBaseNode.h>
 
 #ifndef _H_WIRED_ETHERNET
 #define _H_WIRED_ETHERNET

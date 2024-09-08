@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <limits.h>
 
-#include <ACNode-private.h>
-#include <Beat.h>
+#include "SIG/ACNode-private.h"
+#include "SIG/Beat.h"
 
 beat_t beat_absdelta(beat_t a, beat_t b) {
 	if (a > b)
@@ -49,7 +49,7 @@ Beat::acauth_result_t Beat::verify(ACRequest * req)
     strncpy(req->beat,req->rest, l);
     strncpy(req->rest, p, sizeof(req->rest));
     req->beatExtracted = b;
-    
+
     return OK;
 };
 
@@ -97,7 +97,7 @@ void Beat::loop() {
     }
 
     if (_debug_alive) {
-        if (millis() - last_beat > 3000 && _acnode->isConnected()) {
+        if (millis() - last_beat > 3000 && _acnodebase->isConnected()) {
             send(NULL, "ping");
             last_beat = millis();
         }

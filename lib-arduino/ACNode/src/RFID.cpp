@@ -28,10 +28,10 @@ void RFID::processAndRateLimitCard(unsigned char * bintag, size_t len) {
     	      lastswipe = millis();
 	      strncpy(lasttag, tag, sizeof(lasttag));
 
-	      if (!_swipe_cb || (_swipe_cb(lasttag) != ACNode::CMD_CLAIMED)) {
+	      if (!_swipe_cb || (_swipe_cb(lasttag) != ACNodeBase::CMD_CLAIMED)) {
  	      	   // Simple approval request; default is to 'energise' the contactor on 'machine'.
 		   Log.println("Requesting approval");
-	           _acnode->request_approval(lasttag);
+	           _acnodebase->request_approval(lasttag);
 	      } else {
 		   Debug.println( _swipe_cb ? "internal rq used " : "callback claimed" );
 	      };

@@ -15,7 +15,7 @@
 #include <PN532.h>
 #include <PN532_I2C.h>
 
-#include "RFID.h"
+#include <RFID.h>
 
 class RFID_PN532_EX: public RFID {
 public:

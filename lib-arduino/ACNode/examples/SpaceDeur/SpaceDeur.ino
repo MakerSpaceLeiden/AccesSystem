@@ -17,7 +17,7 @@
 #include <PowerNodeV11.h>
 #include <ACNode.h>
 #include <MachineState.h>
-#include <RFID.h>   // SPI version
+#include <RFID.h>
 
 #include <AccelStepper.h>
 

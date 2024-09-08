@@ -1,10 +1,13 @@
-#ifndef _H_COMMONS
-#define _H_COMMONS
+#ifndef _H_UTIL_COMMONS
+#define _H_UTIL_COMMONS
 #include <mbedtls/base64.h>
 #include <string.h>
 #include <ExpandedGPIO.h>
 
 size_t decode_base64_length(unsigned char * base64str);
+
+extern char * strsepspace(char **p);
+extern void scan_i2c();
 
 #define B64L(n) ((((4 * n / 3) + 3) & ~3)+1)
 
@@ -29,3 +32,8 @@ size_t decode_base64_length(unsigned char * base64str);
                 return errorOnReturn; \
         }; 
 #endif
+
+#ifdef ESP32
+extern double coreTemp();
+#endif
+

@@ -1,5 +1,5 @@
-#include <ACNode-private.h>
-#include "SIG1.h"
+#include "SIG/ACNode-private.h"
+#include "SIG/SIG1.h"
 
 // Note - none of below HMAC utility functions is re-entrant/t-safe; they all rely
 // on some private static buffers one is not to meddle with in the 'meantime'.
@@ -184,7 +184,7 @@ SIG1::acauth_result_t SIG1::cloak(ACRequest * req) {
 };
 
 SIG1::acauth_result_t SIG1::helo(ACRequest * req) {
-	IPAddress myIp = _acnode->localIP();
+	IPAddress myIp = _acnodebase->localIP();
     	if (snprintf(req->payload, sizeof(req->payload), 
 		"announce %d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]) < 0)
 			return FAIL;

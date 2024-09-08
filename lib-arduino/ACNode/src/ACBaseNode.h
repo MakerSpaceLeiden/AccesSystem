@@ -2,7 +2,6 @@
 #define _H_ACNODE_PRIVATE
 
 #ifdef  ESP32
-//#  include <WiFi.h>
 #  include <ESPmDNS.h>
 #  include <WiFiUdp.h>
 #  include "WiredEthernet.h"
@@ -11,15 +10,18 @@
 #  include <ESP8266WiFi.h>
 #endif
 
+#include <SPI.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/
+#include <base64.h>
+#include <Crypto.h>
+
 #include <TLog.h>
 #include <MqttlogStream.h>
 #include <TelnetSerialStream.h>
 #include <WebSerialStream.h>
-#include <SPI.h>
 
-#include <base64.h>
-#include <Crypto.h>
+#include <ArduinoJson.h>
+
 #include "mbedtls/sha256.h" /* SHA-256 only */
 #include "mbedtls/md.h"     /* generic interface */
 
@@ -27,14 +29,10 @@
 #include <vector>
 #include <algorithm>    // std::find
 
-#include <common-utils.h>
-#include <ACBase.h>
-#include <LED.h>
-
-#include <ArduinoJson.h>
+#include "util/common-utils.h"
+#include "ACBase.h"
+#include "LED.h"
 #include "RFID.h" // for the max tag size
-
-extern char * strsepspace(char **p);
 
 #define Trace if (0) Debug
 
@@ -70,17 +68,19 @@ typedef enum {
     ACNODE_DEBUG
 } acnode_loglevel_t;
 
-typedef enum { 
-	BOARD_AART,  	// https://wiki.makerspaceleiden.nl/mediawiki/index.php/POESP-board_1.0
-	BOARD_OLIMEX, 	// https://www.olimex.com/Products/IoT/ESP32/ESP32-POE/open-source-hardware
-	BOARD_NG	// https://github.com/dirkx/rfid-oled-esp32 (white, green, red and purple)
+typedef enum {
+    BOARD_AART,  	// https://wiki.makerspaceleiden.nl/mediawiki/index.php/POESP-board_1.0
+    BOARD_OLIMEX, 	//  https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
+    BOARD_NG	    // https://github.com/dirkx/rfid-oled-esp32 (black, white, green, red and purple)
 } eth_board_t;
 
-// #define HAS_MSL
-// #define HAS_SIG1
-#define HAS_SIG2
-
-typedef enum { PROTO_SIG2, PROTO_SIG1, PROTO_MSL, PROTO_NONE } acnode_proto_t;
+typedef enum {
+    PROTO_REST,     // experimental - variation of https://wiki.makerspaceleiden.nl/mediawiki/index.php/Payment_and_Paring_REST_protocol
+    PROTO_SIG2,     // Mqtt used; in use
+    PROTO_SIG1,     // Used by second generator Aart nodes, no longer in use (2015?)
+    PROTO_MSL,      // Used by first to generation raspPi nodes, no longer in use
+    PROTO_NONE
+} acnode_proto_t;
 
 // Clear EEProm + Cache button
 // Press BUT1 on Olimex ESP32 PoE module before (re)boot of node
@@ -112,8 +112,6 @@ public:
     char mqtt_server[MAX_HOST];
     char machine[MAX_NAME];
     char master[MAX_NAME];
-    char logpath[MAX_NAME];
-    char mqtt_topic_prefix[MAX_NAME];
     
     IPAddress localIP();
     String getHostname();
@@ -124,11 +122,14 @@ public:
         // We can't do 64 bit straight to string.
         uint32_t low = chipid & 0xFFFFFFFF;
         uint32_t high = chipid >> 32;
-        return String(high, HEX) + String(low, HEX);
+        char buff[16+1];
+        snprintf(buff,sizeof(buff),"%08ul%08ul", high, low);
 #else
         uint32_t chipid = ESP.getChipId();
-        return String(chipid);
+        char buff[8+1];
+        snprintf(buff,sizeof(buff),"%08ul",chipid);
 #endif
+        return String(chipid);
     };
     
     void delayedReboot();
@@ -163,15 +164,17 @@ public:
     
     void loop();
     void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
-    cmd_result_t handle_cmd(ACRequest * req);
-    
     void addHandler(ACBase *handler);
     
-    virtual void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
+#if 0
+    void ACNodeBase::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) {
+        Log.println("XXX error not implemented XXX");
+    }
+#endif
     
-    unsigned long uptimeInSeconds();
     String uptime();
     
+    unsigned long uptimeInSeconds() { return _start_beat ? (time(NULL) - _start_beat) : 0; };
     void set_debugAlive(bool debug);
     void set_log_destinations(unsigned int destinations);
     void set_debug_destinations(unsigned int destinations);
@@ -181,30 +184,49 @@ public:
     // This function should be private - but we're calling
     // it from a C callback in the mqtt subsystem.
     //
-    void process(const char * topic, const char * payload);
-    
+    void process(const char * topic, const char * payload) {
+        Log.println("*** NOT IMPLEMENTED ***");
+    }
+
     void report(JsonObject & report);
     
     PubSubClient _client;
-private:
-    unsigned int log_destinations = LOG_DEST_DEFAULT;
-    bool _debug_alive, _debug;
-    THandlerFunction_Error _error_callback;
-    THandlerFunction_Connect _connect_callback;
-    THandlerFunction_Disconnect _disconnect_callback;
-    THandlerFunction_SimpleCallback _approved_callback, _denied_callback;
-    THandlerFunction_Command _command_callback;
-    THandlerFunction_Report _report_callback;
+    char mqtt_topic_prefix[MAX_NAME];
     
-    beat_t _lastSwipe;
-    WiFiClient _espClient;
+    const char * _ssid;
+    const char * _ssid_passwd;
+    bool _wired;
+    acnode_proto_t _proto;
+    
+    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true) {
+        Log.println("*** NOT IMPLEMENTED ***");
+    }
+
+protected:
+    char logpath[MAX_NAME];
+    const char * state2str(int state);
     
     void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
-    void checkClearEEPromAndCacheButtonPressed(uint8_t button);
     
-    const char * state2str(int state);
+    void pop();
+    void CONSTS();
+    unsigned long _report_period;
+    char _lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
+    // stat counters
+    unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
+    
+    void _complete_begin(uint8_t clear_button = -1);
+    void _begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
+    
+    THandlerFunction_Command _command_callback;
+    beat_t _lastSwipe;
+    THandlerFunction_Error _error_callback;
+    THandlerFunction_Connect _connect_callback;
+    THandlerFunction_Disconnect _disconnect_callback;
+    THandlerFunction_SimpleCallback _approved_callback, _denied_callback;
+    THandlerFunction_Report _report_callback;
     
     // We register a bunch of handlers - rather than calling them
     // directly with a flag trigger -- as this allows the linker
@@ -213,77 +235,20 @@ private:
     //
     std::list<ACBase *> _handlers;
     
-protected:
-    void pop();
-    void CONSTS();
-    const char * _ssid;
-    const char * _ssid_passwd;
-    unsigned long _report_period;
-    bool _wired;
-    acnode_proto_t _proto;
-    char _lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
-    // stat counters
-    unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
-    
-    void _complete_begin(uint8_t clear_button = -1);
-    void _begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
-};
-
-class ACNode : public ACNodeBase {
-public:
-    ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
-    ACNode(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
-
-#ifdef HAS_SIG2
-    void add_trusted_node(const char *node);
-#endif
-
-    void addSecurityHandler(ACSecurityHandler *handler);
-   
-    char * cloak(char *tag);
-    void send_helo(char * tokenOrNull = NULL);
-
-    unsigned long uptimeInSeconds() { return _start_beat ?  beatCounter - _start_beat : 0; };
-
-    // Public - so it can be called from our fake
-    // singleton. Once that it solved it should really
-    // become private again.
-    //
-    void send(const char * payload) { send(NULL, payload, false); };
-    void send(const char * topic, const char * payload, bool raw = false);
-
-    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
-
-    // This function should be private - but we're calling
-    // it from a C callback in the mqtt subsystem.
-    //
-    void process(const char * topic, const char * payload);
-   
 private:
-    std::list<ACSecurityHandler*> _security_handlers;
-
-protected:
-    acnode_proto_t _proto;
+    unsigned int log_destinations = LOG_DEST_DEFAULT;
+    bool _debug_alive, _debug;
+    
+    WiFiClient _espClient;
+    
+    void checkClearEEPromAndCacheButtonPressed(uint8_t button);
 };
-
-extern double coreTemp();
 
 // Unfortunately - MQTT callbacks cannot yet pass
 // a pointer. So we need a 'global' variable; and
 // sort of treat this class as a singleton. And
 // contain this leakage to just a few functions.
 //
-extern ACNode *_acnode;
-
-extern void send(const char * topic, const char * payload);
-
-extern const char ACNODE_CAPS[];
-
-#include <MSL.h>
-#include <SIG1.h>
-#include <SIG2.h>
-
-#include <Beat.h>
-#include <OTA.h>
-
+extern ACNodeBase *_acnodebase;
 #endif
+

@@ -7,6 +7,7 @@
 
 #include "MakerSpaceMQTT.h"
 #include <ExpandedGPIO.h>
+#include "util/common-utils.h"
 
 typedef unsigned long beat_t;
 extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
