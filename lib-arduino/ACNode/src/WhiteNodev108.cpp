@@ -1,8 +1,12 @@
 #include "WhiteNodev108.h"
-#include "msl-logo.h"
+
 #include <esp_sntp.h>
 #include <lwip/ip_addr.h>
 #include <qrcode.h> // Part of the ESP32 package
+
+#include "msl-logo.h"
+#include "util/cufflink_heartbeat.h"
+
 
 #ifndef INET6_ADDRSTRLEN
 #define INET6_ADDRSTRLEN (48)
@@ -31,35 +35,15 @@ MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED;
 
 Adafruit_SH1106G * _display = NULL;
 
-static uint8_t hearthbeat()
-{
-    // Source and credits: https://github.com/adafruit/Adafruit_iCufflinks/tree/master -
-    // Copy of the first generating on/off button of apple macs.
-    //
-    static const uint8_t cufflink_beat[] = {
-        1, 1, 2, 3, 5, 8, 11, 15, 20, 25, 30, 36, 43, 49, 56, 64, 72, 80, 88, 97, 105,
-        114, 123, 132, 141, 150, 158, 167, 175, 183, 191, 199, 206, 212, 219, 225, 230,
-        235, 240, 244, 247, 250, 252, 253, 254, 255, 254, 253, 252, 250, 247, 244, 240,
-        235, 230, 225, 219, 212, 206, 199, 191, 183, 175, 167, 158, 150, 141, 132, 123,
-        114, 105, 97, 88, 80, 72, 64, 56, 49, 43, 36, 30, 25, 20, 15, 11, 8, 5, 3, 2, 1,
-        0
-    };
-    // intentionally using the beat rather than time - so we can visually see slowdown.
-    static uint8_t i = 0;
-    if (cufflink_beat[++i] == 0) i = 0;
-    
-    return cufflink_beat[i]/2;
-};
-
 WhiteNodev108::WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) :
-ACNode(machine,ssid,ssid_passwd,proto)
+super(machine,ssid,ssid_passwd)
 {
     CONSTS();
     pop();
 };
 
 WhiteNodev108::WhiteNodev108(const char * machine, bool wired, acnode_proto_t proto) :
-ACNode(machine,wired,proto)
+super(machine,wired)
 {
     CONSTS();
     pop();
@@ -98,7 +82,7 @@ void WhiteNodev108::pop() {
     _pageState = PAGE_LAST; // basically the logo
     
     Serial.println("WhiteNodev11 popped");
-    buzzerErr();
+    // buzzerErr();
 };
 
 void WhiteNodev108::buzzer(bool onOff) {
@@ -159,7 +143,7 @@ void WhiteNodev108::begin() {
 #endif
     esp_sntp_servermode_dhcp(true);
 
-    ACNode::begin(BOARD_NG);
+    super::begin(BOARD_NG);
     
     offButton = new ButtonDebounce(OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
@@ -243,6 +227,11 @@ void WhiteNodev108::begin() {
     
     if (_reader) _reader->onSwipe([&](const char *tag) -> ACBase::cmd_result_t {
         buzzerOk();
+        
+        ACBase::cmd_result_t ret;
+        if ((ret=_restAPI.handleTagSwipe(tag)) != ACBase::CMD_DECLINE)
+            return ret;
+
         if (machinestate < MachineState::WAITINGFORCARD) {
             Log.printf("Ignoring swipe; as the node is not yet ready for it\n");
             return ACBase::CMD_CLAIMED;
@@ -372,8 +361,7 @@ void WhiteNodev108::begin() {
     ArduinoOTA.begin();
     Debug.println("OTA Enabled");
     _otaOK = true;
-
-    buzzerOk();
+    // buzzerOk();
 }
 
 void WhiteNodev108::setDisplayScreensaver(bool on) {
@@ -623,7 +611,7 @@ void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB swipeCB) {
 };
 
 void WhiteNodev108::loop() {
-    ACNode::loop();
+    super::loop();
     ArduinoOTA.handle();
     
     // Some pages are dynamic; and need to be updated
@@ -657,7 +645,7 @@ void WhiteNodev108::report(JsonObject & report) {
     
     report["ota"] = true;
     
-    ACNode::report(report);
+    super::report(report);
 }
 
 void WhiteNodev108::setOffCallback(ButtonCallback callback,int mode) {
@@ -732,16 +720,13 @@ void BlackNodev111::begin() {
     xpinMode(OPTO3, INPUT);
     
     Serial.println("BlackNodev11 began");
-    
-    WhiteNodev108::begin();
+    super::begin();
 }
-
-
 
 void BlackNodev111::loop() {
     xanalogWrite(LEDE,hearthbeat());
     
-    WhiteNodev108::loop();
+    super::loop();
     
     // Quite hardware specific; the relay can only be forced 'on' - either by a GPIO or
     // by a switch. It cannot be forced off. So we can only sensibly detect an 'illegal' on;

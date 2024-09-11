@@ -96,12 +96,14 @@ void Beat::loop() {
         };
     }
 
+#if 0
     if (_debug_alive) {
         if (millis() - last_beat > 3000 && _acnodebase->isConnected()) {
             send(NULL, "ping");
             last_beat = millis();
         }
     }
+#endif
     return;
 }
 

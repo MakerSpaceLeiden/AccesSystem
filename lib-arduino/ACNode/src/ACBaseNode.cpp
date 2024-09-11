@@ -2,6 +2,7 @@
 #include "ConfigPortal.h"
 #include <Cache.h>
 #include <EEPROM.h>
+#include <ArduinoJSON.h>
 
 #ifdef ESP32
 #include <WiFi.h>
@@ -55,7 +56,7 @@ void ACNodeBase::CONSTS() {
 };
 
 void ACNodeBase::pop() {
-
+    
     strncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
     mqtt_port = MQTT_DEFAULT_PORT;
     _report_period = REPORT_PERIOD;
@@ -71,21 +72,14 @@ void ACNodeBase::pop() {
     Log.setIdentifier(moi);
     Debug.setIdentifier(moi);
     
-    // It is safe to start logging early - as these won't emit anyting until
-    // the network is known to be up.
-    //
     const std::shared_ptr<LOGBase> & th = std::make_shared<TelnetSerialStream>(telnetSerialStream);
     const std::shared_ptr<LOGBase> & wh = std::make_shared<WebSerialStream>(webSerialStream);
     
     Log.addPrintStream(th);
     Log.addPrintStream(wh);
-    
-    Debug.addPrintStream(wh);
-    Debug.addPrintStream(th);
-    
-#ifdef SYSLOG_HOST
-    Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-#endif
+
+//    Debug.addPrintStream(wh);
+//    Debug.addPrintStream(th);
 };
 
 IPAddress ACNodeBase::localIP() {
@@ -132,6 +126,22 @@ _ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false)
     CONSTS();
     pop();
 }
+
+String ACNodeBase::chipId() {
+#ifdef ESP32
+    uint64_t chipid = ESP.getEfuseMac();
+    // We can't do 64 bit straight to string.
+    uint32_t low = chipid & 0xFFFFFFFF;
+    uint32_t high = chipid >> 32;
+    char buff[16+1];
+    snprintf(buff,sizeof(buff),"%08ul%08ul", high, low);
+#else
+    uint32_t chipid = ESP.getChipId();
+    char buff[8+1];
+    snprintf(buff,sizeof(buff),"%08ul",chipid);
+#endif
+    return String(chipid);
+};
 
 
 void ACNodeBase::set_debugAlive(bool debug) { _debug_alive = debug; }
@@ -249,14 +259,40 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     if(_ssid)
         Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
     
+    _espClient = WiFiClient();
+    _client = PubSubClient(_espClient);
+    _client.setServer(mqtt_server, mqtt_port);
+
+    // It is safe to start logging early - as these won't emit anyting until
+    // the network is known to be up.
+    //
+    char topic[256];
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
+    mqttlogStream = new MqttStream(&_client, topic);
+    
+    const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(*mqttlogStream);
+    Log.addPrintStream(mh);
+
+    if (moi == NULL || *moi == 0)
+        strncpy(moi,"no-mqtt-id",sizeof(moi));
+    
+    if (mqtt_port ==0)
+        mqtt_port = MQTT_DEFAULT_PORT;
+
+    _client.setServer(mqtt_server, mqtt_port);
+    Log.println("PubSubClient initialized");
+
+#if 0
+    reconnectMQTT();
+    mqttLoop();
+#endif
+    
     Log.print(moi); Log.print(" "); Log.println(localIP());
     
     MDNS.begin(moi);
     Log.println("MDNS Responder started");
     
-    _espClient = WiFiClient();
-    _client = PubSubClient(_espClient);
-    
+
 #ifdef CONFIGAP
     configBegin();
 #endif

@@ -24,6 +24,7 @@ SIG1 sig1 = SIG1(); // protocol machines 20015 (HMAC)
 SIG2 sig2 = SIG2();
 #endif
 
+#if defined(HAS_SIG1) || defined (HAS_SIG2) || defined (HAS_MSL)
 // Sort of a fake singleton to overcome callback
 // limits in MQTT callback and elsewhere.
 //
@@ -31,9 +32,10 @@ SIG2 sig2 = SIG2();
 ACNode *_acnode;
 
 void send(const char * topic, const char * payload) {
-    if(_acnodebase)
+    if(_acnode)
         _acnode->send(topic,payload);
 }
+#endif
 
 ACNode::ACNode(const char * m, bool wired, acnode_proto_t proto) : ACNodeBase(m, wired), _proto(proto)
 {
@@ -48,14 +50,6 @@ ACNode::ACNode(const char *m, const char * ssid , const char * ssid_passwd, acno
 }
 
 void ACNode::pop() {
-    char buff[256];
-    snprintf(buff, sizeof(buff), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
-    mqttlogStream = new MqttStream(&_client, buff);
-    
-    Log.addPrintStream(std::make_shared<MqttStream>(*mqttlogStream));
-    configureMQTT();
-    reconnectMQTT();
-    mqttLoop();
 }
 
 void ACNode::addSecurityHandler(ACSecurityHandler * handler) {
@@ -67,7 +61,7 @@ void ACNode::addSecurityHandler(ACSecurityHandler * handler) {
 }
 
 void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button) {
-    ACNodeBase::_begin(board, clear_button);
+    super::_begin(board, clear_button);
     
     switch(_proto) {
         case PROTO_MSL:
@@ -95,6 +89,9 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_
     // addSecurityHandler().
     //
     _complete_begin(clear_button);
+
+    Log.println("Listening on MQTT bus");
+    _client.setCallback(mqtt_callback);
 };
 
 char * ACNode::cloak(char * tag) {

@@ -37,3 +37,5 @@ extern void scan_i2c();
 extern double coreTemp();
 #endif
 
+char *_argencode(char *dst, size_t n, const char *src);
+char * sha256toHEX(unsigned char sha256[256 / 8], char buff[256 / 4 + 1]);

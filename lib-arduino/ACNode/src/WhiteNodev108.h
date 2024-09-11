@@ -19,7 +19,7 @@
 #include <MachineState.h>
 
 #include <RFID/RFID_MFRC522.h>
-#include "ACNode.h"
+#include "REST/ACRestNode.h"
 
 // Extra, hardware specific states
 extern MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED;
@@ -43,8 +43,15 @@ extern Adafruit_SH1106G * _display;
 // const uint8_t I2C_SDA = 05; // 21 is the default
 // const uint8_t I2C_SCL = 15; // 22 is the default
 
-class WhiteNodev108 : public ACNode {
-    
+#if 0
+class WhiteNodev108 : public ACNodeBase {
+private:
+    typedef ACNodeBase super;
+#else
+class WhiteNodev108 : public ACNodeRest {
+private:
+    typedef ACNodeRest super;
+#endif
 public:
     uint8_t LED_INDICATOR,
     OUT0, OUT1, BUTT0, BUTT1, OPTO0, OPTO1,
@@ -55,11 +62,11 @@ public:
     SCREEN_Address, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_RESET;
     
     void CONSTS() {
-        ACNode::CONSTS();
-        
         Serial.printf("WhiteNodev108::CONSTS - Wire.setPins(%d,%d)\n", I2C_SDA, I2C_SCL);
         Wire.setPins(I2C_SDA, I2C_SCL);
         
+        super::CONSTS();
+                
         LED_INDICATOR = 12;
         OUT0 = 16;
         OUT1 = 04;
@@ -104,8 +111,8 @@ public:
     typedef std::function<void(const int)> ButtonCallback;
     MachineState machinestate;
     
-    WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
-    WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
+    WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_REST);
+    WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_REST);
     
     void setOTAPasswordHash(const char * ota_md5);
     void begin();
@@ -129,7 +136,7 @@ public:
     void buzzer(bool onOff);
     void buzzerOk();
     void buzzerErr();
-    
+
 protected:
     typedef struct iostate {
         uint8_t pin; const char * label; int lst; int tpe;
@@ -174,6 +181,8 @@ private:
 };
 
 class BlackNodev111 : public WhiteNodev108 {
+private:
+    typedef WhiteNodev108 super;
 public:
     BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
     BlackNodev111(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
@@ -191,7 +200,7 @@ public:
     static const uint8_t AW_INT = 36; // Was opto 2
     
     void CONSTS() {
-        WhiteNodev108::CONSTS();
+        super::CONSTS();
         
         // Rewired to their own pins (mostly shared with strapping
         // pins as it known that the A4988 has no pull up/downs on

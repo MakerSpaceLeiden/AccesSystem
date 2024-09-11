@@ -116,21 +116,7 @@ public:
     IPAddress localIP();
     String getHostname();
     String macAddressString();
-    String chipId() {
-#ifdef ESP32
-        uint64_t chipid = ESP.getEfuseMac();
-        // We can't do 64 bit straight to string.
-        uint32_t low = chipid & 0xFFFFFFFF;
-        uint32_t high = chipid >> 32;
-        char buff[16+1];
-        snprintf(buff,sizeof(buff),"%08ul%08ul", high, low);
-#else
-        uint32_t chipid = ESP.getChipId();
-        char buff[8+1];
-        snprintf(buff,sizeof(buff),"%08ul",chipid);
-#endif
-        return String(chipid);
-    };
+    String chipId();
     
     void delayedReboot();
     
@@ -206,7 +192,6 @@ protected:
     char logpath[MAX_NAME];
     const char * state2str(int state);
     
-    void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
     
@@ -238,7 +223,8 @@ protected:
 private:
     unsigned int log_destinations = LOG_DEST_DEFAULT;
     bool _debug_alive, _debug;
-    
+    MqttStream * mqttlogStream;
+
     WiFiClient _espClient;
     
     void checkClearEEPromAndCacheButtonPressed(uint8_t button);

@@ -7,9 +7,13 @@
 
 // #define HAS_MSL
 // #define HAS_SIG1
-#define HAS_SIG2
+// #define HAS_SIG2
+
+void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
 
 class ACNode : public ACNodeBase {
+private:
+    typedef ACNodeBase super;
 public:
     ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
     ACNode(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
@@ -48,14 +52,12 @@ public:
 
 private:
     std::list<ACSecurityHandler*> _security_handlers;
-    MqttStream  * mqttlogStream;
     cmd_result_t handle_cmd(ACRequest * req);
 
 protected:
     acnode_proto_t _proto;
     void pop();
 
-    void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
 

@@ -20,8 +20,7 @@ class RFID : public ACBase {
 
     typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
 
-    RFID& onSwipe(THandlerFunction_SwipeCB fn) 
-	{ _swipe_cb = fn; return *this; };
+    RFID& onSwipe(THandlerFunction_SwipeCB fn) { _swipe_cb = fn; return *this; };
 
     bool alive() { return true; };
   protected:

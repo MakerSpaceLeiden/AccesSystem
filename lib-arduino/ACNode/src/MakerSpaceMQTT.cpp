@@ -128,7 +128,7 @@ void ACNodeBase::reconnectMQTT() {
 }
 
 void ACNode::reconnectMQTT() {
-    ACNodeBase::reconnectMQTT();
+    super::reconnectMQTT();
     
     char topic[MAX_TOPIC];
 
@@ -181,20 +181,6 @@ void ACNode::send_helo(char * token) {
         Debug.printf("No helo yet sent; not enough stack up.\n");
     }
 }
-
-void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
-
-void ACNode::configureMQTT()  {
-    if (moi == NULL || *moi == 0)
-        strncpy(moi,"no-mqtt-client-id-set",sizeof(moi));
-    
-    if (mqtt_port ==0)
-        mqtt_port = MQTT_DEFAULT_PORT;
-    
-    _client.setServer(mqtt_server, mqtt_port);
-    _client.setCallback(mqtt_callback);
-}
-
 
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
