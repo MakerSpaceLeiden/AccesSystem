@@ -117,8 +117,8 @@ rest_ret_t setupAuth(const char * terminalName) {
     }
     fingerprint_from_pem(client_cert_as_pem, sha256_client);
     
-    Log.print("Fingerprint (as shown in CRM): ");
-    Log.println(sha256toHEX(sha256_client, tmp));
+    Log.printf("Fingerprint %s for <%s> (as shown in CRM)\n",sha256toHEX(sha256_client, tmp), terminalName ? terminalName : "<unset>" );
+
     return paired ? NOERROR_OK : NOERROR;
 }
 
@@ -168,7 +168,7 @@ rest_ret_t fetchCA(const char * terminalName) {
     updateDisplay_progressText("CA Cert fetched");
     ok = true;
     ret = NOERROR;
-
+    
 exit:
     https.end();
     client.stop();
@@ -196,7 +196,7 @@ rest_ret_t registerDevice(const char * terminalName) {
         Log.println("registerDevice -  tmp buffer too small for agrumens.");
         return ret;
     };
-
+    
     snprintf((char *) buff, sizeof(buff),  PAY_URL REGISTER_PATH "?name=%s", encarg);
     
     if (!https.begin(client, (const char*)buff)) {
@@ -405,14 +405,17 @@ exit:
     return ret;
 };
 
-JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * ret) {
+size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret) {
     WiFiClientSecure client;
     unsigned char sha256[32];
     JsonDocument res;
     HTTPClient https;
-    String payload;
     DeserializationError error;
-    
+    int len = 0;
+    size_t l = 0;
+    unsigned char * buff = NULL;
+    size_t max;
+
     *ret = ERR_FATAL;
     
     client.setCACert(ca_root);
@@ -421,7 +424,7 @@ JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * r
     
     if (!https.begin(client, url)) {
         Log.println("setup fail");
-        return res;
+        return 0;
     };
     https.setTimeout(HTTP_TIMEOUT);
     https.setUserAgent(terminalName);
@@ -443,7 +446,7 @@ JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * r
         *ret = ERR_REPAIR;
         goto exit;
     }
-
+    
     if (httpCode == HTTP_CODE_UNAUTHORIZED) {
         *ret = ERR_REPAIR;
         Log.printf("raw_rest: Unauthorized; repairing\n");
@@ -451,7 +454,7 @@ JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * r
     };
     
     if (httpCode == HTTP_CODE_FOUND) {
-        Log.printf("raw_rest: Found - no data\n");
+        // Special case; to confirm pairing; with no data sent (should change into some json with config).
         *ret = NOERROR_OK;
         goto exit;
     }
@@ -461,34 +464,166 @@ JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * r
         *ret = ERR_REPAIR;
         goto exit;
     }
-
-    payload = https.getString();
-
+    
+    
     if (httpCode == HTTP_CODE_NOT_FOUND) {
-        Log.printf("raw_rest: not-found: %s(%d) - %s: %s\n", https.errorToString(httpCode), httpCode, payload.c_str());
-        *ret = ERR_RETRYABLE;
-        goto exit;
-    };
-
-    if (httpCode != HTTP_CODE_OK) {
-        Log.printf("raw_rest: failed: %s(%d) - %s\n", https.errorToString(httpCode), httpCode, payload.c_str());
+        Log.printf("raw_rest: not-found: %s(%d) - %s: %s\n", https.errorToString(httpCode), httpCode, https.getString().c_str());
         *ret = ERR_RETRYABLE;
         goto exit;
     };
     
-    error = deserializeJson(res, payload);
-    if (error) {
-#if 0 
-        Log.printf("raw_rest: Deserialize of JSON failed: %s\n%s\n", error.c_str(), payload.c_str());
+    if (httpCode != HTTP_CODE_OK) {
+        Log.printf("raw_rest: failed: %s(%d) - %s\n", https.errorToString(httpCode), httpCode, https.getString().c_str());
         *ret = ERR_RETRYABLE;
         goto exit;
+    };
+    
+    len = https.getSize();
+    if (len) {
+#if 1
+        if (len == -1)
+            max = 128 * 1024 * 1024; // Hard cap when the length is unknown (we should propably realloc() for this).
+        
+        if (len != -1 && len < max)
+            max = len;
+        
+        // Use a temporary buffer if we are not
+        // going to do anything with the data.
+        if (buffp == NULL)
+            max = 1 * 1024;
+
+        // Limit the amount to read if any limit is specified.
+        //
+        max = ((maxbufflenp && *maxbufflenp && (*maxbufflenp ) < max) ? (*maxbufflenp) : (max));
+
+        if (buffp == NULL || *buffp == NULL)
+            buff = (unsigned char *)malloc(max);
+        else
+            buff = *buffp;
+        
+        if (buff == NULL) {
+            Log.printf("raw_rest: malloc(%lu) failed\n",max);
+            *ret = ERR_FATAL;
+            goto exit;
+        }
+
+        WiFiClient * stream = https.getStreamPtr();
+        stream->setTimeout(15);
+        l = 0;
+        for(;;) {
+            size_t n = stream->readBytes(buff, max);
+            if (n > 0)
+                l+=n;
+            if (n <= 0 || buffp) break;
+            stream->setTimeout(5);
+        };
 #else
-        res = payload;
+#if 1
+        String payload = https.getString();
+        len = l = payload.length() + 1;
+        if (buffp) {
+            if (maxbufflenp && *maxbufflenp && *maxbufflenp+1 < l)
+                l = *maxbufflenp - 1; // Keep room for terminating zero in case of a string
+
+            if (*buffp == NULL)
+                buff = (unsigned char *)malloc(l);
+            else
+                buff = *buffp;
+            
+            buff[l]=0;
+            bcopy(payload.c_str(), buff, l);
+        };
+#else
+        if (len == -1)
+            max = 512 * 1024 * 1024; // Hard cap when the length is unknown (we should propably realloc() for this).
+
+        // Use a temporary buffer if 16k if we're going to throw the
+        // results away anyway.
+        if (buffp == NULL)
+            max = 16 * 1024;
+
+        // Limit the amount to read if any limit is specified.
+        //
+        max = ((maxbufflenp && *maxbufflenp && (*maxbufflenp )< max) ? (*maxbufflenp) : (max));
+            
+        
+        if (buffp == NULL || *buffp == NULL)
+            buff = (unsigned char *)malloc(max);
+        else
+            buff = *buffp;
+        
+        if (buff == NULL) {
+            Log.printf("raw_rest: malloc(%lu) failed\n",max);
+            *ret = ERR_FATAL;
+            goto exit;
+        }
+
+        WiFiClient * stream = https.getStreamPtr();
+        size_t left = max;
+        while(https.connected() && left) {
+            size_t size = stream->available();
+            if (!size) {
+                yield();
+                continue;
+            };
+            int n = stream->readBytes(buff + (buffp ? 0 : l), size > left ? size : left);
+            if (n > 0) {
+                l += n;
+                left -= n;
+            };
+        }
+#endif
 #endif
     }
+    if (buffp == NULL)
+        free(buff); // we used a temp buffer - mainly to learn the actual size.
+    else
+    if (*buffp == NULL)
+        *buffp = buff; // return the allocated buffer if we created one.
+
+    // If we do not know the lenght; set it to what we actually read.
+    if (len == -1)
+        len = l;
+
+    // Return the amount available when possible.
+    //
+    if (maxbufflenp)
+        *maxbufflenp = len;
+    
     *ret = NOERROR;
 exit:
     https.end();
     client.stop();
+    
+    return l; // Return actual length in the buffer
+}
+
+
+
+JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * retp) {
+    JsonDocument res;
+    DeserializationError error;
+    
+    unsigned char * buff = NULL; //
+    size_t len = 32 * 1024; // Capped; set to zero to uncap.
+    size_t n = raw_rest(terminalName,url,&len,&buff,retp);
+    
+    if (*retp != NOERROR)
+        goto exit;
+    
+    if (len > n) {
+        Log.println("raw_rest error - document larger than buffer");
+        *retp = ERR_FATAL;
+        goto exit;
+    };
+    
+    error = deserializeJson(res, (const char *)buff, n);
+    if (error) {
+        Log.printf("raw_rest: Deserialize of JSON failed: %s\n", error.c_str());
+        *retp = ERR_RETRYABLE;
+    };
+exit:
+    if (buff) free(buff);
     return res;
 }
+

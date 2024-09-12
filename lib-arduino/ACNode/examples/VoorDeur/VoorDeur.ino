@@ -19,7 +19,6 @@
 */
 #include <PowerNodeNGv103.h>
 #include <ACNode.h>
-#include <RFID/RFID_PN532_NFC.h>
 
 #ifndef MACHINE
 #define MACHINE "voordeur"

@@ -6,6 +6,8 @@
 #include <ACBase.h>
 #include <LED.h>
 
+#ifndef _H_RestAPI
+#define _H_RestAPI
 class RestAPI : public ACBase {
 public:
     typedef enum { BOOT = 0,
@@ -26,10 +28,20 @@ public:
     
     state_t state() { return md; };
     
-    JsonDocument rest(const char *url);
+    JsonDocument get(const char *url);
+    
+    // Will return the actual number of bytes read; or a -1 on error.
+    // if maxbufflenp is a pointer to a max value; this cap the number
+    // of bytes read; with this value updated to the number of bytes
+    // actually available (if known). If buffp points to a buffer then
+    // this buffer will be used; if it points to 0; it will be pointing
+    // to malloc()ed buffer that needs to be freeed. If buffp is zero
+    // no data is returned.
+    int get(const char *url, size_t * maxbufflenp, unsigned char ** buffp);
+
     String stationname() { return _stationName; }
     // const char * stationname() { return _stationName.c_str(); }
-    void setTerminalname(const char *name) { _terminalName = name; };
+    void setTerminalname(const char *name) { _terminalName = name; Log.printf("Terminal name set %s\n", name); };
 
 private:
     state_t md = BOOT;
@@ -44,3 +56,5 @@ protected:
     // allow this. This saves a https roundtrip during startup.
     friend class PaymentAPI;
 };
+#endif
+

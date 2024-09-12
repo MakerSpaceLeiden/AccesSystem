@@ -1,20 +1,13 @@
 #include "ACNode.h"
 #include "REST/RestAPI.h"
+#include "REST/ApprovalAPI.h"
 
+#ifndef _ACNODEREST_API
+#define _ACNODEREST_API
 // Note: this thin wedge is quite expensive in terms of memory.
 //       around a 160k when empty.
 //
 
-#if 0
-class ACL {
-public:
-    ACL(String tag, String name, bool permit) : tag(tag), name(name), permit(permit);
-    String tag, name;
-    bool permit;
-    unsigned char needs, has;
-    };
-#endif
-    
 class ACNodeRest : public ACNodeBase {
 private:
     typedef ACNodeBase super;
@@ -32,8 +25,10 @@ public:
     void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
 
 protected:
-    RestAPI _restAPI;
+    RestAPI * _restAPI;
+    ApprovalAPI *_approvalAPI;
     
 private:
 //    std::list<ACL> list;
 };
+#endif

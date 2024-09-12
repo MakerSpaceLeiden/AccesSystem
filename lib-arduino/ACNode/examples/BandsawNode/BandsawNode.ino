@@ -153,6 +153,9 @@ void setup() {
   node.set_master("master");
 
   node.onReport([](JsonObject & report) {
+    char * p = __FILE__;
+    char * q = rindex(p,'/');
+    if (q) p = q;
     report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
     report["bad_poweroff"] = bad_poweroff;
     report["normal_poweroff"] = normal_poweroff;
@@ -173,8 +176,8 @@ void setup() {
   });
 
   node.onApproval([](const char *machine) {
-    Log.println("Approval received from the server.");
-    // We allow 'taking over this achine while it is on' -- hence this check for
+    Log.println("Action Approved.");
+    // We allow 'taking over this machine while it is on' -- hence this check for
     // if it is powered; and in that case -also- accepting a new approval.
     //
     if ((node.machinestate != POWERED) &&

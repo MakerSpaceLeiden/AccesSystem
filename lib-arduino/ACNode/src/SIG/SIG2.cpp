@@ -616,10 +616,6 @@ SIG2::acauth_result_t SIG2::cloak(ACRequest * req) {
     size_t paddedlen = len + pad;
     uint8_t input[ paddedlen ], output[ paddedlen ], output_b64[ paddedlen * 4 / 3 + 4  ];
     
-    size_t paddedlen = len + pad;
-    uint8_t input[ paddedlen ], output[ paddedlen ], output_b64[ paddedlen * 4 / 3 + 4  ];
-    
-    
     strcpy((char *)input, req->tag);
     
     for (int i = 0; i < pad; i++)

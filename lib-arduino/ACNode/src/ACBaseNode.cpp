@@ -1,6 +1,5 @@
 #include <ACNode.h>
 #include "ConfigPortal.h"
-#include <Cache.h>
 #include <EEPROM.h>
 #include <ArduinoJSON.h>
 
@@ -175,16 +174,6 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
         (*it)->begin();
     }
     
-#if TOFU_WIPE_BUTTON
-    // secrit reset button that resets TOFU or the shared
-    // secret.
-    if (xdigitalRead(TOFU_WIPE_BUTTON) == LOW) {
-        extern void wipe_eeprom();
-        Log.println("Wiped EEPROM with crypto stuff (SW1 pressed)");
-        wipe_eeprom();
-    };
-#endif
-    prepareCache(false);
 }
 
 void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button)
@@ -268,10 +257,10 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     //
     char topic[256];
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
-    mqttlogStream = new MqttStream(&_client, topic);
-    
-    const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(*mqttlogStream);
-    Log.addPrintStream(mh);
+
+    mqttlogStream = new MqttStream(&_client, topic);    
+    // const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(*mqttlogStream);
+    // Log.addPrintStream(mh);
 
     if (moi == NULL || *moi == 0)
         strncpy(moi,"no-mqtt-id",sizeof(moi));
@@ -322,14 +311,7 @@ void ACNodeBase::report(JsonObject & out) {
     
     out[ "approve" ] = _approve;
     out[ "deny" ] = _deny;
-    out[ "requests" ] = _reqs;
-#ifdef ESP32
-    out[ "cache_hit" ] =  cacheHit;
-    out[ "cache_miss" ] =  cacheMiss;
-    out[ "cache_purge" ] =  cachePurge;
-    out[ "cache_update" ] =  cacheUpdate;
-#endif
-    
+    out[ "requests" ] = _reqs;    
     out[ "mqtt_reconnects" ] = _mqtt_reconnects;
     
     out["loop_rate"] = loopRate;
@@ -345,6 +327,8 @@ void ACNodeBase::report(JsonObject & out) {
     if (_report_callback)
         _report_callback(out);
 }
+
+void ACNodeBase::checkClearEEPromAndCacheButtonPressed(unsigned char button) {};
 
 void ACNodeBase::loop() {
     {
@@ -449,42 +433,6 @@ void ACNodeBase::delayedReboot() {
     warn_counter ++;
 }
 
-
-
-void ACNodeBase::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
-    const unsigned long prevSecs = MAX_WAIT_TIME_BUTTON_PRESSED / 1000;
-    
-    if (button == 255)
-        return;
-    
-    // check button pressed
-    pinMode(button, button);
-    
-    // check if button is pressed for at least 3 s
-    Log.printf("Hold button for %d seconds to clearing EEProm and cache.\n", prevSecs);
-    
-    if (xdigitalRead(button) != CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED)
-        return;
-    
-    unsigned long _start = millis();
-    while (xdigitalRead(button) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
-        if ((millis() - _start) > MAX_WAIT_TIME_BUTTON_PRESSED) {
-            // Clear EEPROM
-            EEPROM.begin(1024);
-            wipe_eeprom();
-            Log.println("EEProm cleared!");
-            
-            // Clear cache
-            prepareCache(true);
-            Log.println("Cache cleared!");
-            
-            Log.println("Node rebooting");
-            ESP.restart();
-        };
-    }
-    Log.println("Button was not (or not long enough) pressed to clear EEProm and cache\n");
-    return;
-}
 
 String ACNodeBase::uptime() {
     unsigned long up = uptimeInSeconds();

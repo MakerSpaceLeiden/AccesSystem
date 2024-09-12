@@ -2,7 +2,7 @@
 #include <WiFi.h>
 #include <ETH.h>
 #endif
-
+#include "SIG/Cache.h"
 #include "ACNode.h"
 #include "ConfigPortal.h"
 #include "Cache.h"
@@ -90,6 +90,18 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_
     //
     _complete_begin(clear_button);
 
+#if TOFU_WIPE_BUTTON
+    // secrit reset button that resets TOFU or the shared
+    // secret.
+    if (xdigitalRead(TOFU_WIPE_BUTTON) == LOW) {
+        extern void wipe_eeprom();
+        Log.println("Wiped EEPROM with crypto stuff (SW1 pressed)");
+        wipe_eeprom();
+    };
+#endif
+    prepareCache(false);
+
+    
     Log.println("Listening on MQTT bus");
     _client.setCallback(mqtt_callback);
 };
@@ -363,9 +375,50 @@ void ACNode::report(JsonObject & out) {
             _start_beat =beatCounter +  millis()/1000;
     
     ACBase::report(out);
-
+    
     if (_start_beat)
         out[ "alive-uptime" ] = uptimeInSeconds();
-
+    
     out[ "beat" ] = beatCounter;
+#ifdef ESP32
+    out[ "cache_hit" ] =  cacheHit;
+    out[ "cache_miss" ] =  cacheMiss;
+    out[ "cache_purge" ] =  cachePurge;
+    out[ "cache_update" ] =  cacheUpdate;
+#endif
+}
+
+void ACNode::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
+    const unsigned long prevSecs = MAX_WAIT_TIME_BUTTON_PRESSED / 1000;
+    
+    if (button == 255)
+        return;
+    
+    // check button pressed
+    pinMode(button, button);
+    
+    // check if button is pressed for at least 3 s
+    Log.printf("Hold button for %d seconds to clearing EEProm and cache.\n", prevSecs);
+    
+    if (xdigitalRead(button) != CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED)
+        return;
+    
+    unsigned long _start = millis();
+    while (xdigitalRead(button) == CLEAR_EEPROM_AND_CACHE_BUTTON_PRESSED) {
+        if ((millis() - _start) > MAX_WAIT_TIME_BUTTON_PRESSED) {
+            // Clear EEPROM
+            EEPROM.begin(1024);
+            wipe_eeprom();
+            Log.println("EEProm cleared!");
+            
+            // Clear cache
+            prepareCache(true);
+            Log.println("Cache cleared!");
+            
+            Log.println("Node rebooting");
+            ESP.restart();
+        };
+    }
+    Log.println("Button was not (or not long enough) pressed to clear EEProm and cache\n");
+    return;
 }

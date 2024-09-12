@@ -152,12 +152,6 @@ public:
     void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
     void addHandler(ACBase *handler);
     
-#if 0
-    void ACNodeBase::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) {
-        Log.println("XXX error not implemented XXX");
-    }
-#endif
-    
     String uptime();
     
     unsigned long uptimeInSeconds() { return _start_beat ? (time(NULL) - _start_beat) : 0; };
@@ -168,9 +162,9 @@ public:
     bool isUp(); // MQTT et.al also running.
     
     // This function should be private - but we're calling
-    // it from a C callback in the mqtt subsystem.
-    //
-    void process(const char * topic, const char * payload) {
+    // it from a C callback in the mqtt subsystem. And only
+    // when we listen.
+    virtual void process(const char * topic, const char * payload) {
         Log.println("*** NOT IMPLEMENTED ***");
     }
 
@@ -184,7 +178,7 @@ public:
     bool _wired;
     acnode_proto_t _proto;
     
-    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true) {
+    virtual void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true) {
         Log.println("*** NOT IMPLEMENTED ***");
     }
 
@@ -200,7 +194,7 @@ protected:
     unsigned long _report_period;
     char _lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
     // stat counters
-    unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
+    unsigned long _approve=0, _deny=0, _reqs=0, _mqtt_reconnects=0, _start_beat=0;
     
     void _complete_begin(uint8_t clear_button = -1);
     void _begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);

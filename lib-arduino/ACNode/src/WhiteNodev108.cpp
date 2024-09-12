@@ -81,7 +81,7 @@ void WhiteNodev108::pop() {
     
     _pageState = PAGE_LAST; // basically the logo
     
-    Serial.println("WhiteNodev11 popped");
+    Serial.println("WhiteNodev108 popped");
     // buzzerErr();
 };
 
@@ -229,7 +229,7 @@ void WhiteNodev108::begin() {
         buzzerOk();
         
         ACBase::cmd_result_t ret;
-        if ((ret=_restAPI.handleTagSwipe(tag)) != ACBase::CMD_DECLINE)
+        if ((ret=_restAPI->handleTagSwipe(tag)) != ACBase::CMD_DECLINE)
             return ret;
 
         if (machinestate < MachineState::WAITINGFORCARD) {
@@ -677,7 +677,10 @@ void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
     xdigitalWrite(num,val);
 }
 
-void BlackNodev111::pop() {};
+void BlackNodev111::pop() {
+    Serial.println("BlackNodev11 popped");
+    yield();
+};
 
 void BlackNodev111::begin() {
     Serial.println("BlackNodev11 begin.");

@@ -4,6 +4,8 @@
 #include "util/common-utils.h"
 
 void RestAPI::begin() {
+    Log.println("RestAPI::begin()");
+
     md = WAITING_FOR_NTP;
     paired = false;
     
@@ -37,7 +39,35 @@ ACBase::cmd_result_t RestAPI::handleTagSwipe(const char * tag) {
     return ACBase::CMD_CLAIMED;
 }
 
-JsonDocument RestAPI::rest(const char *url) {
+int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp) {
+    unsigned char *p = NULL;
+    if (buffp) p = *buffp;
+    rest_ret_t ret;
+
+    size_t n = raw_rest(_terminalName,url,maxbufflenp,buffp,&ret);
+
+    switch(ret) {
+        case NOERROR_OK:
+        case NOERROR:
+            return n;
+            break;
+        case ERR_FATAL:
+            md = WIFI_FAIL_REBOOT;
+            break;
+        case ERR_REPAIR:
+            paired = false;
+            md = WAITING_FOR_NTP;
+            break;
+        case RETRYABLE_FAIL:
+            md = WAITING_FOR_NTP;
+            break;
+    }
+    if (p == NULL && *buffp)
+        free(*buffp);
+    return -1;
+}
+    
+JsonDocument RestAPI::get(const char *url) {
     rest_ret_t ret;
 
     JsonDocument out = raw_rest(_terminalName, url, &ret);
@@ -72,6 +102,8 @@ void RestAPI::loop()
     rest_ret_t ret = NOERROR;
     
     switch (md) {
+        case BOOT:
+            break;
         case WAITING_FOR_NTP:
             // display.showString("ntp");
             if (time(nullptr) > 3600)

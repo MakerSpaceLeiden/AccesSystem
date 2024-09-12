@@ -50,6 +50,7 @@ public:
     void process(const char * topic, const char * payload);
     void report(JsonObject & report);
 
+    void checkClearEEPromAndCacheButtonPressed(uint8_t button);
 private:
     std::list<ACSecurityHandler*> _security_handlers;
     cmd_result_t handle_cmd(ACRequest * req);

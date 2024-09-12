@@ -29,12 +29,12 @@ bool PaymentAPI::pay(const char *tag, double amount, const char *lbl) {
     snprintf(buff, sizeof(buff), PAY_URL PAY_PATH "?node=%s&src=%s&amount=%f&description=%s",
              _restAPI->stationname(), tag, amount, encarg);
     
-    JsonDocument res = _restAPI->rest(buff);
+    JsonDocument res = _restAPI->get(buff);
     return res["result"].as<bool>();
 }
 
 bool PaymentAPI::fetchPricelist() {
-    JsonDocument res = _restAPI->rest(PAY_URL REGISTER_PATH);
+    JsonDocument res = _restAPI->get(PAY_URL REGISTER_PATH);
     
     if (!res["pricelist"]) {
         Log.println("No pricelist received");

@@ -206,6 +206,9 @@ bool ACNodeBase::isUp() {
 void ACNodeBase::mqttLoop() {
     static unsigned long last_mqtt_connect_try = 0;
     _client.loop();
+
+    if (!isConnected())
+        return;
     
     if (!isUp()) {
         // report transient error ? Which ? And how often ?
