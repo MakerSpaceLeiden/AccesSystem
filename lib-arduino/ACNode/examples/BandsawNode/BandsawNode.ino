@@ -75,7 +75,7 @@ const unsigned int MAX_SECS_IDLE = 3600;
 MachineState::machinestate_t SHUTTINGDOWN;
 
 static void tellOff(const char *msg) {
-  node.updateDisplay(msg, "", "");
+  node.updateDisplay(node.machine, msg, "", "");
   for (int i = 0; i < 9; i++) {
     node.buzzerErr();
     delay(300);
@@ -169,7 +169,7 @@ void setup() {
     if (current == RUNNING || current == POWERED) {
       // We do not show the 'OFF' button - we expect the user to use
       // the RED/Green on/off button of the safety contactor.
-      node.updateDisplay("", "", true);
+      node.updateDisplay(node.machine, "", "", true);
     };
     if (current == POWERED)
       node.updateDisplayStateMsg("Off with RED on back", 2);

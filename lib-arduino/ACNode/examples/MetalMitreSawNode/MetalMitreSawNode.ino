@@ -78,7 +78,7 @@ void setup() {
   pumpDetect->setCallback([](const int newState) {
     // remove coolant nag from screen, if any.
     if (node.machinestate == RUNNING && !newState)
-      node.updateDisplay(node.machinestate.label(), "", true);
+      node.updateDisplay(node.machine,node.machinestate.label(), "", true);
 
     Log.printf("Coolant pump now %s\n", newState ? "OFF" : "ON");
   },

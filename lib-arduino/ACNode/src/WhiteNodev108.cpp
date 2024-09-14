@@ -2,9 +2,7 @@
 
 #include <esp_sntp.h>
 #include <lwip/ip_addr.h>
-#include <qrcode.h> // Part of the ESP32 package
 
-#include "msl-logo.h"
 #include "util/cufflink_heartbeat.h"
 
 
@@ -33,7 +31,7 @@
 // Extra, hardware specific states
 MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED;
 
-Adafruit_SH1106G * _display = NULL;
+Display * _display = NULL;
 
 WhiteNodev108::WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) :
 super(machine,ssid,ssid_passwd)
@@ -114,15 +112,9 @@ void WhiteNodev108::setOTAPasswordHash(const char * md5) {
 void WhiteNodev108::begin() {
     Serial.println("WhiteNodev108 begin");
 
-    if (!_display && (_display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
+    if (!_display && (_display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
         _display->setRotation(2); // for purple/white boards - OLED is upside down.
         _display->begin(SCREEN_Address, true);
-        _display->clearDisplay();
-        _display->drawBitmap(
-                             (SCREEN_WIDTH-msl_logo_width)/2,
-                             (SCREEN_HEIGHT-msl_logo_height)/2,
-                             msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
-        _display->display();
         _hasScreen = true;
         Log.println("LCD/OLED screen found and initialized.");
     } else {
@@ -206,15 +198,15 @@ void WhiteNodev108::begin() {
         
         setDisplayScreensaver(current == SCREENSAVER);
         if (current == FAULTED) {
-            updateDisplay("", "", true);
+            _display->updateDisplay(machine, "", "", true);
             Debug.println("Machine poweron disabled - machine on/off switch in the 'on' position.");
             errors++;
         } else if (current == MachineState::WAITINGFORCARD) {
-            updateDisplay("", "MORE", true);
+            _display->updateDisplay(machine, "", "MORE", true);
             if (last == MachineState::CHECKINGCARD)
                 buzzerErr();
         } else if (current == MachineState::CHECKINGCARD)
-            updateDisplay("", "", true);
+            _display->updateDisplay(machine, "", "", true);
         else if (current == INFODISPLAY) {
             updateInfoDisplay();
             return;
@@ -222,7 +214,7 @@ void WhiteNodev108::begin() {
         else if (_onChangeCB && (current == _onChangeState || _onChangeState ==MachineState::ALL_STATES))
             _onChangeCB(last, current);
         
-        updateDisplayStateMsg(machinestate.label());
+        _display->updateDisplayStateMsg(machinestate.label());
     });
     
     if (_reader) _reader->onSwipe([&](const char *tag) -> ACBase::cmd_result_t {
@@ -271,7 +263,7 @@ void WhiteNodev108::begin() {
         buzzerErr();
     });
     
-    updateDisplay("","MORE", true);
+    _display->updateDisplay(machine, "","MORE", true);
     
     ArduinoOTA.setHostname((_acnodebase->moi && _acnodebase->moi[0]) ? _acnodebase->moi : "unset-acnode");
     
@@ -289,10 +281,10 @@ void WhiteNodev108::begin() {
             return;
         };
         
-        updateDisplay("","",true);
-        updateDisplayStateMsg("updating firmware",0);
-        updateDisplayProgressbar(0,true);
-        setDisplayScreensaver(false);
+        _display->updateDisplay(machine, "","",true);
+        _display->updateDisplayStateMsg("updating firmware",0);
+        _display->updateDisplayProgressbar(0,true);
+        _display->setDisplayScreensaver(false);
         
         if (strstr(_acnodebase->moi,"test"))
             Log.println("OTA process started (Not wiping private keys in test ode).");
@@ -307,8 +299,8 @@ void WhiteNodev108::begin() {
     });
     ArduinoOTA.onEnd([&]() {
         if (_otaOK) {
-            updateDisplayStateMsg("ok, rebooting",1);
-            updateDisplayProgressbar(100);
+            _display->updateDisplayStateMsg("ok, rebooting",1);
+            _display->updateDisplayProgressbar(100);
             Serial.println("..100% Done");
             Log.println("OTA process completed, rebooting");
         } else {
@@ -328,7 +320,7 @@ void WhiteNodev108::begin() {
             lp = p;
             int perc = (progress / (total / 100));
             Serial.printf("..%u%%", perc);
-            updateDisplayProgressbar(perc);
+            _display->updateDisplayProgressbar(perc);
         };
     });
     ArduinoOTA.onError([&](ota_error_t error) {
@@ -348,10 +340,10 @@ void WhiteNodev108::begin() {
         //
         if (_otaOK) {
             machinestate = MachineState::TRANSIENTERROR;
-            updateDisplay("","",true);
-            updateDisplayStateMsg("update failed",0);
-            updateDisplayStateMsg(cause,1);
-            updateDisplayProgressbar(0, true);
+            _display->updateDisplay(machine, "","",true);
+            _display->updateDisplayStateMsg("update failed",0);
+            _display->updateDisplayStateMsg(cause,1);
+            _display->updateDisplayProgressbar(0, true);
         };
         
         _otaOK = true;
@@ -362,113 +354,6 @@ void WhiteNodev108::begin() {
     Debug.println("OTA Enabled");
     _otaOK = true;
     // buzzerOk();
-}
-
-void WhiteNodev108::setDisplayScreensaver(bool on) {
-    if (!_hasScreen) return;
-    _display->oled_command(on ? SH110X_DISPLAYOFF : SH110X_DISPLAYON);
-}
-
-void WhiteNodev108::updateDisplay( String left, String right, bool rebuildFull) {
-    if (!_hasScreen) return;
-    if (rebuildFull || _pageState != PAGE_NORMAL) {
-        _display->clearDisplay();
-        _display->setTextSize(1);
-        _display->setTextColor(SH110X_WHITE);
-        int i = SCREEN_WIDTH - 6 * strlen(machine);
-        _display->setCursor(i>0 ? i/2 : 0, 0);
-        _display->println(machine);
-        _display->setFont(NULL); // Fairly large 5x7 font
-        
-        if (left.length() || right.length()) {
-            _display->setTextColor(SH110X_BLACK);
-            _display->drawFastHLine(0,SCREEN_HEIGHT-8*3-1,SCREEN_WIDTH,SH110X_WHITE);
-            _display->drawFastHLine(0,SCREEN_HEIGHT-8*2+3,SCREEN_WIDTH,SH110X_WHITE);
-        };
-        
-        if (left.length()) {
-            _display->fillRect(0, SCREEN_HEIGHT-8*3+1, 60, 9, SH110X_WHITE);
-            _display->setCursor(1,SCREEN_HEIGHT-8*3+2);
-            _display->println(left);
-        };
-        
-        if (right.length()) {
-            _display->fillRect(SCREEN_WIDTH-60,  SCREEN_HEIGHT-8*3+1, 60, 9, SH110X_WHITE);
-            _display->setCursor(SCREEN_WIDTH-right.length()*6,SCREEN_HEIGHT-8*3+2);
-            _display->println(right);
-        };
-        _pageState = PAGE_NORMAL;
-    };
-    _display->display();
-};
-
-void WhiteNodev108::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {
-    if (!_hasScreen) return;
-    
-    int y = SCREEN_HEIGHT-16;
-    int l = (SCREEN_WIDTH-4)*percentage / 100.;
-    
-    if (rebuildFull){
-        _display->fillRect(0, y, SCREEN_WIDTH, 20, SH110X_BLACK);
-        _display->drawRect(0, y, SCREEN_WIDTH, 12, SH110X_WHITE);
-    };
-    
-    _display->fillRect(0+2, y+2, l, 12-4, SH110X_WHITE);
-    _display->display();
-}
-
-void WhiteNodev108::updateDisplayStateMsg(String msg, int line) {
-    if (!_hasScreen) return;
-    int y = 16+line*12;
-    _display->fillRect(0, y, SCREEN_WIDTH, 12, SH110X_BLACK);
-    int i = SCREEN_WIDTH - 6 * msg.length();
-    _display->setCursor(i > 0 ? i/2 : 0, y);
-    _display->setTextColor(SH110X_WHITE);
-    _display->print(msg);
-    
-    _display->display();
-}
-
-static void _display_centred_title(char * title) {
-    int l = (21-strlen(title)-4) /2;
-    _display->print(" ");
-    for(int i = 0; i < l; i++)
-        _display->print("-");
-    _display->print(" ");
-    _display->print(title);
-    _display->print(" ");
-    for(int i = 0; i < l; i++)
-        _display->print("-");
-    _display->print("\n");
-};
-
-static void _display_QR(char * title, char * url) {
-    esp_qrcode_config_t qrc = {
-        .display_func = ([](esp_qrcode_handle_t qrcode){
-            int s = esp_qrcode_get_size(qrcode);
-            int p = 1;
-            while ((s*(p+1) <= SCREEN_WIDTH) && (s*(p+1) <= (SCREEN_HEIGHT))) p++;
-            int ox = (SCREEN_WIDTH - p*s)/2;
-            // We cannot pass anything to this lambda; as it maps to C, rather than c++.
-            // So we use the state of the cursor to dected an empty title.
-            //
-            int oy = _display->getCursorY() ? (SCREEN_HEIGHT - p*s -1) : (SCREEN_HEIGHT - p*s)/2;
-            for (int y = 0; y < s; y++)
-                for (int x = 0; x < s; x++)
-                    if (p == 1)
-                        _display->drawPixel(ox+p*x,oy+p*y, esp_qrcode_get_module(qrcode, x, y) ? SH110X_WHITE : SH110X_BLACK);
-                    else
-                        _display->fillRect(ox+p*x,oy+p*y,p,p,esp_qrcode_get_module(qrcode, x, y) ? SH110X_WHITE : SH110X_BLACK);
-        }),
-            .max_qrcode_version = 40,
-            .qrcode_ecc_level = 1,
-    };
-    // Make sure above getCursorY() returns zero if there is no title.
-    _display->setCursor(0, 0);
-    if (title)
-        _display_centred_title(title);
-    esp_qrcode_generate(&qrc,url);
-    Log.printf("Showing QR with text: <%s>\n", url);
 }
 
 void WhiteNodev108::updateInfoDisplay(page_t page) {
@@ -553,20 +438,20 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
         case PAGE_QR: {
             char url[128];
             snprintf(url,sizeof(url),QR_URL_REDIRECT_TEMPLATE,moi);
-            _display_QR(NULL, url);
+            _display->print_centered_QR(NULL, url);
         };
             break;
         case PAGE_LOG_QR: {
             char url[32];
             snprintf(url,sizeof(url),"http://%s/",String(localIP().toString()).c_str());
-            _display_QR((char *)"view log", url);
+            _display->print_centered_QR((char *)"view log", url);
         };
             break;
         case PAGE_BUTT:
             if (_pageState != page) {
                 _display->println("    -- INPUTS --");
             };
-            
+#if 0
             for (int i = 0;; i++) {
                 iostate_t * s = &iostates[i];
                 if (!s->label)
@@ -587,6 +472,7 @@ void WhiteNodev108::updateInfoDisplay(page_t page) {
                 s->lst = !xdigitalRead(s->pin); // they are all pullup style
                 _display->fillRect(x + 2, y + 2, 10 - 4, 10 - 4, s->lst ? SH110X_WHITE : SH110X_BLACK);
             }
+#endif
             break;
         case PAGE_LED:
             _display->println("-- LED showtime --");

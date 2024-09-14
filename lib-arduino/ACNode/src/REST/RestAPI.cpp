@@ -4,8 +4,6 @@
 #include "util/common-utils.h"
 
 void RestAPI::begin() {
-    Log.println("RestAPI::begin()");
-
     md = WAITING_FOR_NTP;
     paired = false;
     
@@ -190,4 +188,24 @@ void RestAPI::loop()
             break;
     }
     Log.printf("Freezeout: %lu - ret %d\n", freezeout, ret);
-}
+};
+
+extern unsigned char sha256_client[32];
+RestDeck::render_pane(bool refresh) {
+    const int L = 16;
+    unsigned char tmp[128];unsigned char tmp2[L+1];
+    
+    _display->println("   -- REST --");
+    if (!_restAPI)
+        return;
+    
+    _display->printf("ID: %s", _restAPI->_terminalName);
+
+    sha256toHEX(sha256_client, tmp);
+    for(int i = 0; i < 64/L; i++) {
+        strncpy(tmp + L*i, tmp2, L); tmp2[L] = '\0';
+        _display->print("  ");
+        _display->println(tmp2);
+    };
+    // Also show state ?? and paired yes/no
+};

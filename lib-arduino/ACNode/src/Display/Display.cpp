@@ -1,0 +1,123 @@
+#include <qrcode.h> // Part of the ESP32 package
+
+
+#include "Display/Display.h"
+#include "Display/msl-logo.h"
+
+void Display::begin(uint8_t SCREEN_Address, bool reset) {
+    if (!super::begin(SCREEN_Address,reset)) {
+        Log.println("Could not initialize the LCD/OLED screen.");
+        return;
+    }
+    // Should we capture that the screen actually works; and make
+    // the methods condition on a 'workie' variable ?
+    clearDisplay();
+    drawCentredBitmap(msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
+    display();
+    Debug.println("LCD/OLED screen found and initialized.");
+}
+
+void Display::drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col) {
+    drawBitmap((SCREEN_WIDTH-w)/2,(SCREEN_HEIGHT-h)/2,bitmap,w,h,col);
+}
+
+void Display::setDisplayScreensaver(bool on) {
+    oled_command(on ? SH110X_DISPLAYOFF : SH110X_DISPLAYON);
+}
+
+void Display::updateDisplay(const char * title, String left, String right, bool rebuildFull) {
+    if (rebuildFull) {
+        clearDisplay();
+        setTextSize(1);
+        setTextColor(SH110X_WHITE);
+        int i = SCREEN_WIDTH - 6 * strlen(title);
+        setCursor(i>0 ? i/2 : 0, 0);
+        println(title);
+        setFont(NULL); // Fairly large 5x7 font
+        
+        if (left.length() || right.length()) {
+            setTextColor(SH110X_BLACK);
+            drawFastHLine(0,SCREEN_HEIGHT-8*3-1,SCREEN_WIDTH,SH110X_WHITE);
+            drawFastHLine(0,SCREEN_HEIGHT-8*2+3,SCREEN_WIDTH,SH110X_WHITE);
+        };
+        
+        if (left.length()) {
+            fillRect(0, SCREEN_HEIGHT-8*3+1, 60, 9, SH110X_WHITE);
+            setCursor(1,SCREEN_HEIGHT-8*3+2);
+            println(left);
+        };
+        
+        if (right.length()) {
+            fillRect(SCREEN_WIDTH-60,  SCREEN_HEIGHT-8*3+1, 60, 9, SH110X_WHITE);
+            setCursor(SCREEN_WIDTH-right.length()*6,SCREEN_HEIGHT-8*3+2);
+            println(right);
+        };
+    };
+    display();
+};
+
+void Display::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {
+    int y = SCREEN_HEIGHT-16;
+    int l = (SCREEN_WIDTH-4)*percentage / 100.;
+    
+    if (rebuildFull){
+        fillRect(0, y, SCREEN_WIDTH, 20, SH110X_BLACK);
+        drawRect(0, y, SCREEN_WIDTH, 12, SH110X_WHITE);
+    };
+    
+    fillRect(0+2, y+2, l, 12-4, SH110X_WHITE);
+    display();
+}
+
+void Display::updateDisplayStateMsg(String msg, int line) {
+    int y = 16+line*12;
+    fillRect(0, y, SCREEN_WIDTH, 12, SH110X_BLACK);
+    int i = SCREEN_WIDTH - 6 * msg.length();
+    setCursor(i > 0 ? i/2 : 0, y);
+    setTextColor(SH110X_WHITE);
+    print(msg);
+    
+    display();
+}
+
+void Display::print_centred(char * title) {
+    int l = (21-strlen(title)-4) /2;
+    print(" ");
+    for(int i = 0; i < l; i++)
+        print("-");
+    print(" ");
+    print(title);
+    print(" ");
+    for(int i = 0; i < l; i++)
+        print("-");
+    print("\n");
+};
+
+void Display::print_centered_QR(char * titleOrNull, char * url) {
+    esp_qrcode_config_t qrc = {
+        .display_func = ([this,SCREEN_WIDTH,SCREEN_HEIGHT](esp_qrcode_handle_t qrcode){
+            int s = esp_qrcode_get_size(qrcode);
+            int p = 1;
+            while ((s*(p+1) <= SCREEN_WIDTH) && (s*(p+1) <= (SCREEN_HEIGHT))) p++;
+            int ox = (SCREEN_WIDTH - p*s)/2;
+            // We cannot pass anything to this lambda; as it maps to C, rather than c++.
+            // So we use the state of the cursor to dected an empty title.
+            //
+            int oy = getCursorY() ? (SCREEN_HEIGHT - p*s -1) : (SCREEN_HEIGHT - p*s)/2;
+            for (int y = 0; y < s; y++)
+                for (int x = 0; x < s; x++)
+                    if (p == 1)
+                        drawPixel(ox+p*x,oy+p*y, esp_qrcode_get_module(qrcode, x, y) ? SH110X_WHITE : SH110X_BLACK);
+                    else
+                        fillRect(ox+p*x,oy+p*y,p,p,esp_qrcode_get_module(qrcode, x, y) ? SH110X_WHITE : SH110X_BLACK);
+        }),
+            .max_qrcode_version = 40,
+            .qrcode_ecc_level = 1,
+    };
+    // Make sure above getCursorY() returns zero if there is no title.
+    setCursor(0, 0);
+    if (titleOrNull)
+        print_centred(titleOrNull);
+    esp_qrcode_generate(&qrc,url);
+    Log.printf("Showing QR %s%s with text: <%s>\n", titleOrNull ? titleOrNull : "", titleOrNull ? "", " ", url);
+}

@@ -11,6 +11,8 @@
 // global variable for IRQ handler.
 extern volatile bool cardScannedIrqSeen;
 
+#define RFID_MAX_TAG_LEN 12
+
 class RFID : public ACBase {
   public:
     void processAndRateLimitCard(unsigned char * buff, size_t len);

@@ -422,3 +422,189 @@ void ACNode::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
     Log.println("Button was not (or not long enough) pressed to clear EEProm and cache\n");
     return;
 }
+
+// We're having a bit of an issue with publishing within/near the reconnect and mqtt callback. So we
+// queue the message up - to have them send in the runloop; much later. We also do the signing that
+// late - as this also seeems to occasionally hit some (stackdepth?) limit.
+//
+typedef struct publish_rec {
+    char * topic;
+    char * payload;
+    struct publish_rec * nxt;
+    bool raw;
+} publish_rec_t;
+
+publish_rec_t *publish_queue = NULL;
+
+void ACNode::send(const char * topic, const char * payload, bool _raw) {
+    char _topic[MAX_TOPIC];
+    
+    if (topic == NULL) {
+        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, ACNode::moi);
+        topic = _topic;
+    }
+    else if (index(topic,'/') == NULL) {
+        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, ACNode::moi, topic);
+        topic = _topic;
+    }
+    
+    //    Serial.printf("send('%s','%s',%d)\n", topic ? topic : "<null>", payload ? payload : "<null>" , _raw);
+    
+    publish_rec_t * rec = (publish_rec_t *)malloc(sizeof(publish_rec_t));
+    if (rec) {
+        rec->topic = strdup(topic);
+        rec->payload = strdup(payload);
+        rec->raw = _raw;
+        rec->nxt = NULL;
+    }
+    
+    if (!rec || !(rec->topic) || !(rec->payload)) {
+        Serial.println("Out of memory");
+#ifdef DEBUG
+        // Throw a core dump for debugging/GDBSTUB_H purposes.
+        *((int*)0) = 0;
+#endif
+        ESP.restart();
+    };
+    // We append at the very end -- this preserves order -and- allows
+    // us to add things to the queue while in something works on it.
+    //
+    publish_rec_t ** p = &publish_queue;
+    int i = 0;
+    while (*p) {
+        p = &(*p)->nxt;
+        i++;
+    };
+    *p = rec;
+    
+    //    Serial.printf("Queued at # %d\n",i);
+}
+
+void ACNode::reconnectMQTT() {
+    super::reconnectMQTT();
+    
+    char topic[MAX_TOPIC];
+
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
+    _client.subscribe(topic);
+    Debug.print("master to me -- subscribed to ");
+    Debug.println(topic);
+    
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, master, master);
+    _client.subscribe(topic);
+    Debug.print("master bcast -- Subscribed to ");
+    Debug.println(topic);
+    
+    send_helo(NULL);
+}
+
+void ACNode::send_helo(char * token) {
+    char topic[MAX_TOPIC];
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
+    
+    ACRequest * req = new ACRequest(topic, token ? token : "announce");
+    
+    bool canBeSent = false;
+    
+    ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
+    for (std::list<ACSecurityHandler *>::iterator it =_security_handlers.begin();
+         it!=_security_handlers.end() && r != ACSecurityHandler::OK;
+         ++it)
+    {
+        r = (*it)->helo(req);
+        switch(r) {
+            case ACSecurityHandler::DECLINE:
+                break;
+            case ACSecurityHandler::PASS:
+            case ACSecurityHandler::OK:
+                canBeSent = true;
+                break;
+            case ACSecurityHandler::FAIL:
+            default:
+                Log.printf("Failing HELO on (%s) - failing.\n", (*it)->name());
+                return;
+                break;
+        }
+    }
+    // at least someone should have touched it.
+    if (canBeSent) {
+        Debug.printf("Send from reconnect: %s\n", req->payload);
+        send(NULL, req->payload);
+    } else {
+        Debug.printf("No helo yet sent; not enough stack up.\n");
+    }
+}
+
+
+void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
+    char payload[MAX_MSG], *q = payload;
+    
+    if (length >= sizeof(payload))
+        length = sizeof(payload)-1;
+    
+    for(unsigned char *p = payload_theirs; length > 0 && *p; p++, length--) {
+        if (*p >= 32 && *p < 128) {
+            *q++ = *p;
+        };
+    };
+    *q = 0;
+    
+    _acnodebase->process(topic, payload);
+}
+
+void ACNode::mqttLoop() {
+    ACNodeBase::mqttLoop();
+    
+    if (!publish_queue)
+        return;
+    
+    // Publish just once. Rely on the loop to return
+    // here quickly.
+    //
+    publish_rec_t * rec = publish_queue;
+    
+    //    Serial.printf("Picking from queu: <%s>\n", rec->payload);
+    
+    ACRequest * reqOut = new ACRequest();
+    if (!reqOut) {
+        Serial.println("Out of memory. Rebooting");
+        delay(1000);
+        ESP.restart();
+    };
+    
+    strncpy(reqOut->topic, rec->topic, sizeof(reqOut->topic));
+    strncpy(reqOut->payload, rec->payload, sizeof(reqOut->payload));
+    
+    // We are runing in reverse order. As we need to
+    // `wrap things' back up.
+    //
+    std::list<ACSecurityHandler *>::reverse_iterator it;
+    ACSecurityHandler::acauth_results r = ACSecurityHandler::FAIL;
+    
+    if (rec->raw == false) {
+        for (it =_security_handlers.rbegin();
+             it!=_security_handlers.rend() && r != ACSecurityHandler::OK;
+             ++it) {
+            // Debug.printf("PRE  %s: %s %s\n", (*it)->name(), reqOut->payload, reqOut->rest);
+            r = (*it)->secure(reqOut);
+            if (r == ACSecurityHandler::FAIL) {
+                Log.printf("Adding signature to outbound failed (%s). Aborting.\n", (*it)->name());
+                Log.printf("\t%s\n\t%s\n", reqOut->topic, reqOut->payload);
+                goto _done_without_send;
+            };
+            // Debug.printf("POST %s: %s %s\n", (*it)->name(), reqOut->payload, reqOut->rest);
+        }
+    }
+    
+    if (!rec->raw)
+        Debug.printf("[%s]%s>>: %s\n", reqOut->topic, rec->raw ? "r" : " ", reqOut->payload);
+    
+    _client.publish(reqOut->topic, reqOut->payload);
+    
+_done_without_send:
+    delete reqOut;
+    publish_queue = rec->nxt;
+    free(rec->topic);
+    free(rec->payload);
+    free(rec);
+}

@@ -34,6 +34,28 @@
 #include "LED.h"
 #include "RFID.h" // for the max tag size
 
+
+#ifndef MQTT_SERVER
+#define MQTT_SERVER      "spacebus.makerspaceleiden.nl"
+#endif
+
+#ifndef MQTT_TOPIC_PREFIX
+#define MQTT_TOPIC_PREFIX "test"
+#endif
+
+#ifndef MQTT_TOPIC_LOG
+#define MQTT_TOPIC_LOG        "log"
+#endif
+
+#ifndef MQTT_TOPIC_MASTER
+#define MQTT_TOPIC_MASTER "master"
+#endif
+
+#ifndef MQTT_DEFAULT_PORT
+#define MQTT_DEFAULT_PORT (1883)
+#endif
+
+
 #define Trace if (0) Debug
 
 #define REPORT_PERIOD (5*60*1000) 	// Every 5 minutes - also triggers alarm in monitoring when awol
@@ -192,7 +214,6 @@ protected:
     void pop();
     void CONSTS();
     unsigned long _report_period;
-    char _lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
     // stat counters
     unsigned long _approve=0, _deny=0, _reqs=0, _mqtt_reconnects=0, _start_beat=0;
     
@@ -223,6 +244,8 @@ private:
     
     void checkClearEEPromAndCacheButtonPressed(uint8_t button);
 };
+
+String since(unsigned long up);
 
 // Unfortunately - MQTT callbacks cannot yet pass
 // a pointer. So we need a 'global' variable; and

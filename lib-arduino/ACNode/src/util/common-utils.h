@@ -4,6 +4,14 @@
 #include <string.h>
 #include <ExpandedGPIO.h>
 
+#ifndef SHA256_BLOCK_SIZE
+#define SHA256_BLOCK_SIZE (32)
+#endif
+
+#ifndef HASH_LENGTH
+#define HASH_LENGTH SHA256_BLOCK_SIZE
+#endif
+
 size_t decode_base64_length(unsigned char * base64str);
 
 extern char * strsepspace(char **p);

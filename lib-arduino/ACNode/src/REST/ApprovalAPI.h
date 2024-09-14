@@ -5,13 +5,14 @@
 #include <ACBase.h>
 
 #include "REST/RestAPI.h"
+#include "Display/Deck.h"
 
 typedef unsigned char acl_t;
 #define ACL_MASK_ACTIVE     (1)     // required to operate  / is set to active (see below APPROVE)
 #define ACL_MASK_PERMIT     (2)     // requires instruction / has been given instruction
 #define ACL_MASK_FORM       (4)     // requires the form to be filled out / has a form on file
 #define ACL_MASK_APPROVE    (8)     // requires approval by the trustee / has been approved (active) or is defacto approved
-
+#define ACL_MASK_OVERRIDE  (16)     // requires override/has ability to override a (locked) machine that needs this.
 #ifndef ACL_URL
 #define ACL_URL         "https://some-crm:4443/acl/api" // Instance of https://github.com/MakerSpaceLeiden/makerspaceleiden-crm
 #endif
@@ -26,9 +27,10 @@ public:
     acl_t has, needs;
 };
 
+class ApprovalDeck;
 class ApprovalAPI : public ACBase {
 public:
-    ApprovalAPI(RestAPI * r) : _restAPI(r), blob(NULL), _cntr(0) {};
+    ApprovalAPI(RestAPI * r) : _restAPI(r), blob(NULL), identifier(0) {};
     
     ApprovalEntry * getEntry(const char * tag);
     
@@ -45,8 +47,6 @@ private:
     size_t blob_len;
 
     // Medatadata on the data itself
-    unsigned long identifier;   // unqiue, opaque identifier
-    unsigned long datadate;     // date of creation
     
     unsigned long len_tag;      // length tag block
     unsigned long len_mem;      // length members block
@@ -64,7 +64,6 @@ private:
     size_t ntags;
 
     unsigned long interval = 0;
-    unsigned long last_update = 0;
 
     bool import(const unsigned char * binfile, size_t len);
     bool needsUpdate();
@@ -75,9 +74,18 @@ private:
     void writeCache();
 
     const unsigned char * getEntryPtr(unsigned char * saltedtag);
-    
-    unsigned long _cntr;
+
+friend class ApprovalDeck;
+    unsigned long last_update = 0; // millis
+    unsigned long identifier;   // unqiue, opaque identifier
+    unsigned long datadate;     // date of creation
 };
 
+class ApprovalDeck : public Deck {
+    void setApprovalAPI(ApprovalAPI * a) { _approvalAPI = a; };
+private:
+    ApprovalAPI * _approvalAPI;
+    virtual void render_pane(bool refresh);
+};
 #endif
 

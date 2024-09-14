@@ -4,8 +4,7 @@
 #define _H_WHITE108
 
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SH110X.h>
+#include <Display/Display.h>
 #include <ExpandedGPIO.h>
 #include <ButtonDebounce.h>
 
@@ -34,7 +33,7 @@ static const uint8_t SCREEN_RESET = -1;     //  Not wired up
 // Global; as we have just one of them; and we have some plain C functions as callbacks.
 // When set to NULL; no display is wired up.
 //
-extern Adafruit_SH1106G * _display;
+extern Display * _display;
 
 // const uint8_t RFID_ADDR = 0x28;
 // const uint8_t RFID_RESET = 32;
@@ -58,8 +57,7 @@ public:
     CURR0, CURR1,
     BUZZER,
     STEP_DIR, STEP_STEP, STEP_SLP,
-    RFID_ADDR, RFID_RESET, RFID_IRQ, I2C_SDA, I2C_SCL,
-    SCREEN_Address, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_RESET;
+    RFID_ADDR, RFID_RESET, RFID_IRQ, I2C_SDA, I2C_SCL;
     
     void CONSTS() {
         Serial.printf("WhiteNodev108::CONSTS - Wire.setPins(%d,%d)\n", I2C_SDA, I2C_SCL);
@@ -88,24 +86,6 @@ public:
         
         I2C_SDA = 05; // 21 is the default
         I2C_SCL = 15; // 22 is the default
-        
-        // Oled desplay - type SH1106G via i2c. Not always wired up.
-        //
-        SCREEN_Address = 0x3c;
-        SCREEN_WIDTH = 128; // OLED display width, in pixels
-        SCREEN_HEIGHT = 64; // OLED display height, in pixels
-        SCREEN_RESET = -1;     //  Not wired up
-        
-        const iostate_t _s[] = {
-            { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
-            { BUTT1, "NO/back", 1, INPUT_PULLUP },
-            { CURR0, "Curr 1" , 1, INPUT },
-            { CURR1, "Curr 2", 1, INPUT },
-            { OPTO0, "Opto 1", 1, INPUT  },
-            { OPTO1, "Opto 2", 1, INPUT },
-            { 255, NULL },
-        };
-        iostates = (iostate_t*)&_s;
     };
     const char * name() { return "WhiteNodev108"; }
     typedef std::function<void(const int)> ButtonCallback;
@@ -124,8 +104,8 @@ public:
     typedef enum { PAGE_NORMAL= 0, PAGE_QR, PAGE_LOG_QR, PAGE_INFO, PAGE_FW, PAGE_SNTP, PAGE_MQTT, PAGE_BUTT, PAGE_LED, PAGE_LAST} page_t;
     
     void updateInfoDisplay(page_t page = PAGE_QR);
-    void updateDisplay(String left, String right, bool rebuildFull = false);
-    void updateDisplayStateMsg(String msg,int line = 0);
+//    void updateDisplay(String left, String right, bool rebuildFull = false);
+//    void updateDisplayStateMsg(String msg,int line = 0);
     void updateDisplayProgressbar(unsigned int percentage, bool rebuildFull = false);
     
     void setOffCallback(ButtonCallback callback,int mode = CHANGE);
@@ -138,10 +118,6 @@ public:
     void buzzerErr();
 
 protected:
-    typedef struct iostate {
-        uint8_t pin; const char * label; int lst; int tpe;
-    } iostate_t;
-    iostate_t * iostates;
     LED * errorLed;
     void pop();
     
@@ -237,19 +213,6 @@ public:
         IOE = PIN_HPIO_AW9523 | (8+5); // P1_5
         
         BUTT2 = -1; // todo !
-        
-        static const iostate_t _s[] = {
-            { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
-            { BUTT1, "NO/back", 1, INPUT_PULLUP },
-            { BUTT2, "MENU", 1, INPUT_PULLUP },
-            { CURR0, "Curr 1" , 1, INPUT },
-            { OPTO0, "Opto 1", 1, INPUT  },
-            { OPTO1, "Opto 2", 1, INPUT },
-            { OPTO2, "Opto 3", 1, INPUT },
-            { OPTO3, "Opto 4", 1, INPUT },
-            { 255, NULL },
-        };
-        iostates = (iostate_t*)&_s;
     };
     void begin();
     void pop();

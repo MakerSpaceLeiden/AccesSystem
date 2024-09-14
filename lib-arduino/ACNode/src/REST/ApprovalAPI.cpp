@@ -146,13 +146,9 @@ bool ApprovalAPI::needsUpdate() {
     buff[n] = 0; // damages last byte.
     
     unsigned long cntr = atoi((char *)buff);
-    Log.printf("Change identifier: %08x: %s\n", cntr, _cntr == cntr ? "no changes" : "*Changed!*");
+    Log.printf("Change identifier: %08x: %s\n", cntr, identifier == cntr ? "no changes" : "*Changed!*");
     
-    if (cntr != _cntr) {
-        _cntr = cntr;
-        return true;
-    };
-    return false;
+    return (cntr != identifier);
 }
 
 void ApprovalAPI::updateTagDB() {
@@ -209,7 +205,6 @@ bool ApprovalAPI::import(const unsigned char * binfile, size_t len) {
     if (blob) free((void*)blob);
     blob = binfile;
     blob_len = len;
-    _cntr = identifier;
     return true;
 }
 
@@ -333,6 +328,18 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     
     return new ApprovalEntry((char*)plaintextname, has, needs);
 }
+
+ApprovalDeck::render_pane(bool refresh) {
+    _display->println("   -- TAG DB --");
+    if (!_approvalAPI)
+        return;
+
+    _display->printf("ID   :%08x\n",_approvalAPI->identifier);
+    _display->printf("Dated:%s\n",gmtime(&(_approvalAPI->datadate)));
+    _display->printf("Age  :%s\n",since(_approvalAPI->datadate));
+    _display->println();
+    _display->printf("Check:%s ago\n",since((millis() - _approvalAPI->last_update)/1000));
+};
 
 
 #ifdef TEST

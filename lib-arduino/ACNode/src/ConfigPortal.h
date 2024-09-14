@@ -1,6 +1,5 @@
 #pragma once
 
-#include "MakerSpaceMQTT.h"
 #include "WiFiManager.h"
 
 #ifdef CONFIGAP

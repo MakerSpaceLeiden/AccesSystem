@@ -190,7 +190,7 @@ XX renove OFF on firing
   node.begin();
   node.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     if (current == FIRING || current == POWERED)
-      node.updateDisplay("OFF", "", true);
+      node.updateDisplay(node.machine,"OFF", "", true);
   });
 
   node.onApproval([](const char *machine) {

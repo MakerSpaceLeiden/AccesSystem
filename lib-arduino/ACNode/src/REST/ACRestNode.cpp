@@ -42,8 +42,10 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
         if (_denied_callback)
             _denied_callback(machine);
         
+        // Do we want to do a real-check at this point ? With
         // Check if we need to update the database. This may be a user
-        // trying soon after a change.
+        // trying soon after a change. Via acl/api/v1/getok/<str:machine>
+        // or if we keep it multi machine; via acl/api/v1/getok4node/<str:node>",
         //
         _approvalAPI->scheduleImmediateUpdate();
         _deny++;

@@ -6,6 +6,8 @@
 #include <ACBase.h>
 #include <LED.h>
 
+#include "Display/Deck.h"
+
 #ifndef _H_RestAPI
 #define _H_RestAPI
 class RestAPI : public ACBase {
@@ -43,7 +45,9 @@ public:
     // const char * stationname() { return _stationName.c_str(); }
     void setTerminalname(const char *name) { _terminalName = name; Log.printf("Terminal name set %s\n", name); };
 
-private:
+protected:
+    friend class RestDeck;
+    
     state_t md = BOOT;
     String _stationName;
     const char * _terminalName;
@@ -55,6 +59,13 @@ protected:
     // Historic side effect - fetching the pricelist also sets station name; so 
     // allow this. This saves a https roundtrip during startup.
     friend class PaymentAPI;
+};
+
+class RestDeck : public Deck {
+    void setRestAPI(RestAPI * a) { _restAPI = a; };
+private:
+    RestAPI * _restAPI;
+    virtual void render_pane(bool refresh);
 };
 #endif
 

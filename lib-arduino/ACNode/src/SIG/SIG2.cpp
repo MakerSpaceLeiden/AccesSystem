@@ -5,8 +5,6 @@
 #include "SIG/ACNode-private.h"
 #include "SIG/SIG2.h"
 
-#include "MakerSpaceMQTT.h" // needed for MAX_MSG
-
 #include <mbedtls/aes.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/dhm.h>
@@ -19,6 +17,11 @@
 // dependencie - as Sodium is now part of espressif's SDK.
 //
 #include <sodium/crypto_sign.h>
+
+#if MQTT_MAX_PACKET_SIZE < 256
+#error "You will need to increase te MQTT_MAX_PACKET_SIZE size a bit in PubSubClient.h"
+#endif
+
 
 // Curve/Ed25519 related (and SIG/2.0 protocol)
 

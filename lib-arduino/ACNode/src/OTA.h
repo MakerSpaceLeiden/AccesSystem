@@ -1,6 +1,7 @@
 #ifndef _H_OTA
 #define _H_OTA
 
+#include <ArduinoOTA.h>
 #include <ACBase.h>
 
 class OTA: public ACBase

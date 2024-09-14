@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include <ArduinoJson.h>
 
-#include "MakerSpaceMQTT.h"
 #include <ExpandedGPIO.h>
 #include "util/common-utils.h"
 
@@ -14,6 +13,12 @@ extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI t
 extern beat_t beat_absdelta(beat_t a, beat_t b);
 
 #define MAX_TOKEN_LEN (128)
+#define MAX_MSG        (384)
+#define MAX_HOST       48
+#define MAX_NAME       16
+#define MAX_TOPIC      ((MAX_NAME +1) * 3  + 1)
+
+
 
 class ACRequest {
 public:
@@ -44,7 +49,7 @@ public:
     
     typedef enum cmd_results { CMD_DECLINE, CMD_CLAIMED } cmd_result_t;
     
-    virtual void begin() { return; };
+    virtual void begin() { _isUp = true; return; };
     virtual void loop() { return; };
     virtual void stop() { return; };
     virtual void report(JsonObject& report) { return; }
@@ -53,6 +58,7 @@ public:
     
     virtual void set_debug(bool debug);
 
+    virtual bool isUp() { return _isUp; }
    // Convenience shorthands
     int xdigitalRead(uint8_t pin) { return ExpandedGPIO::getInstance().xdigitalRead(pin); };
     void xdigitalWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xdigitalWrite(pin, val); };
@@ -61,6 +67,7 @@ public:
 
 protected:
     bool _debug;
+    bool _isUp;
     // protected:
 };
 

@@ -434,8 +434,7 @@ void ACNodeBase::delayedReboot() {
 }
 
 
-String ACNodeBase::uptime() {
-    unsigned long up = uptimeInSeconds();
+String since(unsigned long up) {
     String unit = "s";
     if (!up)
         return "unknown";
@@ -445,4 +444,86 @@ String ACNodeBase::uptime() {
                 if (up > 1000) { up /= 30.42; unit = "m";
                 }; }; }; };
     return String(up) + unit;
+}
+
+String ACNodeBase::uptime() {
+    unsigned long up = uptimeInSeconds();
+    return since(up);
+};
+
+const char * ACNodeBase::state2str(int state) {
+#if __ATMEL_8BIT
+    static char buff[10]; snprintf(buff, sizeof(buff), "Error: %d", state);
+    return buff;
+#else
+    switch (state) {
+        case  /* -4 */ MQTT_CONNECTION_TIMEOUT:
+            return "the server didn't respond within the keepalive time";
+        case  /* -3 */ MQTT_CONNECTION_LOST :
+            return "the network connection was broken";
+        case  /* -2 */ MQTT_CONNECT_FAILED :
+            return "the network connection failed";
+        case  /* -1  */ MQTT_DISCONNECTED :
+            return "the client is disconnected (clean)";
+        case  /* 0  */ MQTT_CONNECTED :
+            return "the client is connected";
+        case  /* 1  */ MQTT_CONNECT_BAD_PROTOCOL :
+            return "the server doesn't support the requested version of MQTT";
+        case  /* 2  */ MQTT_CONNECT_BAD_CLIENT_ID :
+            return "the server rejected the client identifier";
+        case  /* 3  */ MQTT_CONNECT_UNAVAILABLE :
+            return "the server was unable to accept the connection";
+        case  /* 4  */ MQTT_CONNECT_BAD_CREDENTIALS :
+            return "the username/password were rejected";
+        case  /* 5  */ MQTT_CONNECT_UNAUTHORIZED :
+            return "the client was not authorized to connect";
+        default:
+            break;
+    }
+    return "Unknown MQTT error";
+#endif
+}
+
+
+void ACNodeBase::reconnectMQTT() {
+    if (_client.getBufferSize() < MAX_MSG)
+        if (!_client.setBufferSize(MAX_MSG))
+            Log.println("WARNING - buffer size could not be increased to a large enough value. All things may go wrong.");
+    
+    Log.printf("Connecting <%s> to %s:%d (MQTT State : %s)\n",
+               moi, mqtt_server, mqtt_port,
+               state2str(_client.state()));
+    
+    if (!_client.connect(moi)) {
+        Log.print("Reconnect failed : ");
+        Log.println(state2str(_client.state()));
+        return;
+    }
+    _client.loop();
+    
+    Debug.println("(re)connected ");
+    _mqtt_reconnects ++;
+}
+
+
+bool ACNodeBase::isUp() {
+    return _client.connected();
+}
+
+void ACNodeBase::mqttLoop() {
+    static unsigned long last_mqtt_connect_try = 0;
+    _client.loop();
+
+    if (!isConnected())
+        return;
+    
+    if (!isUp()) {
+        // report transient error ? Which ? And how often ?
+        if (millis() - last_mqtt_connect_try > 10000 || last_mqtt_connect_try == 0) {
+            Log.printf("Reconnect as MQTT is no longer up\n");
+            reconnectMQTT();
+            last_mqtt_connect_try = millis();
+        }
+        return;
+    };
 }
