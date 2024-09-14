@@ -1,5 +1,12 @@
 #include "Display/Deck.h"
 #include <esp_sntp.h>
+#include "lwip/ip_addr.h"
+
+#ifndef INET6_ADDRSTRLEN
+#define INET6_ADDRSTRLEN 48
+#endif
+
+#define QR_URL_REDIRECT_TEMPLATE "https://wiki.makerspaceleiden.nl/mediawiki/index.php/QR_%s"
 
 void Deck::display(bool refresh) {
     if (refresh) {
@@ -16,8 +23,40 @@ void Deck::display(bool refresh) {
     _display->display();
 };
 
+void DeckController::addDeck(Deck *d) {
+    _decks.insert(_decks.end(), d);
+};
+
+void DeckController::update() { // redraw (if needed).
+    if (!_is_showing) 
+        return;
+    Deck * d = *_currentDeck;
+    d->render_pane(false);
+};
+
+void DeckController::first() {
+    _currentDeck = _decks.begin();
+    _is_showing = true;
+    Deck * d = *_currentDeck;
+    d->render_pane(true);
+}
+
+// returns true until there are no more pages.
+bool DeckController::next() {
+    if (_currentDeck == _decks.end()) {
+        _currentDeck = _decks.begin();
+        _is_showing = false;
+        return false;
+    };
+    _is_showing = true;
+    _currentDeck++;
+    Deck * d = *_currentDeck;
+    d->render_pane(true);
+    return true;
+};
+
 void InfoDeck::render_pane(bool refresh) {
-    _display->println("   -- INFO --");
+    _display->print_centred("INFO");
     _display->printf("Node :%s\n",_acnode->moi);
     _display->printf("IPv4 :%s\n", String(_acnode->localIP().toString()).c_str());
     _display->printf("Via  :%s\n", _acnode->_wired ? "LAN" : "WiFi");
@@ -62,7 +101,7 @@ void SNTPDeck::render_pane(bool refresh) {
 
 void FirmwareDeck::render_pane(bool refresh) {
     _display->println(" -- Firmware --");
-    _display->printf("Dev :%s\n", _acnode->_name());
+    _display->printf("Dev :%s\n", _acnode->name());
     _display->printf("Date:%s\n",__DATE__);
     _display->printf("Time:%s\n",__TIME__);
 };
@@ -80,64 +119,20 @@ void MqttDeck::render_pane(bool refresh) {
             _display->printf("%s :%s\n",q,buff);
             q = (char *)"    ";
         };
-        _display->printf("Port :%u\n",mqtt_port);
-        _display->printf("Topic:%s/%s\n",mqtt_topic_prefix,logpath);
-        _display->printf(" /%s/#\n",moi);
+        _display->printf("Port :%u\n",_acnode->mqtt_port);
+        _display->printf("Topic:%s/%s\n",_acnode->mqtt_topic_prefix,_acnode->logpath);
+        _display->printf(" /%s/#\n",_acnode->moi);
 };
 
-void QrDeck::render_pane(bool refresh) {
+void QrDeck::render_pane(const char * title, bool refresh) {
     char url[128];
-    snprintf(url,sizeof(url),QR_URL_REDIRECT_TEMPLATE,moi);
-    _display->_display_QR(NULL, url);
+    snprintf(url,sizeof(url),QR_URL_REDIRECT_TEMPLATE,title);
+    _display->print_centered_QR(NULL, url);
 };
 
 void LogQrDeck::render_pane(bool refresh) {
         char url[32];
-        snprintf(url,sizeof(url),"http://%s/",String(localIP().toString()).c_str());
-        _display->_display_QR((char *)"view log", url);
+        snprintf(url,sizeof(url),"http://%s/",String(_acnode->localIP().toString()).c_str());
+        _display->print_centered_QR((char *)"view log", url);
     };
 
-void ButtonsDeck::render_pane(bool refresh) {
-    typedef struct iostate {
-        uint8_t pin; const char * label; int lst; int tpe;
-    } iostate_t;
-    static const iostate_t _s[] = {
-        { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
-        { BUTT1, "NO/back", 1, INPUT_PULLUP },
-#ifdef BUTT2
-        { BUTT2, "MENU", 1, INPUT_PULLUP },
-#endif
-        { CURR0, "Curr 1" , 1, INPUT },
-        { OPTO0, "Opto 1", 1, INPUT  },
-        { OPTO1, "Opto 2", 1, INPUT },
-#ifdef OPTO2
-        { OPTO2, "Opto 3", 1, INPUT },
-        { OPTO3, "Opto 4", 1, INPUT },
-#endif
-        { 255, NULL },
-    };
-
-    if (refresh)
-        _display->println("    -- INPUTS --");
-    
-    for (int i = 0;; i++) {
-        iostate_t * s = &iostates[i];
-        if (!s->label)
-            break;
-        
-        int x =  2 + (i / 4)   * SCREEN_WIDTH / 2;
-        int y = 12 + (i % 4) * 11;
-        
-        // first time round - print the text and UI; after that
-        // just deal with the updates.
-        if (_pageState != page) {
-            _display->drawRect(x, y, 10, 10, SH110X_WHITE);
-            _display->setCursor(x + 12 , y + 1);
-            _display->print(s->label);
-        };
-        
-        // upate the on/off dot in the middle always.
-        s->lst = !xdigitalRead(s->pin); // they are all pullup style
-        _display->fillRect(x + 2, y + 2, 10 - 4, 10 - 4, s->lst ? SH110X_WHITE : SH110X_BLACK);
-    }
-};

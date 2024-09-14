@@ -330,7 +330,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
         if (target == NULL)
             target = machine;
 
-            strncpy(_lasttag, tag, sizeof(_lasttag));
+            strncpy((char *)_lasttag, tag, sizeof(_lasttag));
             // Shortcircuit if permitted. Otherwise do the real thing. Note that our cache is primitive
             // just tags - not commands or node/devices.
         if (_approved_callback && useCacheOk && checkCache(_lasttag, beatCounter)) {

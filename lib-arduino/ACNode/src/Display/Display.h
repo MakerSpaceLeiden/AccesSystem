@@ -27,12 +27,12 @@ public:
 
     void setDisplayScreensaver(bool on);
     
-    void updateDisplay(const char title, String left, String right, bool rebuildFull = false);
+    void updateDisplay(const char * title, String left, String right, bool rebuildFull = false);
     void updateDisplayStateMsg(String msg,int line = 0);
     void updateDisplayProgressbar(unsigned int percentage, bool rebuildFull = false);
 
     void drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col);
-    void print_centred(char * title);
+    void print_centred(char * title, bool titlelines = true);
     void print_centered_QR(char * titleOrNull, char * url);
 };
 

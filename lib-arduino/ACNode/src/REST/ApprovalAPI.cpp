@@ -329,13 +329,13 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     return new ApprovalEntry((char*)plaintextname, has, needs);
 }
 
-ApprovalDeck::render_pane(bool refresh) {
+void ApprovalDeck::render_pane(bool refresh) {
     _display->println("   -- TAG DB --");
     if (!_approvalAPI)
         return;
 
     _display->printf("ID   :%08x\n",_approvalAPI->identifier);
-    _display->printf("Dated:%s\n",gmtime(&(_approvalAPI->datadate)));
+    _display->printf("Dated:%s\n",gmtime((const time_t *)&(_approvalAPI->datadate)));
     _display->printf("Age  :%s\n",since(_approvalAPI->datadate));
     _display->println();
     _display->printf("Check:%s ago\n",since((millis() - _approvalAPI->last_update)/1000));

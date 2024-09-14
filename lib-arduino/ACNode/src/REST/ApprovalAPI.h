@@ -82,10 +82,11 @@ friend class ApprovalDeck;
 };
 
 class ApprovalDeck : public Deck {
-    void setApprovalAPI(ApprovalAPI * a) { _approvalAPI = a; };
+public:
+    ApprovalDeck(ACNodeBase * node, ApprovalAPI * a) : Deck(node), _approvalAPI(a) {};
+    virtual void render_pane(bool refresh);
 private:
     ApprovalAPI * _approvalAPI;
-    virtual void render_pane(bool refresh);
 };
 #endif
 

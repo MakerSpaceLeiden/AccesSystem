@@ -134,7 +134,8 @@ public:
     char mqtt_server[MAX_HOST];
     char machine[MAX_NAME];
     char master[MAX_NAME];
-    
+    char logpath[MAX_NAME];
+
     IPAddress localIP();
     String getHostname();
     String macAddressString();
@@ -205,7 +206,6 @@ public:
     }
 
 protected:
-    char logpath[MAX_NAME];
     const char * state2str(int state);
     
     void reconnectMQTT();

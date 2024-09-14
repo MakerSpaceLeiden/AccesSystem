@@ -7,6 +7,7 @@
 #include <Display/Display.h>
 #include <ExpandedGPIO.h>
 #include <ButtonDebounce.h>
+#include "Display/Deck.h"
 
 // White / 1.08
 
@@ -42,15 +43,13 @@ extern Display * _display;
 // const uint8_t I2C_SDA = 05; // 21 is the default
 // const uint8_t I2C_SCL = 15; // 22 is the default
 
-#if 0
-class WhiteNodev108 : public ACNodeBase {
-private:
-    typedef ACNodeBase super;
-#else
+typedef struct iostate {
+    uint8_t pin; const char * label; int lst; int tpe;
+} iostate_t;
+
 class WhiteNodev108 : public ACNodeRest {
 private:
     typedef ACNodeRest super;
-#endif
 public:
     uint8_t LED_INDICATOR,
     OUT0, OUT1, BUTT0, BUTT1, OPTO0, OPTO1,
@@ -58,7 +57,7 @@ public:
     BUZZER,
     STEP_DIR, STEP_STEP, STEP_SLP,
     RFID_ADDR, RFID_RESET, RFID_IRQ, I2C_SDA, I2C_SCL;
-    
+ 
     void CONSTS() {
         Serial.printf("WhiteNodev108::CONSTS - Wire.setPins(%d,%d)\n", I2C_SDA, I2C_SCL);
         Wire.setPins(I2C_SDA, I2C_SCL);
@@ -86,6 +85,16 @@ public:
         
         I2C_SDA = 05; // 21 is the default
         I2C_SCL = 15; // 22 is the default
+        
+        static iostate_t s[ ]= {
+            { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
+            { BUTT1, "NO/back", 1, INPUT_PULLUP },
+            { CURR0, "Curr 1" , 1, INPUT },
+            { OPTO0, "Opto 1", 1, INPUT  },
+            { OPTO1, "Opto 2", 1, INPUT },
+            { 255, NULL },
+        };
+        iostates = s;
     };
     const char * name() { return "WhiteNodev108"; }
     typedef std::function<void(const int)> ButtonCallback;
@@ -98,15 +107,10 @@ public:
     void begin();
     void loop();
     
-    void setDisplayScreensaver(bool on);
     void onSwipe(RFID::THandlerFunction_SwipeCB fn);
-    
-    typedef enum { PAGE_NORMAL= 0, PAGE_QR, PAGE_LOG_QR, PAGE_INFO, PAGE_FW, PAGE_SNTP, PAGE_MQTT, PAGE_BUTT, PAGE_LED, PAGE_LAST} page_t;
-    
-    void updateInfoDisplay(page_t page = PAGE_QR);
-//    void updateDisplay(String left, String right, bool rebuildFull = false);
-//    void updateDisplayStateMsg(String msg,int line = 0);
-    void updateDisplayProgressbar(unsigned int percentage, bool rebuildFull = false);
+        
+    void updateDisplay(String left, String right, bool rebuildFull = false);
+    void updateDisplayStateMsg(String msg,int line = 0);
     
     void setOffCallback(ButtonCallback callback,int mode = CHANGE);
     void setMenuCallback(ButtonCallback callback,int mode = CHANGE);
@@ -120,14 +124,13 @@ public:
 protected:
     LED * errorLed;
     void pop();
-    
+    const iostate_t * iostates;
+
 private:
     // reader build into the board - so only one type; and it is hardcoded.
     //
     RFID_MFRC522 * _reader;
-    bool _hasScreen;
-    page_t _pageState;
-    
+    DeckController _deskCtrl;    
     bool _otaOK = true;
     
     ButtonDebounce *offButton, *menuButton;
@@ -155,6 +158,7 @@ private:
 
     void report(JsonObject & out);
 };
+
 
 class BlackNodev111 : public WhiteNodev108 {
 private:
@@ -233,5 +237,16 @@ private:
         return tmp;
     };
 
+};
+
+class ButtonsDeck: public Deck {
+public:
+    ButtonsDeck(ACNodeBase * node) : Deck(node) {};
+    virtual void render_pane(bool refresh);
+    virtual void setTable(iostate_t * s) {
+        iostates = s;
+    };
+private:
+    iostate_t * iostates;
 };
 #endif

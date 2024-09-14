@@ -191,9 +191,11 @@ void RestAPI::loop()
 };
 
 extern unsigned char sha256_client[32];
-RestDeck::render_pane(bool refresh) {
+
+void RestDeck::render_pane(bool refresh) {
     const int L = 16;
-    unsigned char tmp[128];unsigned char tmp2[L+1];
+    char tmp[128];
+    char tmp2[L+1];
     
     _display->println("   -- REST --");
     if (!_restAPI)

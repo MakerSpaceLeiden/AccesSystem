@@ -62,10 +62,11 @@ protected:
 };
 
 class RestDeck : public Deck {
-    void setRestAPI(RestAPI * a) { _restAPI = a; };
+public:
+    RestDeck(ACNodeBase * node, RestAPI * a) : Deck(node), _restAPI(a) {};
+    virtual void render_pane(bool refresh);
 private:
     RestAPI * _restAPI;
-    virtual void render_pane(bool refresh);
 };
 #endif
 
