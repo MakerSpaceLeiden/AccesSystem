@@ -23,7 +23,7 @@ unsigned char hearthbeat()
     static unsigned int i = 50; // Start bright.
     static unsigned long lst = 0;
     
-    if (millis() - lst > 5) {
+    if (millis() - lst > 15) {
         i++;
         lst = millis();
     };
