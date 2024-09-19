@@ -110,6 +110,7 @@ rest_ret_t setupAuth(const char * terminalName) {
             Log.println("Sign/DER error. Aborting");
             return ERR_RETRYABLE;
         };
+        Log.printf("Not yet paied. Need working network.\n", version);
     } else {
         Log.printf("Using existing keys (keystore version 0x%03x), fully configured\n", version);
         paired = true;
@@ -142,7 +143,7 @@ rest_ret_t fetchCA(const char * terminalName) {
     // provide the root CA. but we do not know it (yet). So learn it first.
     //
     client.setInsecure();
-    if (!https.begin(client, PAY_URL NONE_PATH )) {
+    if (!https.begin(client, TERMINAL_URL NONE_PATH )) {
         Log.println("Failed to begin https - fetchCA");
         goto exit;
     };
@@ -151,7 +152,6 @@ rest_ret_t fetchCA(const char * terminalName) {
     
     if (https.GET() < 0) {
         Log.println("Failed to begin https (GET, fetchCA)");
-        ret = ERR_RETRYABLE;
         goto exit;
     };
     
@@ -197,7 +197,7 @@ rest_ret_t registerDevice(const char * terminalName) {
         return ret;
     };
     
-    snprintf((char *) buff, sizeof(buff),  PAY_URL REGISTER_PATH "?name=%s", encarg);
+    snprintf((char *) buff, sizeof(buff),  TERMINAL_URL REGISTER_PATH "?name=%s", encarg);
     
     if (!https.begin(client, (const char*)buff)) {
         Log.println("Failed to begin https");
@@ -276,7 +276,7 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     sha256toHEX(sha256, (char*)tmp);
     mbedtls_sha256_free(&sha_ctx);
     
-    snprintf((char *) buff, sizeof(buff),  PAY_URL REGISTER_PATH "?response=%s", (char *)tmp);
+    snprintf((char *) buff, sizeof(buff),  TERMINAL_URL REGISTER_PATH "?response=%s", (char *)tmp);
     
     if (0) {
         Debug.print("nonce=");
@@ -350,7 +350,6 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     Log.print("Server public key SHA256: ");
     Log.println((char*)tmp);
     
-    updateDisplay_progressText("OK");
     {
         Preferences keystore;
         
@@ -431,8 +430,7 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     
     int httpCode = https.GET();
     if (httpCode < 0) {
-        Log.println("Rebooting, wifi issue" );
-        displayForceShowError("NET FAIL");
+        Log.println("raw_rest - network issue");
         goto exit;
     }
     

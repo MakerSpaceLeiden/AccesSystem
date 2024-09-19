@@ -3,7 +3,7 @@
 #include "Display/Display.h"
 #include "Display/msl-logo.h"
 
-void Display::begin(uint8_t SCREEN_Address, bool reset) {
+void Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
     if (!super::begin(SCREEN_Address,reset)) {
         Log.println("Could not initialize the LCD/OLED screen.");
         return;
@@ -12,6 +12,11 @@ void Display::begin(uint8_t SCREEN_Address, bool reset) {
     // the methods condition on a 'workie' variable ?
     clearDisplay();
     drawCentredBitmap(msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
+    if (bootmsg) {
+        setTextSize(1);
+        setTextColor(SH110X_WHITE);
+        print_centred((char*)bootmsg, false);
+    };
     display();
     Debug.println("LCD/OLED screen found and initialized.");
 }
@@ -80,22 +85,22 @@ void Display::updateDisplayStateMsg(String msg, int line) {
 }
 
 void Display::print_centred(char * title, bool titlelines) {
+    int16_t x,y;
+    uint16_t w,h;
+    int16_t cy = getCursorY();
+    getTextBounds(title,0,0,&x,&y,&w,&h);
     if (titlelines) {
-        int16_t x,y;
-        uint16_t w,h;
-        int16_t cy = getCursorY();
-        getTextBounds(title,0,0,&x,&y,&w,&h);
         int16_t l = (SCREEN_WIDTH-w)/2 - 2;
-        int16_t r = (SCREEN_WIDTH-w)/2 + 2 + 2;
-
+        int16_t r = (SCREEN_WIDTH+w)/2 + 2 + 2;
+        
         if (l>2)
             drawFastHLine(2,cy + h / 2, l-4, SH110X_WHITE);
-
+        
         if (r<SCREEN_WIDTH-2)
             drawFastHLine(r+2,cy + h / 2, SCREEN_WIDTH-r - 4 , SH110X_WHITE);
         
-        setCursor((SCREEN_WIDTH-w)/2, cy);
     };
+    setCursor((SCREEN_WIDTH-w)/2, cy);
     print(title);
     print("\n");
 };
@@ -125,8 +130,9 @@ void Display::print_centered_QR(char * titleOrNull, char * url) {
     };
     // Make sure above getCursorY() returns zero if there is no title.
     setCursor(0, 0);
-    if (titleOrNull)
+    if (titleOrNull) {
         print_centred(titleOrNull);
+    };
     esp_qrcode_generate(&qrc,url);
     Log.printf("Showing QR %s%s with text: <%s>\n", 
                titleOrNull ? titleOrNull : "",

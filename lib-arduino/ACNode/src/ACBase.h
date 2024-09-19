@@ -18,7 +18,12 @@ extern beat_t beat_absdelta(beat_t a, beat_t b);
 #define MAX_NAME       16
 #define MAX_TOPIC      ((MAX_NAME +1) * 3  + 1)
 
+#define FILE2FIRMWARE(x) (rindex((x),'/') ? rindex((x),'/') : (x))
 
+// When defined - dump the average time spend in the loop() for each
+// of the modules every 100 seconds.
+//
+#define PROFILE_BASE
 
 class ACRequest {
 public:
@@ -65,6 +70,10 @@ public:
     void xanalogWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xanalogWrite(pin, val); };
     void xpinMode(uint8_t pin, uint8_t mode) { ExpandedGPIO::getInstance().xpinMode(pin,mode); };
 
+#ifdef PROFILE_BASE
+    unsigned long micros_in_loop;
+#endif
+    
 protected:
     bool _debug;
     bool _isUp;

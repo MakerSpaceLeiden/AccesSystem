@@ -1,3 +1,5 @@
+#include <Arduino.h>
+
 #include "util/cufflink_heartbeat.h"
 
 // Returns a heart beat like PWM value sequence
@@ -5,7 +7,8 @@
 // Source and credits: https://github.com/adafruit/Adafruit_iCufflinks/tree/master -
 // Copy of the first generating on/off button of apple macs.
 //
-// Intentionally using the beat rather than time - so we can visually see slowdown.
+// Intentionally using the beat rather than time - so we can visually see slowdown
+// unless we're called very fast.
 //
 unsigned char hearthbeat()
 {
@@ -18,9 +21,15 @@ unsigned char hearthbeat()
         0
     };
     static unsigned int i = 50; // Start bright.
-
+    static unsigned long lst = 0;
+    
+    if (millis() - lst > 5) {
+        i++;
+        lst = millis();
+    };
+    
     // List is 0 terminated.
-    if (cufflink_beat[++i] == 0)
+    if (cufflink_beat[i] == 0)
         i = 0;
     
     return cufflink_beat[i]/2;

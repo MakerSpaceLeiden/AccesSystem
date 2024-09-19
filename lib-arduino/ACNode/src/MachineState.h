@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stddef.h>
 #include <functional>
 
@@ -8,7 +10,8 @@
 class MachineState : public ACBase {
 public:
     static const time_t NEVER = 0;
-    
+    virtual const char * name() { return "MachineState"; }
+
     typedef enum : unsigned char {
         BOOTING = 0,                  /* Startup state */
         OUTOFORDER,               /* device not functional.  */

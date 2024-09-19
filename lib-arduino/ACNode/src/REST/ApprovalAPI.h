@@ -30,6 +30,7 @@ public:
 class ApprovalDeck;
 class ApprovalAPI : public ACBase {
 public:
+    virtual const char *name() { return "ApprovalAPI"; };
     ApprovalAPI(RestAPI * r) : _restAPI(r), blob(NULL), identifier(0) {};
     
     ApprovalEntry * getEntry(const char * tag);

@@ -100,7 +100,6 @@ void ApprovalAPI::writeCache() {
 }
 
 void ApprovalAPI::begin() {
-    Log.println("ApprovalAPI::begin()");
     prepareCache(false);
     readCache();
 };
@@ -330,12 +329,20 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
 }
 
 void ApprovalDeck::render_pane(bool refresh) {
+    if(!refresh)
+        return;
     _display->println("   -- TAG DB --");
     if (!_approvalAPI)
         return;
-
     _display->printf("ID   :%08x\n",_approvalAPI->identifier);
-    _display->printf("Dated:%s\n",gmtime((const time_t *)&(_approvalAPI->datadate)));
+
+
+    struct tm * t = gmtime((const time_t *)&(_approvalAPI->datadate));
+    char ds[10], ts[10];
+    strftime(ds,sizeof(ds),"%Y-%m-%d",t);
+    strftime(ts,sizeof(ts),"%H:%M:%S",t);
+    _display->printf("Dated:%s\n",ds);
+    _display->printf("      %sZ\n",ts);
     _display->printf("Age  :%s\n",since(_approvalAPI->datadate));
     _display->println();
     _display->printf("Check:%s ago\n",since((millis() - _approvalAPI->last_update)/1000));

@@ -62,6 +62,7 @@ MachineState::machinestate_t MachineState::state() {
 }
 
 void MachineState::setState(machinestate_t s) {
+    Log.printf("Changing state; %s -> %s\n", label(machinestate), label(s));
     machinestate = s;
     if (_led) _led->set(ledState());
 }

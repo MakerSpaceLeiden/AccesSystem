@@ -2,12 +2,12 @@
 #include "ConfigPortal.h"
 #include <EEPROM.h>
 #include <ArduinoJSON.h>
+#include <esp_debug_helpers.h>
 
 #ifdef ESP32
 #include <WiFi.h>
 #include <ETH.h>
 #endif
-
 
 #include <TelnetSerialStream.h>
 TelnetSerialStream telnetSerialStream = TelnetSerialStream();
@@ -77,8 +77,17 @@ void ACNodeBase::pop() {
     Log.addPrintStream(th);
     Log.addPrintStream(wh);
 
-//    Debug.addPrintStream(wh);
-//    Debug.addPrintStream(th);
+    Debug.addPrintStream(wh);
+    Debug.addPrintStream(th);
+#ifdef SYSLOG_HOST
+  syslogStream.setDestination(SYSLOG_HOST);
+  syslogStream.setRaw(true);
+#ifdef SYSLOG_PORT
+  syslogStream.setPort(SYSLOG_PORT);
+#endif
+    Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+    Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+#endif
 };
 
 IPAddress ACNodeBase::localIP() {
@@ -160,6 +169,10 @@ bool ACNodeBase::isConnected() {
 };
 
 void ACNodeBase::addHandler(ACBase * handler) {
+#ifdef PROFILE_BASE
+//    Debug.printf("addHandler(%p,%s)\n", handler, handler->name());
+//    esp_backtrace_print(100);
+#endif
     _handlers.insert (_handlers.end(), handler);
 }
 
@@ -171,9 +184,19 @@ void ACNodeBase::begin(eth_board_t board /* default is BOARD_AART */, uint8_t cl
 void ACNodeBase::_complete_begin(uint8_t clear_button) {
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
+#ifdef PROFILE_BASE
+        (*it)->micros_in_loop = 0;
+#endif
+        Debug.printf("%s->begin()\n", (*it)->name());
         (*it)->begin();
     }
-    
+
+    // We need things like OTA full set up. So we do this as
+    // 'late' as we can.
+    //
+    Log.println("MDNS Responder started");
+    MDNS.begin(moi);
+    Log.printf("Host details %s (%s)\n", moi, String(localIP()).c_str());
 }
 
 void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button)
@@ -276,11 +299,6 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     mqttLoop();
 #endif
     
-    Log.print(moi); Log.print(" "); Log.println(localIP());
-    
-    MDNS.begin(moi);
-    Log.println("MDNS Responder started");
-    
 
 #ifdef CONFIGAP
     configBegin();
@@ -346,27 +364,6 @@ void ACNodeBase::loop() {
         }
     }
     
-#if 0
-    if (_debug) {
-        static unsigned long last = millis();
-        static unsigned long sw1, sw2, tock;
-        sw1  += xdigitalRead(SW1_BUTTON);
-        sw2  += xdigitalRead(SW1_BUTTON);
-        tock ++;
-        if (millis() - last > 1000) {
-            Debug.printf("SW1: %d %d SW2: %d %d Relay %d Triac %d\n",
-                         xdigitalRead(SW1_BUTTON),
-                         abs(tock - sw1),
-                         xdigitalRead(SW2_BUTTON),
-                         abs(tock - sw2),
-                         xigitalRead(RELAY_GPIO),
-                         xigitalRead(TRIAC_GPIO)
-                         );
-            last = millis(); sw1 = sw2 = tock = 0;
-        }
-    }
-#endif
-    
     {	static unsigned long last = 0;
         if (millis() - last > _report_period) {
             last = millis();
@@ -407,9 +404,32 @@ void ACNodeBase::loop() {
     //
     std::list<ACBase *>::iterator it;
     
+#ifdef PROFILE_BASE
+    static unsigned long lst = 0;
+    bool show = (millis() - lst) > 100 *1000;
+    if (show)
+        Debug.println("Profile (in microSeconds):");
+    for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
+        unsigned long s = micros();
+        (*it)->loop();
+        unsigned long delta = micros() - s;
+        
+        if ((*it)->micros_in_loop == 0)
+            (*it)->micros_in_loop = delta;
+        (*it)->micros_in_loop = ((*it)->micros_in_loop * 50 + delta)/51;
+        
+        if (show)
+            Debug.printf("   %12lu %08x %s\n",(*it)->micros_in_loop,(*it), (*it)->name());
+    };
+    if (show) {
+        lst = millis();
+        Debug.println("-----");
+    };
+#else
     for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
         (*it)->loop();
     }
+#endif
 }
 
 void ACNodeBase::delayedReboot() {

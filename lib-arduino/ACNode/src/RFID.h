@@ -15,6 +15,8 @@ extern volatile bool cardScannedIrqSeen;
 
 class RFID : public ACBase {
   public:
+    virtual const char * name() { return "RFID"; };
+    
     void processAndRateLimitCard(unsigned char * buff, size_t len);
     void registerCallback(unsigned char irqpin);
 

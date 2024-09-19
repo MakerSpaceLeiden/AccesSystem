@@ -1,33 +1,27 @@
 #pragma once
 
 #include "Display/Display.h"
+
 #include "ACBase.h"
 #include "ACBaseNode.h"
-class DeckController;
+
 
 extern Display * _display;
 
+class DeckController;
 class Deck {
 public:
     Deck(ACNodeBase * node) : _acnode(node) {};
+
+protected:
     ACNodeBase * _acnode;
 
-    virtual void render_pane(bool refresh) {
-        _display->print("*****\nNOT IMPLEMENTED\n*****");
-    };
     void display(bool refresh);
-};
-
-class DeckController {
-public:
-    void addDeck(Deck *d);
-    void update(); // redraw (if needed).
-    void first();
-    bool next(); // returns true until there are no more pages.
-private:
-    bool _is_showing = false;
-    std::list<Deck *>_decks;
-    std::list<Deck *>::iterator _currentDeck;
+    virtual void render_pane(bool refresh) {
+        if (refresh)
+            _display->print("*****\nNOT IMPLEMENTED\n*****");
+    };
+    friend class DeckController;
 };
 
 class InfoDeck : public Deck {
@@ -52,8 +46,10 @@ public:
 };
 class QrDeck : public Deck {
 public:
-    QrDeck(ACNodeBase * node) : Deck(node) {};
-    virtual void render_pane(const char * item, bool refresh);
+    QrDeck(ACNodeBase * node, const char * path) : Deck(node), _str(path) {};
+    virtual void render_pane(bool refresh);
+private:
+    const char * _str;
 };
 class LogQrDeck : public Deck {
 public:

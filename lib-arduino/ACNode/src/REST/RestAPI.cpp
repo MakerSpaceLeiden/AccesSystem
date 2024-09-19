@@ -11,9 +11,11 @@ void RestAPI::begin() {
     
     switch(setupAuth(_terminalName)) {
         case NOERROR_OK:
+            Debug.println("*** paired **** can continue without a network if need be.");
             paired = true;
             break;
         case NOERROR:
+            Log.println("Not paired - we will need a network.");
             break;
         case ERR_RETRYABLE:
         case ERR_FATAL:
@@ -50,7 +52,7 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp) 
             return n;
             break;
         case ERR_FATAL:
-            md = WIFI_FAIL_REBOOT;
+            if (md < FULLY_REGISTERED) md = WIFI_FAIL_REBOOT;
             break;
         case ERR_REPAIR:
             paired = false;
@@ -75,7 +77,7 @@ JsonDocument RestAPI::get(const char *url) {
             return out;
             break;
         case ERR_FATAL:
-            md = WIFI_FAIL_REBOOT;
+            if (md < FULLY_REGISTERED) md = WIFI_FAIL_REBOOT;
             break;
         case ERR_REPAIR:
             paired = false;
@@ -92,6 +94,10 @@ JsonDocument RestAPI::get(const char *url) {
 
 void RestAPI::loop()
 {
+    // shortcicuit once we're completely done. Reregistering needs a reset/active state change.
+    if (md == DONE)
+        return;
+    
     static unsigned long lst = millis(), freezeout = 0;
     if (freezeout && (millis() - lst < freezeout))
         return;
@@ -116,7 +122,7 @@ void RestAPI::loop()
         case CHECK_REGISTRATION:
         {
             // display.showString("check");
-            JsonDocument out = raw_rest(_terminalName, PAY_URL REGISTER_PATH, &ret);
+            JsonDocument out = raw_rest(_terminalName, TERMINAL_URL REGISTER_PATH, &ret);
             if (ret == NOERROR_OK) {
                 Log.println("Registered & paired up ok");
                 md = FULLY_REGISTERED;
@@ -125,7 +131,8 @@ void RestAPI::loop()
             break;
         case REGISTER:
             // display.showString("reg");
-            switch(registerDevice(_terminalName)) {
+            ret = registerDevice(_terminalName);
+            switch(ret) {
                 case NOERROR_OK:
                     Log.println("Pairing confirmed");
                     md = FULLY_REGISTERED;
@@ -133,6 +140,7 @@ void RestAPI::loop()
                 case NOERROR:
                     Log.println("Waiting for an admin tag swipe");
                     md = WAIT_FOR_REGISTER_SWIPE;
+                    _pair_cb();
                     break;
             }
             break;
@@ -140,6 +148,8 @@ void RestAPI::loop()
             // display.showString("pair");
             break;
         case FULLY_REGISTERED:
+            _paired_cb();
+            md = DONE;
             break;
         case RETRYABLE_FAIL:
         {
@@ -170,19 +180,24 @@ void RestAPI::loop()
             return;
             break;
         case ERR_REPAIR:
-            freezeout = (freezeout + 1000) *2;
+            freezeout = (freezeout + 5000) *2;
             paired = false;
             Log.println("Unpairing and re-starting registration");
             md = WAITING_FOR_NTP;
             break;
-        case RETRYABLE_FAIL:
-            freezeout = (freezeout + 1000) *2;
+        case ERR_RETRYABLE:
+            freezeout = (freezeout + 10000) *2;
             Log.println("Re-trying registration");
             md = WAITING_FOR_NTP;
             break;
         case ERR_FATAL:
-            Log.println("Rebooting");
-            md = WIFI_FAIL_REBOOT;
+            if (paired) {
+                Log.println("Could not check our paired. But we're paired; so pray we have a table.");
+                md = FULLY_REGISTERED;
+            } else {
+                Log.println("Network is a disaster. Given up on it.");
+                md = WIFI_FAIL_REBOOT;
+            };
             break;
         default:
             break;
@@ -193,19 +208,23 @@ void RestAPI::loop()
 extern unsigned char sha256_client[32];
 
 void RestDeck::render_pane(bool refresh) {
+    if(!refresh)
+        return;
+
     const int L = 16;
     char tmp[128];
     char tmp2[L+1];
     
-    _display->println("   -- REST --");
+    _display->print_centred("REST");
     if (!_restAPI)
         return;
     
-    _display->printf("ID: %s", _restAPI->_terminalName);
+    _display->printf("ID: %s\n\n", _restAPI->_terminalName);
 
     sha256toHEX(sha256_client, tmp);
+    
     for(int i = 0; i < 64/L; i++) {
-        strncpy(tmp + L*i, tmp2, L); tmp2[L] = '\0';
+        strncpy(tmp2, tmp + L*i, L); tmp2[L] = '\0';
         _display->print("  ");
         _display->println(tmp2);
     };
