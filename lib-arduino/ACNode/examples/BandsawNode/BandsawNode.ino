@@ -42,11 +42,13 @@
 // password; just the characters of the password
 // itself.
 //
-// #define OTA_PASSWD_MD5  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
+// #define OTA_PASSWD_HASH  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
 //
 #ifndef OTA_PASSWD_HASH
 #error "An OTA password hash(md5) MUST be set. Sorry."
 #endif
+const char ota_password_hash[] = OTA_PASSWD_HASH;
+
 
 BlackNodev111 node = BlackNodev111(MACHINE);
 // BlackNodev111 node = BlackNodev111(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
@@ -172,7 +174,7 @@ void setup() {
   expandedPinMode(ONOFFSWITCH, INPUT);
   onoffSwitchDetect = new ButtonDebounce(ONOFFSWITCH);
 
-  node.setOTAPasswordHash(OTA_PASSWD_HASH);
+  node.setOTAPasswordHash(ota_password_hash);
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
