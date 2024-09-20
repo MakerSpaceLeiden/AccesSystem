@@ -101,7 +101,7 @@ public:
 private:
     std::list<ACSecurityHandler*> _security_handlers;
     cmd_result_t handle_cmd(ACRequest * req);
-    const char _lasttag[RFID_MAX_TAG_LEN];
+    char _lasttag[RFID_MAX_TAG_LEN];
 protected:
     acnode_proto_t _proto;
     void pop();

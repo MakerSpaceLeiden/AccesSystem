@@ -4,9 +4,11 @@
 #define _H_WHITE108
 
 #include <Wire.h>
-#include <Display/Display.h>
 #include <ExpandedGPIO.h>
 #include <ButtonDebounce.h>
+#include "Display/Deck.h"
+#include "Display/Display.h"
+#include "Display/DeckController.h"
 
 // White / 1.08
 
@@ -42,15 +44,13 @@ extern Display * _display;
 // const uint8_t I2C_SDA = 05; // 21 is the default
 // const uint8_t I2C_SCL = 15; // 22 is the default
 
-#if 0
-class WhiteNodev108 : public ACNodeBase {
-private:
-    typedef ACNodeBase super;
-#else
+typedef struct iostate {
+    uint8_t pin; const char * label; int lst; int tpe;
+} iostate_t;
+
 class WhiteNodev108 : public ACNodeRest {
 private:
     typedef ACNodeRest super;
-#endif
 public:
     uint8_t LED_INDICATOR,
     OUT0, OUT1, BUTT0, BUTT1, OPTO0, OPTO1,
@@ -58,9 +58,8 @@ public:
     BUZZER,
     STEP_DIR, STEP_STEP, STEP_SLP,
     RFID_ADDR, RFID_RESET, RFID_IRQ, I2C_SDA, I2C_SCL;
-    
+ 
     void CONSTS() {
-        Serial.printf("WhiteNodev108::CONSTS - Wire.setPins(%d,%d)\n", I2C_SDA, I2C_SCL);
         Wire.setPins(I2C_SDA, I2C_SCL);
         
         super::CONSTS();
@@ -86,27 +85,33 @@ public:
         
         I2C_SDA = 05; // 21 is the default
         I2C_SCL = 15; // 22 is the default
+        
+        static iostate_t s[ ]= {
+            { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
+            { BUTT1, "NO/back", 1, INPUT_PULLUP },
+            { CURR0, "Curr 1" , 1, INPUT },
+            { OPTO0, "Opto 1", 1, INPUT  },
+            { OPTO1, "Opto 2", 1, INPUT },
+            { 255, NULL },
+        };
+        iostates = s;
+        
+        _ota_md5 = NULL;
     };
-    const char * name() { return "WhiteNodev108"; }
+    virtual const char * name() { return "WhiteNodev108"; }
     typedef std::function<void(const int)> ButtonCallback;
-    MachineState machinestate;
     
     WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_REST);
     WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_REST);
     
-    void setOTAPasswordHash(const char * ota_md5);
+    void setOTAPasswordHash(const char * ota_md5) { _ota_md5 = ota_md5; };
     void begin();
     void loop();
     
-    void setDisplayScreensaver(bool on);
     void onSwipe(RFID::THandlerFunction_SwipeCB fn);
-    
-    typedef enum { PAGE_NORMAL= 0, PAGE_QR, PAGE_LOG_QR, PAGE_INFO, PAGE_FW, PAGE_SNTP, PAGE_MQTT, PAGE_BUTT, PAGE_LED, PAGE_LAST} page_t;
-    
-    void updateInfoDisplay(page_t page = PAGE_QR);
-//    void updateDisplay(String left, String right, bool rebuildFull = false);
-//    void updateDisplayStateMsg(String msg,int line = 0);
-    void updateDisplayProgressbar(unsigned int percentage, bool rebuildFull = false);
+        
+    void updateDisplay(String left, String right, bool rebuildFull = false);
+    void updateDisplayStateMsg(String msg,int line = 0);
     
     void setOffCallback(ButtonCallback callback,int mode = CHANGE);
     void setMenuCallback(ButtonCallback callback,int mode = CHANGE);
@@ -117,18 +122,17 @@ public:
     void buzzerOk();
     void buzzerErr();
 
+    void setNodeDeck(Deck * deck);
 protected:
     LED * errorLed;
     void pop();
-    
+    iostate_t * iostates;
+
 private:
     // reader build into the board - so only one type; and it is hardcoded.
     //
     RFID_MFRC522 * _reader;
-    bool _hasScreen;
-    page_t _pageState;
-    
-    bool _otaOK = true;
+    DeckController _deskCtrl;    
     
     ButtonDebounce *offButton, *menuButton;
     ButtonCallback _offCallBack, _menuCallBack = NULL;
@@ -147,91 +151,25 @@ private:
     unsigned long manual_poweroff = 0;
     unsigned long idle_poweroff = 0;
     unsigned long errors = 0;
-    
+
+    const char * _ota_md5;
+    unsigned long _last_buzz = 0;
+#if 0
     const uint8_t * leds() {
         static const uint8_t tmp[] = { BUZZER, LED_INDICATOR, 255};
         return tmp;
     };
-
+#endif
+    
     void report(JsonObject & out);
 };
 
-class BlackNodev111 : public WhiteNodev108 {
-private:
-    typedef WhiteNodev108 super;
+
+class ButtonsDeck: public Deck {
 public:
-    BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
-    BlackNodev111(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
-
-    const char * name() { return "BlackNodev111"; }
-    
-    // Some extra IO
-    uint8_t OPTO2, OPTO3, BUTT2,
-    LEDA, LEDB, LEDC, LEDD, LEDE,
-    IOA, IOB, IOC, IOD, IOE;
-    
-    // AW9523 reset and interrupt pins are wired up.
-    //
-    static const uint8_t AW_RST = 35; // Was opto 1
-    static const uint8_t AW_INT = 36; // Was opto 2
-    
-    void CONSTS() {
-        super::CONSTS();
-        
-        // Rewired to their own pins (mostly shared with strapping
-        // pins as it known that the A4988 has no pull up/downs on
-        // these pins. They are straight inputs.
-        //
-        STEP_DIR = 0; // Was OUT2
-        STEP_STEP = 2; // Was OUT1
-        STEP_SLP = 12; // Was BUT1
-        
-        // Moved from ESP32 to AW gated IO
-        LED_INDICATOR = PIN_HPIO_AW9523 | (8+6); // P1_6 on the AW9523
-        BUZZER = PIN_HPIO_AW9523 | (8+7); // P1_7 on the AW9523
-        
-        // Moved from ESP32 to AW gated IO
-        OPTO0 = PIN_HPIO_AW9523 | (0+4); // P0_4
-        OPTO1 = PIN_HPIO_AW9523 | (0+3); // P0_3
-        
-        // Two extra opto couplers, introduced in v1.11
-        OPTO2 = PIN_HPIO_AW9523 | (0+2); // P0_2
-        OPTO3 = PIN_HPIO_AW9523 | (0+1); // P0_0
-        
-        // Extra LEDs on the front, introduced in v1.11
-        LEDA = PIN_HPIO_AW9523 | (8+0); // P1_0
-        LEDB = PIN_HPIO_AW9523 | (8+1); // P1_1
-        LEDC = PIN_HPIO_AW9523 | (8+2); // P1_2
-        LEDD = PIN_HPIO_AW9523 | (8+3); // P1_3
-        LEDE = PIN_HPIO_AW9523 | (0+0); // P0_0
-        
-        // Extra connector intruduced with v1.11
-        IOA = PIN_HPIO_AW9523 | (0+5); // P0_5
-        IOB = PIN_HPIO_AW9523 | (0+6); // P0_6
-        IOC = PIN_HPIO_AW9523 | (0+7); // P0_7
-        IOD = PIN_HPIO_AW9523 | (8+4); // P1_4
-        IOE = PIN_HPIO_AW9523 | (8+5); // P1_5
-        
-        BUTT2 = -1; // todo !
-    };
-    void begin();
-    void pop();
-    void loop();
-    
-    // From 1.11 nodes have an internal overwrite switch/jumper. When setting it
-    // using this method - the main loop will monitor for this switch or jumper
-    // to be used as a bypass. It won't block this - just report it in the logging.
-    //
-    void setMonitoredOutput(uint8_t num, bool val);
-    
+    ButtonsDeck(ACNodeBase * node, iostate_t * states) : Deck(node), iostates(states)  {};
+    virtual void render_pane(bool refresh);
 private:
-    int8_t expectOut1 = -1;
-    int8_t expectOut2 = -1;
-
-    const uint8_t * leds() {
-        static const uint8_t tmp[] = { BUZZER, LED_INDICATOR, LEDA, LEDB, LEDC, LEDD, LEDE, 255};
-        return tmp;
-    };
-
+    iostate_t * iostates;
 };
 #endif

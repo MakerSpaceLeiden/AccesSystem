@@ -117,7 +117,7 @@ public:
     ACNodeBase(const char * machine, const char * ssid, const char * ssid_passwd);
     ACNodeBase(const char * machine = NULL, bool wired = true);
     
-    const char * name() { return "ACNodeBase"; }
+    virtual const char * name() { return "ACNodeBase"; }
     
     void set_report_period(const unsigned long period) { _report_period = period; };
     void set_mqtt_host(const char *p);
@@ -134,7 +134,8 @@ public:
     char mqtt_server[MAX_HOST];
     char machine[MAX_NAME];
     char master[MAX_NAME];
-    
+    char logpath[MAX_NAME];
+
     IPAddress localIP();
     String getHostname();
     String macAddressString();
@@ -205,7 +206,6 @@ public:
     }
 
 protected:
-    char logpath[MAX_NAME];
     const char * state2str(int state);
     
     void reconnectMQTT();

@@ -34,7 +34,7 @@
 
 class RFID_MFRC522 : public RFID {
   public:
-    const char * name() { return "RFID-MFRC522"; }
+    virtual const char * name() { return "RFID-MFRC522"; }
     
     RFID_MFRC522(const byte sspin = RFID_SELECT_PIN, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN, 
 	 const byte spiclk = RFID_CLK_PIN, const byte spimiso = RFID_MISO_PIN, const byte spimosi = RFID_MOSI_PIN
@@ -53,6 +53,6 @@ class RFID_MFRC522 : public RFID {
     uint8_t _irqpin = 255, _rstpin = 255;
     void activateScanning();
     void clearInt();
-    unsigned long _lastI2Ccheck  = 0, _lastReset = 0;
+    unsigned long _lastI2Ccheck  = 0, _lastReset = 0, _lastActivate = 0;
 };
 #endif

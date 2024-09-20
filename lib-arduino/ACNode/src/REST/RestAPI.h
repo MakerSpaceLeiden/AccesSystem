@@ -18,16 +18,24 @@ public:
         REGISTER, /* we are not paired; start registering and get a challange */
         WAIT_FOR_REGISTER_SWIPE, /* wait for a swipe & and then complete challenge response to pair */
         CHECK_REGISTRATION, /* when we are paired - check if the registration is still valid */
-        FULLY_REGISTERED, /* sit authenticated - do nothing */
+        FULLY_REGISTERED, /* report all complete */
+        DONE, /* sit authenticated - do nothing */
         RETRYABLE_FAIL, /* retry something a few seconds later */
         WIFI_FAIL_REBOOT /* reboot; then retry from scratch */
     } state_t;
+    virtual const char *name() { return "RestAPI"; };
 
     void begin();
     void loop();
     bool ready() { return FULLY_REGISTERED == md; };
     ACBase::cmd_result_t handleTagSwipe(const char * tag);
     
+    typedef std::function<void(void)> THandlerFunction_NotifyPair;
+    typedef std::function<void(void)> THandlerFunction_NotifyPaired;
+
+    RestAPI& onPairingRequested(THandlerFunction_NotifyPair fn) { _pair_cb = fn; return *this; };
+    RestAPI& onPaired(THandlerFunction_NotifyPaired fn) { _paired_cb = fn; return *this; };
+
     state_t state() { return md; };
     
     JsonDocument get(const char *url);
@@ -43,7 +51,11 @@ public:
 
     String stationname() { return _stationName; }
     // const char * stationname() { return _stationName.c_str(); }
-    void setTerminalname(const char *name) { _terminalName = name; Log.printf("Terminal name set %s\n", name); };
+    void setTerminalname(const char *name) { _terminalName = name;  };
+
+private:
+    THandlerFunction_NotifyPair _pair_cb;
+    THandlerFunction_NotifyPaired _paired_cb;
 
 protected:
     friend class RestDeck;
@@ -62,10 +74,11 @@ protected:
 };
 
 class RestDeck : public Deck {
-    void setRestAPI(RestAPI * a) { _restAPI = a; };
+public:
+    RestDeck(ACNodeBase * node, RestAPI * a) : Deck(node), _restAPI(a) {};
+    virtual void render_pane(bool refresh);
 private:
     RestAPI * _restAPI;
-    virtual void render_pane(bool refresh);
 };
 #endif
 

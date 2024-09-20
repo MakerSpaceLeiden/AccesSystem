@@ -1,37 +1,58 @@
 #pragma once
 
 #include "Display/Display.h"
+
 #include "ACBase.h"
 #include "ACBaseNode.h"
 
+
+extern Display * _display;
+
+class DeckController;
 class Deck {
-    Deck(ACNodeBase * node, Display * display) : _acnode(node), _display(display) {};
-    void display(bool refresh);
+public:
+    Deck(ACNodeBase * node) : _acnode(node) {};
+
 protected:
     ACNodeBase * _acnode;
-    Display * _display;
+
+    void display(bool refresh);
     virtual void render_pane(bool refresh) {
-        _display->print("*****\nNOT IMPLEMENTED\n*****");
+        if (refresh)
+            _display->print("*****\nNOT IMPLEMENTED\n*****");
     };
+    friend class DeckController;
 };
+
 class InfoDeck : public Deck {
+public:
+    InfoDeck(ACNodeBase * node) : Deck(node) {};
     virtual void render_pane(bool refresh);
 };
 class SNTPDeck : public Deck {
+public:
+    SNTPDeck(ACNodeBase * node) : Deck(node) {};
     virtual void render_pane(bool refresh);
 };
 class FirmwareDeck : public Deck {
+public:
+    FirmwareDeck(ACNodeBase * node) : Deck(node) {};
     virtual void render_pane(bool refresh);
 };
 class MqttDeck : public Deck {
+public:
+    MqttDeck(ACNodeBase * node) : Deck(node) {};
     virtual void render_pane(bool refresh);
 };
 class QrDeck : public Deck {
+public:
+    QrDeck(ACNodeBase * node, const char * path) : Deck(node), _str(path) {};
     virtual void render_pane(bool refresh);
+private:
+    const char * _str;
 };
 class LogQrDeck : public Deck {
-    virtual void render_pane(bool refresh);
-};
-class ButtonsDeck : public Deck {
+public:
+    LogQrDeck(ACNodeBase * node) : Deck(node) {};
     virtual void render_pane(bool refresh);
 };

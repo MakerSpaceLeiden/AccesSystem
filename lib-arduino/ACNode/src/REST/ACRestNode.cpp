@@ -16,10 +16,23 @@ void ACNodeRest::CONSTS() {
 
 void ACNodeRest::pop() {
     super::pop();
+
+    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 20*1000, MachineState::OUTOFORDER);
+    WAIT_FOR_PAIRING = machinestate.addState("Needs to pair",  LED::LED_ERROR, 20*1000, MachineState::OUTOFORDER);
     
+    machinestate.setState(MachineState::BOOTING);
+    addHandler(&machinestate);
+
     _restAPI = new RestAPI();
     _restAPI->setTerminalname(machine);
-    
+    _restAPI->onPairingRequested([this](){
+        Log.println("Waiting for pairing");
+        machinestate = WAIT_FOR_PAIRING;
+    });
+    _restAPI->onPaired([this](){
+        Log.println("Pairing OK");
+        machinestate = MachineState::WAITINGFORCARD;
+    });
     addHandler(_restAPI);
     
     _approvalAPI = new ApprovalAPI(_restAPI);
@@ -30,7 +43,7 @@ void ACNodeRest::begin(eth_board_t board, uint8_t clear_button) {
     super::begin(board,clear_button);
 }
 
-void ACNodeRest::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) {
+void ACNodeRest::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) {        
     _reqs++;
     ApprovalEntry * e = _approvalAPI->getEntry(tag);
     if (!e || !(e->has & e->needs)) {
@@ -60,9 +73,10 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
         delete e;
 };
 
+#if 0
 void ACNodeRest::loop() {
     super::loop();
-    
+
     if (_restAPI->state() != RestAPI::FULLY_REGISTERED)
         return;
     
@@ -73,3 +87,4 @@ void ACNodeRest::loop() {
     
     // do stuff regularly ?? (approval will handle its own fetches though)
 }
+#endif

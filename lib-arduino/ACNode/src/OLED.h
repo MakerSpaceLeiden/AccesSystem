@@ -19,7 +19,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-
+#include "Display/Deck.h"
 #include <ACBase.h>
 
 #define OLED_DEFAULT_SPEED        144 // pixels/second
@@ -44,7 +44,7 @@ class OLED : public ACBase {
     void oled_loop(bool force = false);
 
   public:
-    const char * name();
+    virtual const char * name() { return "OLED"; };
     OLED(
 	const uint8_t width = OLED_DEFAULT_SCREEN_WIDTH, 
 	const uint8_t height = OLED_DEFAULT_SCREEN_WIDTH
@@ -63,3 +63,4 @@ class OLED : public ACBase {
     void setText(const char * s);
     void operator=(const char * str);
 };
+

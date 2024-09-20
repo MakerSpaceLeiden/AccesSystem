@@ -1,4 +1,5 @@
 #include "ACNode.h"
+#include "Machinestate.h"
 #include "REST/RestAPI.h"
 #include "REST/ApprovalAPI.h"
 
@@ -20,15 +21,16 @@ public:
     void pop();
     
     void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
-    void loop();
+    // void loop();
 
     void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
-
+    
+    MachineState machinestate;
+    MachineState::machinestate_t WAIT_FOR_PAIRING;
+    MachineState::machinestate_t PAIRING;
 protected:
     RestAPI * _restAPI;
     ApprovalAPI *_approvalAPI;
-    
 private:
-//    std::list<ACL> list;
 };
 #endif

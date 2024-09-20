@@ -8,6 +8,9 @@ typedef enum { NOERROR = 0, ERR_RETRYABLE = -1, ERR_FATAL = -2, ERR_REPAIR = -3,
 
 // URL of an https://github.com/MakerSpaceLeiden/makerspaceleiden-crm instance.
 //
+#ifndef TERMINAL_URL
+#define PAY_URL "https://my.crm.local:443/terminal/api"
+#endif
 #ifndef PAY_URL
 #define PAY_URL "https://my.crm.local:443/pettycash/api"
 #endif

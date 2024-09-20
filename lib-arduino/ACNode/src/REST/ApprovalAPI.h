@@ -30,6 +30,7 @@ public:
 class ApprovalDeck;
 class ApprovalAPI : public ACBase {
 public:
+    virtual const char *name() { return "ApprovalAPI"; };
     ApprovalAPI(RestAPI * r) : _restAPI(r), blob(NULL), identifier(0) {};
     
     ApprovalEntry * getEntry(const char * tag);
@@ -82,10 +83,11 @@ friend class ApprovalDeck;
 };
 
 class ApprovalDeck : public Deck {
-    void setApprovalAPI(ApprovalAPI * a) { _approvalAPI = a; };
+public:
+    ApprovalDeck(ACNodeBase * node, ApprovalAPI * a) : Deck(node), _approvalAPI(a) {};
+    virtual void render_pane(bool refresh);
 private:
     ApprovalAPI * _approvalAPI;
-    virtual void render_pane(bool refresh);
 };
 #endif
 

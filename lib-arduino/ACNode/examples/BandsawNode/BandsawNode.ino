@@ -21,7 +21,8 @@
 
    https://wiki.makerspaceleiden.nl/mediawiki/index.php/QR_lintzaag
 */
-#include <WhiteNodev108.h>
+// #include <WhiteNodev108.h>
+#include <BlackNodev111.h>
 
 #ifndef MACHINE
 #define MACHINE             "lintzaag"
@@ -41,19 +42,21 @@
 // password; just the characters of the password
 // itself.
 //
-// #define OTA_PASSWD_MD5  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
+// #define OTA_PASSWD_HASH  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
 //
 #ifndef OTA_PASSWD_HASH
 #error "An OTA password hash(md5) MUST be set. Sorry."
 #endif
+const char ota_password_hash[] = OTA_PASSWD_HASH;
 
-// WhiteNodev108 node = WhiteNodev108(MACHINE);
+
 BlackNodev111 node = BlackNodev111(MACHINE);
+// BlackNodev111 node = BlackNodev111(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 unsigned long bad_poweroff = 0, normal_poweroff = 0, normal_poweron = 0, idle_poweroff = 0;
 
 ButtonDebounce *interlockDetect, *motorCurrent, *onoffSwitchDetect;
-
+    
 // Extra state - when the safety contactor has actually been unlocked
 // but the RED button has not been pressed yet.
 //
@@ -75,17 +78,37 @@ const unsigned int MAX_SECS_IDLE = 3600;
 MachineState::machinestate_t SHUTTINGDOWN;
 
 static void tellOff(const char *msg) {
-  node.updateDisplay(node.machine, msg, "", "");
+  node.updateDisplay(msg, "", "");
+  Log.printf("Telling=off: %s\n", msg);
   for (int i = 0; i < 9; i++) {
     node.buzzerErr();
     delay(300);
   };
 }
 
+class MachineDeck : public Deck {
+public:
+    MachineDeck(BlackNodev111 * node) : Deck(node) {};
+    void render_pane(bool refresh) {
+        _display->clearDisplay();
+        _display->print_centred(MACHINE);
+        _display->printf("Operator OnOff Switch\n    %s\n", onoffSwitchDetect->state() ?
+                (interlockDetect->state() ? "unsafe(on)" : "on") : "off");
+                
+        _display->printf("Safety/Interlock\n    %s\n",
+                interlockDetect->state() == LOW ? "ok" : "broken");
+        
+        _display->printf("Motor Current/Voltage\n    I=%s V=%s(%s)\n",
+                motorCurrent->state() ? "yes" : "no",
+                node.getMonitoredOutput(RELAY_GPIO) ? "on": "off",
+                node.monitoredOutputIsOK(RELAY_GPIO)? "ok" : "FAIL"
+                );
+    }
+};
+
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n\n\n");
-  Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  Log.printf("\nBooting(): %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
 
   // Init the hardware and get it into a safe state.
   // Init the hardware and get it into a safe state.
@@ -148,10 +171,15 @@ void setup() {
     }
   }, CHANGE);
 
-  node.setOTAPasswordHash(OTA_PASSWD_HASH);
+  expandedPinMode(ONOFFSWITCH, INPUT);
+  onoffSwitchDetect = new ButtonDebounce(ONOFFSWITCH);
+
+  node.setOTAPasswordHash(ota_password_hash);
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
+  node.setNodeDeck(new MachineDeck(&node));
+  
   node.onReport([](JsonObject & report) {
     char * p = __FILE__;
     char * q = rindex(p,'/');
@@ -169,7 +197,7 @@ void setup() {
     if (current == RUNNING || current == POWERED) {
       // We do not show the 'OFF' button - we expect the user to use
       // the RED/Green on/off button of the safety contactor.
-      node.updateDisplay(node.machine, "", "", true);
+      node.updateDisplay("", "", true);
     };
     if (current == POWERED)
       node.updateDisplayStateMsg("Off with RED on back", 2);
@@ -192,7 +220,7 @@ void setup() {
       node.machinestate = ACTIVATED;
   });
 
-  Log.println("Starting loop(): " __FILE__ " " __DATE__ " " __TIME__);
+  Log.printf("Starting loop(): %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
 }
 
 void loop() {

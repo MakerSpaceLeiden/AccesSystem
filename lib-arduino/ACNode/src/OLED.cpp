@@ -23,8 +23,6 @@
 
 #include <OLED.h>
 
-const char * OLED::name() { return "OLED"; }
-
 void OLED::begin( const uint8_t i2c_addr, TwoWire * i2cbus) 
 {
       _display = new Adafruit_SSD1306(_width, _height, i2cbus, -1 /* no reset */);
