@@ -18,7 +18,6 @@ void Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
         print_centred((char*)bootmsg, false);
     };
     display();
-    Debug.println("LCD/OLED screen found and initialized.");
 }
 
 void Display::drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col) {

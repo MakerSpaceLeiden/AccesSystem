@@ -18,7 +18,7 @@ extern beat_t beat_absdelta(beat_t a, beat_t b);
 #define MAX_NAME       16
 #define MAX_TOPIC      ((MAX_NAME +1) * 3  + 1)
 
-#define FILE2FIRMWARE(x) (rindex((x),'/') ? rindex((x),'/') : (x))
+#define FILE2FIRMWARE(x) (rindex((x),'/') ? rindex((x),'/')+1 : (x))
 
 // When defined - dump the average time spend in the loop() for each
 // of the modules every 100 seconds.

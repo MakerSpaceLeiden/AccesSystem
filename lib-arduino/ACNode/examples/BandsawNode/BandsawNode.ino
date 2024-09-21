@@ -117,11 +117,11 @@ void setup() {
   node.setMonitoredOutput(RELAY_GPIO, 0);
 
   ACTIVATED =  node.machinestate.addState("Waiting for Safety", LED::LED_ON,
-                                          MAX_SECS_WAIT_FOR_RED_BUTTON * 1000,  MachineState::WAITINGFORCARD);
+                                          MAX_SECS_WAIT_FOR_RED_BUTTON * 1000,  MachineState::WAITINGFORCARD, false);
   RUNNING = node.machinestate.addState("Saw Running", LED::LED_ON,
-                                       MachineState::NEVER, MachineState::WAITINGFORCARD);
+                                       MachineState::NEVER, MachineState::WAITINGFORCARD, false);
   SHUTTINGDOWN =  node.machinestate.addState("Locking machine",
-                  LED::LED_ON, 60 * 1000, MachineState::WAITINGFORCARD);
+                  LED::LED_ON, 60 * 1000, MachineState::WAITINGFORCARD, false);
 
   expandedPinMode(INTERLOCK, INPUT);
   interlockDetect = new ButtonDebounce(INTERLOCK);

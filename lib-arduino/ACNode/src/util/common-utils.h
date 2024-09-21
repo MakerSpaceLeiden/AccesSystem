@@ -41,6 +41,7 @@ extern void scan_i2c();
         }; 
 #endif
 
+
 #ifdef ESP32
 extern double coreTemp();
 #endif

@@ -31,14 +31,17 @@ void SNTPDeck::render_pane(bool refresh) {
     char ds[10], ts[10];
     strftime(ds,sizeof(ds),"%Y-%m-%d",t);
     strftime(ts,sizeof(ts),"%H:%M:%S",t);
-    sntp_sync_status_t  s = sntp_get_sync_status();
     _display->println("   -- SNTP --");
     _display->printf("Date :%s\n",ds);
     _display->printf("Time :%s\n",ts);
+    
+#if 0 // ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 0, 0)
+    sntp_sync_status_t  s = sntp_get_sync_status();
     _display->printf("sNTP :%s\n",esp_sntp_enabled() ?
                      (s == SNTP_SYNC_STATUS_IN_PROGRESS ? "adjusting" :
                       (s == SNTP_SYNC_STATUS_COMPLETED ? "OK" : "Pending")
                       ) : "OFF");
+
     for(int i = 0, j = 0; i < SNTP_MAX_SERVERS&& j < 5; i++) {
         char buff[INET6_ADDRSTRLEN];
         const char * s = esp_sntp_getservername(i);
@@ -52,6 +55,7 @@ void SNTPDeck::render_pane(bool refresh) {
             j++;
         };
     };
+#endif
 };
 
 void FirmwareDeck::render_pane(bool refresh) {

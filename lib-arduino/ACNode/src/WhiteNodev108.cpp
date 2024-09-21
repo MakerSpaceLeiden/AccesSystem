@@ -102,13 +102,18 @@ void WhiteNodev108::begin() {
     //
     _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
     addHandler(_reader);
+
+    if (!_display && (_display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
+        _display->setRotation(2); // for purple/white boards - OLED is upside down.
+        _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"");
+        Log.println("LCD/OLED screen found and initialized.");
+    } else {
+        Log.println("No LCD/OLED screen found");
+    };
     
     OTAWithDisplay * ota = new OTAWithDisplay(OTA_PASSWD_HASH, _display, moi);
     ota->setOTAOK([&](){
-        return  (
-                 (machinestate <= MachineState::WAITINGFORCARD) ||
-                 (machinestate == SCREENSAVER)
-                 );
+        return machinestate.safeForOTA();
     });
     ota->setPreOTASecretWiper([](){
         Log.println("*** NOT IMPLEMENTED ***");
@@ -128,14 +133,6 @@ void WhiteNodev108::begin() {
     if (strstr(machine,"test"))
         _deskCtrl.addDeck(new ButtonsDeck(this, iostates));
     
-    if (!_display && (_display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
-        _display->setRotation(2); // for purple/white boards - OLED is upside down.
-        _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"");
-        Log.println("LCD/OLED screen found and initialized.");
-    } else {
-        Log.println("No LCD/OLED screen found");
-    };
-    
     if (_wired)
         ETH.begin(WN_ETH_PHY_ADDR, WN_ETH_PHY_POWER, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_TYPE, WN_ETH_CLK_MODE);
     
@@ -147,8 +144,9 @@ void WhiteNodev108::begin() {
     setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
     tzset();
 #endif
+#if 0 // ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 0, 0)
     esp_sntp_servermode_dhcp(true);
-    
+#endif
     offButton = new ButtonDebounce(OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
         Debug.printf("OFF button %s\n",newState ? "released" : "pressed");
@@ -180,7 +178,7 @@ void WhiteNodev108::begin() {
             machinestate = MachineState::WAITINGFORCARD;
             return;
         };
-        if (machinestate == MachineState::WAITINGFORCARD && newState == LOW) {
+        if (machinestate.safeForOTA() /*  MachineState::WAITINGFORCARD */ && newState == LOW && machinestate != INFODISPLAY) {
             Debug.println("Menu press on INFO");
             machinestate = INFODISPLAY;
             return;
@@ -189,8 +187,10 @@ void WhiteNodev108::begin() {
             if (!_deskCtrl.next()) {
                 _deskCtrl.close();
                 machinestate = MachineState::WAITINGFORCARD;
-                Debug.println("At last page.");
-            };
+                Debug.println("At last page");
+            } else {
+                Debug.println("Next page");
+            }
             return;
         };
         if (_menuCallBack &&

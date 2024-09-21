@@ -37,7 +37,7 @@
 
 #define DEFAULT_PEM_MAX (4*1024) // larger than 1000-ish cert and 100-150 byte key.
 static const char seed[] = "selfsign" __DATE__ __TIME__;
-static const char TAG[] = "msl-pay-7seg";
+static const char TAG[] = "msl-selfsign-acnode";
 
 int pem2der(unsigned char * buff) {
     size_t len = strlen((const char*) buff);

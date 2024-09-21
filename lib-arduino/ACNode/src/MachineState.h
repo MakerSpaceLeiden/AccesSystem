@@ -72,6 +72,7 @@ private:
         machinestate_t failStateOnTimeout;   /* what state we transition to on timeout. */
         unsigned long timeoutTransitions;
         unsigned long autoReportCycle;
+        bool safeForOTA; // Can we safely allow a resetting Over the Air update (OTA) ?
         
         THandlerFunction_OnLoopCB onLoopCB;
         THandlerFunction_OnChangeCB onChangeCB;
@@ -106,7 +107,9 @@ public:
     
     void operator=(machinestate_t s);
     void setState(machinestate_t s);
-    
+
+    bool safeForOTA();
+
 #if 0
     bool operator <(machinestate_t s) { return s > machinestate; };
     bool operator ==(machinestate_t s) { return s == machinestate; };
@@ -114,7 +117,6 @@ public:
     bool operator !=(machinestate_t s) { return s != machinestate; };
     bool operator >(machinestate_t s) { return s < machinestate; };
 #endif
-    
     void setOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
     
     void setOnChangeCallback(machinestate_t state, THandlerFunction_OnChangeCB onChangeCB);
@@ -127,7 +129,7 @@ public:
     
     machinestate_t addState(const char * label, time_t timeout, machinestate_t nextstate);
     
-    machinestate_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate);
+    machinestate_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA = true);
     
     time_t secondsInThisState();
     time_t secondsLeftInThisState();

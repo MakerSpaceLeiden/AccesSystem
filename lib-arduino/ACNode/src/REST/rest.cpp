@@ -24,6 +24,7 @@
 #include "REST/rest.h"
 #include "REST/geneckey.h"
 #include "REST/selfsign.h"
+#include "REST/jwt.h"
 #include "util/common-utils.h"
 
 #ifndef HTTP_TIMEOUT
@@ -65,7 +66,6 @@ bool getks(Preferences keystore, const char * key, char ** dst) {
     (*dst)[len] = 0;
     return true;
 }
-
 
 rest_ret_t setupAuth(const char * terminalName) {
     mbedtls_x509write_cert crt;
@@ -110,7 +110,7 @@ rest_ret_t setupAuth(const char * terminalName) {
             Log.println("Sign/DER error. Aborting");
             return ERR_RETRYABLE;
         };
-        Log.printf("Not yet paied. Need working network.\n", version);
+        Log.printf("Not yet paired. Need working network for this\n", version);
     } else {
         Log.printf("Using existing keys (keystore version 0x%03x), fully configured\n", version);
         paired = true;
@@ -120,6 +120,16 @@ rest_ret_t setupAuth(const char * terminalName) {
     
     Log.printf("Fingerprint %s for <%s> (as shown in CRM)\n",sha256toHEX(sha256_client, tmp), terminalName ? terminalName : "<unset>" );
 
+    if (paired) {
+        JsonDocument d; 
+        char buff[2024];
+
+        d["waarde"] = "weerloos";
+        
+        String * s = generateSignedES256JWT(d, client_key_as_pem );
+        Log.print("JWT:\n");
+        Log.println(s ? *s : "<FAIL>");
+    };
     return paired ? NOERROR_OK : NOERROR;
 }
 
@@ -404,6 +414,24 @@ exit:
     return ret;
 };
 
+static const char * h2s(int i) {
+    switch(i) {
+        case HTTPC_ERROR_CONNECTION_REFUSED  :return "Connection refused";
+        case HTTPC_ERROR_SEND_HEADER_FAILED  :return "Could not send request";
+        case HTTPC_ERROR_SEND_PAYLOAD_FAILED :return "Could not send body";
+        case HTTPC_ERROR_NOT_CONNECTED       :return "Not Connected";
+        case HTTPC_ERROR_CONNECTION_LOST     :return "Connection lost";
+        case HTTPC_ERROR_NO_STREAM           :return "No Stream";
+        case HTTPC_ERROR_NO_HTTP_SERVER      :return "No HTTP";
+        case HTTPC_ERROR_TOO_LESS_RAM        :return "Out of memory";
+        case HTTPC_ERROR_ENCODING            :return "Encoding fault";
+        case HTTPC_ERROR_STREAM_WRITE        :return "Stream write error";
+        case HTTPC_ERROR_READ_TIMEOUT        :return "Read timeout";
+        default: break;
+    };
+    return "Unknown HTTP error";
+};
+
 size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret) {
     WiFiClientSecure client;
     unsigned char sha256[32];
@@ -427,10 +455,11 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     };
     https.setTimeout(HTTP_TIMEOUT);
     https.setUserAgent(terminalName);
-    
+
+    Debug.printf("URL: %s\n", url);
     int httpCode = https.GET();
     if (httpCode < 0) {
-        Log.println("raw_rest - network issue");
+        Log.printf("raw_rest - network issue: %s\n", h2s(httpCode));
         goto exit;
     }
     

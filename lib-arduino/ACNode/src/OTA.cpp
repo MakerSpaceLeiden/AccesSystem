@@ -86,11 +86,12 @@ void OTAWithDisplay::begin() {
             for(int i = 0; i < 100; i++) { ArduinoOTA.end(); delay(20); };
             return;
         };
-        
-        _display->updateDisplay(ArduinoOTA.getHostname().c_str(), "","",true);
-        _display->updateDisplayStateMsg("updating firmware",0);
-        _display->updateDisplayProgressbar(0,true);
-        _display->setDisplayScreensaver(false);
+        if (_display) {
+            _display->updateDisplay("OTA","","",true);
+            _display->updateDisplayStateMsg("updating firmware",0);
+            _display->updateDisplayProgressbar(0,true);
+            _display->setDisplayScreensaver(false);
+        };
         
         if (strstr(_acnodebase->moi,"test"))
             Log.println("OTA process started (Not wiping private keys in test ode).");
@@ -106,8 +107,10 @@ void OTAWithDisplay::begin() {
     });
     ArduinoOTA.onEnd([&]() {
         if (_otaOK) {
-            _display->updateDisplayStateMsg("ok, rebooting",1);
-            _display->updateDisplayProgressbar(100);
+            if (_display) {
+                _display->updateDisplayStateMsg("ok, rebooting",1);
+                _display->updateDisplayProgressbar(100);
+            };
             Serial.println("..100% Done");
             Log.println("OTA process completed, rebooting");
         } else {
@@ -127,7 +130,8 @@ void OTAWithDisplay::begin() {
             lp = p;
             int perc = (progress / (total / 100));
             Serial.printf("..%u%%", perc);
-            _display->updateDisplayProgressbar(perc);
+            if (_display)
+                _display->updateDisplayProgressbar(perc);
         };
     });
     ArduinoOTA.onError([&](ota_error_t error) {
@@ -145,8 +149,8 @@ void OTAWithDisplay::begin() {
         // change state; to prevent us messing with the
         // current machine state or the display.
         //
-        if (_otaOK) {
-            _display->updateDisplay(ArduinoOTA.getHostname().c_str(), "","",true);
+        if (_otaOK && _display) {
+            _display->updateDisplay("OTA","","",true);
             _display->updateDisplayStateMsg("update failed",0);
             _display->updateDisplayStateMsg(cause,1);
             _display->updateDisplayProgressbar(0, true);

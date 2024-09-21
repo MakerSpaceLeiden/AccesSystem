@@ -19,6 +19,7 @@ MachineState::state_t * MachineState::_initState(uint8_t state,
         .failStateOnTimeout = nextstate,
         .timeoutTransitions = 0,
         .autoReportCycle = 0,
+        .safeForOTA = true,
         .onLoopCB = nullptr,
         .onChangeCB = nullptr,
         .onTimeoutCB = nullptr,
@@ -50,6 +51,8 @@ MachineState::state_t * MachineState::_initState(uint8_t state, MachineState::st
 const char * MachineState::label()  {
     return label(machinestate);
 }
+
+bool MachineState::safeForOTA() { return _state2stateStruct[machinestate]->safeForOTA;};
 
 const char * MachineState::label(uint8_t state)  {
     if (_state2stateStruct[state] && _state2stateStruct[state] ->label)
@@ -120,7 +123,7 @@ MachineState::machinestate_t MachineState::addState(const char * label, time_t t
     });
 }
 
-MachineState::machinestate_t MachineState::addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate) {
+MachineState::machinestate_t MachineState::addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA) {
     state_t s = {
         .label = label,
         .ledState = ledState,
@@ -128,6 +131,7 @@ MachineState::machinestate_t MachineState::addState(const char * label, LED::led
         .failStateOnTimeout = nextstate,
         .timeoutTransitions = 0,
         .autoReportCycle = 0,
+        .safeForOTA = isSafeForOTA,
         .onLoopCB = nullptr,
         .onChangeCB = nullptr,
         .onTimeoutCB = nullptr,
