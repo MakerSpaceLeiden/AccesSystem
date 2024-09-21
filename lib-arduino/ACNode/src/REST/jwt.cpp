@@ -122,7 +122,7 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem 
 
     char pubkey[ 2 * strlen(private_key_as_pem)];
     if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey)))
-        hdr["pub"] = shortkey(pubkey);
+        hdr["kid"] = shortkey(pubkey);
 
     nHdrSerialized = serializeJson(hdr, hdrSerialized);
     nPlSerialized = serializeJson(payload, plSerialized);

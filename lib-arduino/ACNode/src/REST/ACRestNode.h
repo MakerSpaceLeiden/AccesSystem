@@ -26,8 +26,8 @@ public:
     void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
     
     MachineState machinestate;
-    MachineState::machinestate_t WAIT_FOR_PAIRING;
-    MachineState::machinestate_t PAIRING;
+    MachineState::machinestate_t WAIT_FOR_PAIRING, PAIRING_FAILED, PAIRING;
+
 protected:
     RestAPI * _restAPI;
     ApprovalAPI *_approvalAPI;

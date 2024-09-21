@@ -196,7 +196,7 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
     //
     Log.println("MDNS Responder started");
     MDNS.begin(moi);
-    Log.printf("Host details %s (%s)\n", moi, String(localIP()).c_str());
+    Log.printf("Host details %s (%s)\n", moi, localIP().toString().c_str());
 }
 
 void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button)
@@ -217,7 +217,8 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     checkClearEEPromAndCacheButtonPressed(clear_button);
     
 #ifdef ESP32
-    if (_wired)
+    // if (_wired)
+    if (true)
         WiFi.onEvent(WiFiEvent);
 #endif
     
@@ -263,13 +264,11 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     if (!_wired && !isConnected()) {
         // Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
         // configPortal();
-        Log.printf("No connection after %d seconds (ssid=%s). Rebooting.\n", del, WiFi.SSID().c_str());
-        Log.println("Rebooting...");
-        delay(1000);
-        ESP.restart();
+        Log.printf("No connection after %d seconds (ssid=%s)\n", del, WiFi.SSID().c_str());
     }
-    if(_ssid)
-        Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
+    else
+        if(_ssid)
+            Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
     
     _espClient = WiFiClient();
     _client = PubSubClient(_espClient);
@@ -282,8 +281,8 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
 
     mqttlogStream = new MqttStream(&_client, topic);    
-    // const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(*mqttlogStream);
-    // Log.addPrintStream(mh);
+    const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(*mqttlogStream);
+    Log.addPrintStream(mh);
 
     if (moi == NULL || *moi == 0)
         strncpy(moi,"no-mqtt-id",sizeof(moi));
@@ -294,11 +293,10 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     _client.setServer(mqtt_server, mqtt_port);
     Log.println("PubSubClient initialized");
 
-#if 0
-    reconnectMQTT();
-    mqttLoop();
-#endif
-    
+    if (isConnected()) {
+        reconnectMQTT();
+        mqttLoop();
+    };
 
 #ifdef CONFIGAP
     configBegin();
@@ -393,9 +391,6 @@ void ACNodeBase::loop() {
         lastconnectedstate = connectedstate;
     };
     
-    Log.loop();
-    Debug.loop();
-    
     if(isConnected())
         mqttLoop();
     
@@ -430,6 +425,10 @@ void ACNodeBase::loop() {
         (*it)->loop();
     }
 #endif
+
+    Log.loop();
+    Debug.loop();
+
 }
 
 void ACNodeBase::delayedReboot() {
@@ -506,11 +505,14 @@ const char * ACNodeBase::state2str(int state) {
 
 
 void ACNodeBase::reconnectMQTT() {
+    if (!isConnected())
+        return;
+    
     if (_client.getBufferSize() < MAX_MSG)
         if (!_client.setBufferSize(MAX_MSG))
             Log.println("WARNING - buffer size could not be increased to a large enough value. All things may go wrong.");
     
-    Log.printf("Connecting <%s> to %s:%d (MQTT State : %s)\n",
+    Log.printf("Connecting <%s> to %s:%d (Current MQTT State : %s)\n",
                moi, mqtt_server, mqtt_port,
                state2str(_client.state()));
     
@@ -519,10 +521,10 @@ void ACNodeBase::reconnectMQTT() {
         Log.println(state2str(_client.state()));
         return;
     }
-    _client.loop();
-    
     Debug.println("(re)connected ");
+    
     _mqtt_reconnects ++;
+    _client.loop();
 }
 
 

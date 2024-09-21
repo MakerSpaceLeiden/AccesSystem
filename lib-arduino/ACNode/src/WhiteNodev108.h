@@ -117,7 +117,8 @@ public:
     void setMenuCallback(ButtonCallback callback,int mode = CHANGE);
     
     void setOnChangeCallback(MachineState::machinestate_t state, MachineState::THandlerFunction_OnChangeCB onChangeCB);
-    
+    void setIdleCallback(MachineState::machinestate_t state, MachineState::THandlerFunction_OnChangeCB onIdleCB);
+
     void buzzer(bool onOff);
     void buzzerOk();
     void buzzerErr();

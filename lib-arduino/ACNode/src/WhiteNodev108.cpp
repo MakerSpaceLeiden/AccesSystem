@@ -139,13 +139,15 @@ void WhiteNodev108::begin() {
 #if 0
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(NTP_POOL);
     esp_netif_sntp_init(&config);
+#if 0 // ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 0, 0)
+    esp_sntp_servermode_dhcp(true);
+#endif
 #else
+#define _(x) #x
+    Debug.print("NTP Pool: "); Debug.println(_(NTP_POOL));
     configTime(0, 0, NTP_POOL);
     setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
     tzset();
-#endif
-#if 0 // ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 0, 0)
-    esp_sntp_servermode_dhcp(true);
 #endif
     offButton = new ButtonDebounce(OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
@@ -208,6 +210,8 @@ void WhiteNodev108::begin() {
         errorLed->set(machinestate.ledState());
         
         _display->setDisplayScreensaver(current == SCREENSAVER);
+        _display->updateDisplayStateMsg(machinestate.label());
+
         if (current == FAULTED) {
             _display->updateDisplay(machine, "", "", true);
             Debug.println("Machine poweron disabled - machine on/off switch in the 'on' position.");
@@ -224,8 +228,6 @@ void WhiteNodev108::begin() {
         }
         else if (_onChangeCB && (current == _onChangeState || _onChangeState ==MachineState::ALL_STATES))
             _onChangeCB(last, current);
-        
-        _display->updateDisplayStateMsg(machinestate.label());
     });
     
     if (_reader) _reader->onSwipe([&](const char *tag) -> ACBase::cmd_result_t {

@@ -233,6 +233,10 @@ const unsigned char * ApprovalAPI::getEntryPtr(unsigned char * saltedtag) {
     return NULL;
 }
 
+bool ApprovalAPI::canApprove() {
+    return blob ? true : false;
+}
+
 ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     if (!blob) {
         Log.println("getEntry: No data (yet)");

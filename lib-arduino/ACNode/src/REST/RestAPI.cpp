@@ -11,7 +11,7 @@ void RestAPI::begin() {
     
     switch(setupAuth(_terminalName)) {
         case NOERROR_OK:
-            Debug.println("*** paired **** can continue without a network if need be.");
+            Debug.println("Paired; can continue without a network if need be.");
             paired = true;
             break;
         case NOERROR:
@@ -94,16 +94,28 @@ JsonDocument RestAPI::get(const char *url) {
 
 void RestAPI::loop()
 {
+    rest_ret_t ret = NOERROR;
+
     // shortcicuit once we're completely done. Reregistering needs a reset/active state change.
     if (md == DONE)
         return;
     
     static unsigned long lst = millis(), freezeout = 0;
+    const unsigned long MAX_FREEZEOUT = 5 * 60 * 1000;
+    if (freezeout > MAX_FREEZEOUT)
+        freezeout = MAX_FREEZEOUT;
+
     if (freezeout && (millis() - lst < freezeout))
         return;
+
     lst = millis();
         
-    rest_ret_t ret = NOERROR;
+    if (!eth_connected()) {
+        Debug.println("RestAPI: not connected - retry later");
+        ret = ERR_RETRYABLE;
+        freezeout = (freezeout + 1 * 1000) *2;
+        return;
+    };
     
     switch (md) {
         case BOOT:
@@ -172,7 +184,7 @@ void RestAPI::loop()
             Log.printf("Unexpected state for RestAPI: %d\n", md);
             break;
     };
-    
+   
     switch(ret) {
         case NOERROR:
         case NOERROR_OK:
@@ -180,13 +192,13 @@ void RestAPI::loop()
             return;
             break;
         case ERR_REPAIR:
-            freezeout = (freezeout + 5000) *2;
+            freezeout = (freezeout + 250) *2;
             paired = false;
             Log.println("Unpairing and re-starting registration");
             md = WAITING_FOR_NTP;
             break;
         case ERR_RETRYABLE:
-            freezeout = (freezeout + 10000) *2;
+            freezeout = (freezeout + 1000) *2;
             Log.println("Re-trying registration");
             md = WAITING_FOR_NTP;
             break;

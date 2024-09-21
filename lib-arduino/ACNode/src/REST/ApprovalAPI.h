@@ -34,6 +34,7 @@ public:
     ApprovalAPI(RestAPI * r) : _restAPI(r), blob(NULL), identifier(0) {};
     
     ApprovalEntry * getEntry(const char * tag);
+    bool canApprove();
     
     void begin();
     void loop();

@@ -434,6 +434,7 @@ typedef struct publish_rec {
     bool raw;
 } publish_rec_t;
 
+#define MAX_RQ_QUEUELEN (15)
 publish_rec_t *publish_queue = NULL;
 
 void ACNode::send(const char * topic, const char * payload, bool _raw) {
@@ -475,9 +476,15 @@ void ACNode::send(const char * topic, const char * payload, bool _raw) {
         p = &(*p)->nxt;
         i++;
     };
+    if (i > MAX_RQ_QUEUELEN) {
+        // Strip the oldest one.
+        publish_rec_t * todel = publish_queue;
+        publish_queue = publish_queue->nxt;
+        free(todel->topic);
+        free(todel->payload);
+        free(todel);
+    };
     *p = rec;
-    
-    //    Serial.printf("Queued at # %d\n",i);
 }
 
 void ACNode::reconnectMQTT() {

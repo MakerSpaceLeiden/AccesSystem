@@ -34,7 +34,7 @@ void RFID::processAndRateLimitCard(unsigned char * bintag, size_t len) {
         
         if (!_swipe_cb || (_swipe_cb(lasttag) != ACNodeBase::CMD_CLAIMED)) {
             // Simple approval request; default is to 'energise' the contactor on 'machine'.
-            Log.println("Requesting approval");
+            Debug.println("Requesting approval");
             _acnodebase->request_approval(lasttag);
         };
     } else {;

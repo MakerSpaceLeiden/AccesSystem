@@ -1,4 +1,5 @@
 #include "Rest/ACRestNode.h"
+#include "Rest/rest.h"
 
 ACNodeRest::ACNodeRest(const char * machine, const char * ssid, const char * ssid_passwd) : super(machine,ssid,ssid_passwd) {
     CONSTS();
@@ -16,14 +17,24 @@ void ACNodeRest::CONSTS() {
 
 void ACNodeRest::pop() {
     super::pop();
+    _restAPI = new RestAPI();
+    _approvalAPI = new ApprovalAPI(_restAPI);
 
-    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 20*1000, MachineState::OUTOFORDER);
+    PAIRING_FAILED = machinestate.addState("Pairing Failed",  LED::LED_ERROR, 5*1000, MachineState::OUTOFORDER);
+
+    machinestate.setOnChangeCallback(PAIRING_FAILED, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+        if (_approvalAPI->canApprove()) {
+            Log.println("Could not check pairing - continuing on cache");
+            machinestate = MachineState::WAITINGFORCARD;
+        };
+    });
+
+    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 10*1000, PAIRING_FAILED);
     WAIT_FOR_PAIRING = machinestate.addState("Needs to pair",  LED::LED_ERROR, 20*1000, MachineState::OUTOFORDER);
     
     machinestate.setState(MachineState::BOOTING);
     addHandler(&machinestate);
 
-    _restAPI = new RestAPI();
     _restAPI->setTerminalname(machine);
     _restAPI->onPairingRequested([this](){
         Log.println("Waiting for pairing");
@@ -33,14 +44,18 @@ void ACNodeRest::pop() {
         Log.println("Pairing OK");
         machinestate = MachineState::WAITINGFORCARD;
     });
-    addHandler(_restAPI);
     
-    _approvalAPI = new ApprovalAPI(_restAPI);
+    addHandler(_restAPI);
     addHandler(_approvalAPI);
 }
 
 void ACNodeRest::begin(eth_board_t board, uint8_t clear_button) {
     super::begin(board,clear_button);
+    
+    if (!isConnected()) {
+        Log.println("Offline mode");
+        machinestate = MachineState::WAITINGFORCARD;
+    };
 }
 
 void ACNodeRest::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) {        
@@ -63,7 +78,20 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
         _approvalAPI->scheduleImmediateUpdate();
         _deny++;
     } else {
-        Log.printf("Received OK to power on %s for %s (%d & %d)\n", machine, e->name.c_str(), e->has, e->needs);
+        Log.printf("Received OK to power on %s for %s\n", machine, e->name.c_str()); // , e->has, e->needs);
+#if 0
+        JsonDocument payload;
+        payload["machine"] = machine;
+        payload["member"] = e->name;
+        payload["action"] = "power-on";
+        payload["permission"] = true;
+        String *res = jwt_sign(payload);
+        if (res) {
+            _client.publish("ac/jwt", res->c_str());
+            delete res;
+        };
+#endif
+        
         if (_approved_callback) {
             _approved_callback(machine);
         };

@@ -28,6 +28,7 @@ public:
     void begin();
     void loop();
     bool ready() { return FULLY_REGISTERED == md; };
+    
     ACBase::cmd_result_t handleTagSwipe(const char * tag);
     
     typedef std::function<void(void)> THandlerFunction_NotifyPair;

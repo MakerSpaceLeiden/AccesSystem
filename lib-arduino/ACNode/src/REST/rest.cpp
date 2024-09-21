@@ -52,6 +52,25 @@ const char * stationname = "unset";
 const unsigned short KS_VERSION = 0x100;
 
 
+static const char * h2s(int i) {
+    switch(i) {
+        case HTTPC_ERROR_CONNECTION_REFUSED  :return "Connection refused";
+        case HTTPC_ERROR_SEND_HEADER_FAILED  :return "Could not send request";
+        case HTTPC_ERROR_SEND_PAYLOAD_FAILED :return "Could not send body";
+        case HTTPC_ERROR_NOT_CONNECTED       :return "Not Connected";
+        case HTTPC_ERROR_CONNECTION_LOST     :return "Connection lost";
+        case HTTPC_ERROR_NO_STREAM           :return "No Stream";
+        case HTTPC_ERROR_NO_HTTP_SERVER      :return "No HTTP";
+        case HTTPC_ERROR_TOO_LESS_RAM        :return "Out of memory";
+        case HTTPC_ERROR_ENCODING            :return "Encoding fault";
+        case HTTPC_ERROR_STREAM_WRITE        :return "Stream write error";
+        case HTTPC_ERROR_READ_TIMEOUT        :return "Read timeout";
+        default: break;
+    };
+    return "Unknown HTTP error";
+};
+
+
 #define updateDisplay_progressText(x) { Log.println(x); }
 #define updateDisplay()
 #define displayForceShowError(x) { Log.println(x); }
@@ -120,17 +139,11 @@ rest_ret_t setupAuth(const char * terminalName) {
     
     Log.printf("Fingerprint %s for <%s> (as shown in CRM)\n",sha256toHEX(sha256_client, tmp), terminalName ? terminalName : "<unset>" );
 
-    if (paired) {
-        JsonDocument d; 
-        char buff[2024];
-
-        d["waarde"] = "weerloos";
-        
-        String * s = generateSignedES256JWT(d, client_key_as_pem );
-        Log.print("JWT:\n");
-        Log.println(s ? *s : "<FAIL>");
-    };
     return paired ? NOERROR_OK : NOERROR;
+}
+
+String * jwt_sign(JsonDocument payload) {
+    return generateSignedES256JWT(payload, client_key_as_pem);
 }
 
 void wipekeys() {
@@ -225,8 +238,8 @@ rest_ret_t registerDevice(const char * terminalName) {
         Log.println("Server changed mid registration. Aborting");
         ret = ERR_REPAIR;
         goto exit;
-    }
-    
+    };
+
     if (httpCode == HTTP_CODE_OK) {
         Log.printf("We're known/paired");
         // JSON back with name/label, etc.
@@ -242,13 +255,17 @@ rest_ret_t registerDevice(const char * terminalName) {
         // https.getString().c_str());
         ret = ERR_FATAL;
         goto exit;
+    } 
+    else if (httpCode == HTTPC_ERROR_CONNECTION_REFUSED) {
+            Log.printf("Register device failed - likely a network problem");
+            ret = ERR_RETRYABLE;
+            goto exit;
     } else {
         Log.printf("Not gotten the OK(%d)/HTTP_CODE_UNAUTHORIZED(%d) expected; but %d\n", HTTP_CODE_OK, HTTP_CODE_UNAUTHORIZED, httpCode);
         // https.getString().c_str());
         ret = ERR_REPAIR;
         goto exit;
     };
-    
 exit:
     https.end();
     client.stop();
@@ -312,27 +329,28 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     
     peer = client.getPeerCertificate();
     mbedtls_sha256_ret(peer->raw.p, peer->raw.len, tmp, 0);
+
     if (memcmp(tmp, sha256_server, 32)) {
         Log.println("Server changed mid registration. Aborting");
         ret = ERR_REPAIR;
         goto exit;
     }
     
+    // make sure we get a fresh nonce. So it cannot be a nonce timeout.
+    // Or should we display, to the user, some error to hint that
+    // his/her tag may not be enabled in the CRM - e.g. detect this
+    // on the httpCode and distinguish from an old nonce. Requires
+    // the 401's for a stale nonce and no-correlation on the backend
+    // to change.
+    //
     if (httpCode != HTTP_CODE_OK) {
         Log.println("Failed to register");
-        // make sure we get a fresh nonce. So it cannot be a nonce timeout.
-        // Or should we display, to the user, some error to hint that
-        // his/her tag may not be enabled in the CRM - e.g. detect this
-        // on the httpCode and distinguish from an old nonce. Requires
-        // the 401's for a stale nonce and no-correlation on the backend
-        // to change.
-        //
-        ret = ERR_REPAIR;
+        ret = (httpCode == HTTPC_ERROR_CONNECTION_REFUSED) ? ERR_RETRYABLE : ERR_REPAIR;
         goto exit;
     }
     
-    Log.println("Registration was accepted");
-    
+    Log.println("Registration was accepted - we got a nonce");
+
     mbedtls_sha256_init(&sha_ctx);
     mbedtls_sha256_starts_ret(&sha_ctx, 0);
     mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
@@ -341,6 +359,10 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     sha256toHEX(sha256, (char*)tmp);
     mbedtls_sha256_free(&sha_ctx);
     
+    // Compare nonce from server with locally calculated noce as
+    // to confirm we are talking to a server that at least can
+    // prove it also knows our shared secret (the tag)
+    //
     if (!https.getString().equalsIgnoreCase((char*)tmp)) {
         Log.println("Registered OK - but confirmation did not compute. Aborted.");
         ret = ERR_REPAIR;
@@ -412,24 +434,6 @@ exit:
     https.end();
     client.stop();
     return ret;
-};
-
-static const char * h2s(int i) {
-    switch(i) {
-        case HTTPC_ERROR_CONNECTION_REFUSED  :return "Connection refused";
-        case HTTPC_ERROR_SEND_HEADER_FAILED  :return "Could not send request";
-        case HTTPC_ERROR_SEND_PAYLOAD_FAILED :return "Could not send body";
-        case HTTPC_ERROR_NOT_CONNECTED       :return "Not Connected";
-        case HTTPC_ERROR_CONNECTION_LOST     :return "Connection lost";
-        case HTTPC_ERROR_NO_STREAM           :return "No Stream";
-        case HTTPC_ERROR_NO_HTTP_SERVER      :return "No HTTP";
-        case HTTPC_ERROR_TOO_LESS_RAM        :return "Out of memory";
-        case HTTPC_ERROR_ENCODING            :return "Encoding fault";
-        case HTTPC_ERROR_STREAM_WRITE        :return "Stream write error";
-        case HTTPC_ERROR_READ_TIMEOUT        :return "Read timeout";
-        default: break;
-    };
-    return "Unknown HTTP error";
 };
 
 size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret) {
