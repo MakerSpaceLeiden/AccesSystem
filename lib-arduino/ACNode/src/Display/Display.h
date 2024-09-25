@@ -3,9 +3,11 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SH110X.h>
+#include "Display/fonts.h"
 
 #ifndef ADAFRUIT_GFX_DEGREE_SYMBOL
-#define ADAFRUIT_GFX_DEGREE_SYMBOL (247)
+// #define ADAFRUIT_GFX_DEGREE_SYMBOL (247)
+#define ADAFRUIT_GFX_DEGREE_SYMBOL (0x5e) // ^
 #endif
 
 #include "ACBase.h"
@@ -34,6 +36,9 @@ public:
     void drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col);
     void print_centred(char * title, bool titlelines = true);
     void print_centered_QR(char * titleOrNull, char * url);
+    
+    uint16_t widthOfString(String str);
+
 };
 
 
