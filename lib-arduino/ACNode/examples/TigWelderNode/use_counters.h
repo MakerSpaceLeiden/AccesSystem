@@ -2,9 +2,11 @@
 // welding (and in the future, perhaps when a bottle was last
 // changed).
 //
-#define WRE_IDENT "WR01"
+#include "EEPROM.h"
+
+#define WRE_IDENT "WR02"
 #define WRE_VERSION (*(unsigned int*)WRE_IDENT)
-EEPROMClass welding_stats = EEPROMClass(WRE_IDENT);
+EEPROMClass welding_stats(WRE_IDENT);
 
 typedef struct welding_rec {
     unsigned int version;
@@ -30,8 +32,14 @@ static void welding_init() {
     };
     welding_stats.writeBytes(0, &wr, sizeof(wr));
     welding_stats.commit();
+    
+    welding_stats.readBytes(0, &wr, sizeof(wr));
+    if (n >= sizeof(wr) && wr.version != WRE_VERSION) {
+        Log.println("***** Welding EEPROM corrupt");
+        return;
+    };
 
-    Log.println("Welding EEPROM data reset");
+    Log.println("Welding counters in EEPROM reset");
 };
 
 static void welding_save(bool force = false) {

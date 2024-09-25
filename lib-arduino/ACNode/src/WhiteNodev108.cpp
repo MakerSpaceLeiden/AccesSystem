@@ -347,6 +347,10 @@ void WhiteNodev108::setNodeDeck(Deck * deck) {
     _deskCtrl.addDeckAsFirst(deck);
 }
 
+void WhiteNodev108::addDeck(Deck * deck) {
+    _deskCtrl.addDeck(deck);
+}
+
 void ButtonsDeck::render_pane(bool refresh) {
     if (refresh)
         _display->print_centred("I/O");

@@ -86,8 +86,13 @@ void Display::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull
 }
 
 void Display::updateDisplayStateMsg(String msg, int line) {
-    int y = 16+line*12;
-    fillRect(0, y, SCREEN_WIDTH, 12, SH110X_BLACK);
+    int16_t x,y;
+    uint16_t w,h;
+    getTextBounds(msg,0,0,&x,&y,&w,&h);
+
+    y = 16+line*12;
+    fillRect(0, y, SCREEN_WIDTH, 11, SH110X_BLACK);
+    
     int i = SCREEN_WIDTH - 6 * msg.length();
     setCursor(i > 0 ? i/2 : 0, y);
     setTextColor(SH110X_WHITE);

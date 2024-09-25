@@ -124,6 +124,7 @@ public:
     void buzzerErr();
 
     void setNodeDeck(Deck * deck);
+    void addDeck(Deck * deck);
 protected:
     LED * errorLed;
     void pop();

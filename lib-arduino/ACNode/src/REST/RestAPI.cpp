@@ -136,7 +136,7 @@ void RestAPI::loop()
             // display.showString("check");
             JsonDocument out = raw_rest(_terminalName, TERMINAL_URL REGISTER_PATH, &ret);
             if (ret == NOERROR_OK) {
-                Log.println("Registered & paired up ok");
+                Debug.println("Registered & paired up ok");
                 md = FULLY_REGISTERED;
             };
         };
@@ -160,8 +160,10 @@ void RestAPI::loop()
             // display.showString("pair");
             break;
         case FULLY_REGISTERED:
-            _paired_cb();
+            if (_paired_cb)
+                _paired_cb();
             md = DONE;
+            Debug.println("Pairing done");
             break;
         case RETRYABLE_FAIL:
         {

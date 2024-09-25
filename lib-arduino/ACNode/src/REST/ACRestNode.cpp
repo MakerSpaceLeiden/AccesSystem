@@ -21,6 +21,8 @@ void ACNodeRest::pop() {
     _approvalAPI = new ApprovalAPI(_restAPI);
 
     PAIRING_FAILED = machinestate.addState("Pairing Failed",  LED::LED_ERROR, 5*1000, MachineState::OUTOFORDER);
+    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 10*1000, PAIRING_FAILED, MachineState::WAITINGFORCARD);
+    WAIT_FOR_PAIRING = machinestate.addState("Needs to pair",  LED::LED_ERROR, 20*1000, MachineState::OUTOFORDER);
 
     machinestate.setOnChangeCallback(PAIRING_FAILED, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         if (_approvalAPI->canApprove()) {
@@ -28,9 +30,6 @@ void ACNodeRest::pop() {
             machinestate = MachineState::WAITINGFORCARD;
         };
     });
-
-    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 10*1000, PAIRING_FAILED);
-    WAIT_FOR_PAIRING = machinestate.addState("Needs to pair",  LED::LED_ERROR, 20*1000, MachineState::OUTOFORDER);
     
     machinestate.setState(MachineState::BOOTING);
     addHandler(&machinestate);
@@ -40,6 +39,7 @@ void ACNodeRest::pop() {
         Log.println("Waiting for pairing");
         machinestate = WAIT_FOR_PAIRING;
     });
+    
     _restAPI->onPaired([this](){
         Log.println("Pairing OK");
         machinestate = MachineState::WAITINGFORCARD;

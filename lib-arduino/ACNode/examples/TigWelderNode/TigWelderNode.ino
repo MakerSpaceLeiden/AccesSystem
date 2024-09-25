@@ -24,8 +24,11 @@
  Board: v1.11 / black; with 12VAC transformer
  */
 #include <BlackNodev111.h>
-#include <EEPROM.h>
-#include <XGZP6897x.h> // i2c pressure sensor
+
+
+#include "use_counters.h" // i2c pressure sensor
+#include "XGZP6897D-i2c.h" // i2c pressure sensor
+
 
 // Image of closing valve/torch trigger
 #include "valve-icon.h"
@@ -68,9 +71,9 @@ const unsigned int MAX_SECS_IDLE  = 2*3600; // Auto off timeout
 
 unsigned long power_fault = 0, normal_poweroff = 0, bad_poweroff = 0, idle_poweroff = 0;
 
-XGZP6897x *pressureSensor;
+XGZP6897D *pressureSensor;
 #define KpressureSensor (8) // 1MPa sensor
-#define PRESSURE_VALVE_CLOSED_LIMIT (250) // below this pressure valve is assumed closed.
+#define PRESSURE_VALVE_CLOSED_LIMIT (8*1000 /* Pascal */) // below this pressure valve is assumed closed.
 #define HYSTERESIS (1+0.05) // 5% hysteresis either way -- to prevent flapping.
 
 class MachineDeck : public Deck {
@@ -90,13 +93,18 @@ class GasDeck : public Deck {
 public:
     GasDeck(BlackNodev111 * node) : Deck(node) {};
     void render_pane(bool refresh) {
-        float pressure = pressureSensor.readPressureInPa();
-        float temperature =pressureSensor.readTemperatureInC();
+        float pressure = pressureSensor->getPressureInPa();
+        float temperature = pressureSensor->getTemperatureInC();
 
         _display->clearDisplay();
         _display->print_centred("Gas");
+<<<<<<< Updated upstream
         _display->printf("Press: %.1f [kPa]\n", pressure/1000.):
         _display->printf("Temp : %.1f [%cC]\n", temperature, ADAFRUIT_GFX_DEGREE_SYMBOL);
+=======
+        _display->printf("Press: %.1f [kPa]\n", pressure/1000.);
+        _display->printf("Temp : %.1f [C]\n", temperature);
+>>>>>>> Stashed changes
     }
 };
 
@@ -111,12 +119,16 @@ void setup() {
     node.setMonitoredOutput(VALVE_GPIO, 0); // value in the off, valve closed
     
     pressureSensor = new XGZP6897D(KpressureSensor);
+<<<<<<< Updated upstream
     if (!pressureSensor.begin())
         Log.println("ERROR pressure sensor not responding");
  
     // Extra state after approval; but before the welder is actually
     // switched on with the operator switch on the front panel.
     //
+=======
+    
+>>>>>>> Stashed changes
     UNLOCKED = node.machinestate.addState("Switch Welder on", LED::LED_ON,
                                           30 * 1000,  MachineState::WAITINGFORCARD, false);
     
@@ -126,7 +138,9 @@ void setup() {
     //
     WELDING = node.machinestate.addState("Welding", LED::LED_ON,
                                          MachineState::NEVER, MachineState::WAITINGFORCARD, false);
-    
+    WAITING_FOR_VALVE = node.machinestate.addState("Close Valve", LED::LED_ON,
+                                         MachineState::NEVER, MachineState::WAITINGFORCARD, false);
+        
     powerDetect = new ButtonDebounce(POWER_VOLTAGE);
     powerDetect->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
     
@@ -185,6 +199,7 @@ void setup() {
     node.set_master("master");
     
     node.setNodeDeck(new MachineDeck(&node));
+    // node.addDeck(new GasDeck());
     
     node.onReport([](JsonObject & report) {
         char * p = __FILE__;
@@ -254,29 +269,33 @@ void setup() {
 
 void loop() {
     node.loop();
-    
-    if ((node.machinestate == MachineState::WAITINGFORCARD) {
+
+    if (node.machinestate == MachineState::WAITINGFORCARD) {
         static unsigned lst = 0;
         if (millis() - lst > 1000) {
-            float pressure = pressureSensor.readPressureInPa();
-            if (pressure && pressure > PRESSURE_VALVE_CLOSED_LIMIT * HYSTERESIS) {
-                Log.println("Detected pressure - assuming problem with the valve.");
+            lst = millis();
+            float pressure = pressureSensor->getPressureInPa();
+            if (pressure && (pressure > PRESSURE_VALVE_CLOSED_LIMIT * HYSTERESIS)) {
+                Log.printf("Detected pressure (%.1f kPa)- assuming problem with the valve\n", pressure / 1000.);
                 node.machinestate = WAITING_FOR_VALVE;
             };
         };
-        lst = millis();
-    };
-    
+    } else
     if (node.machinestate == WAITING_FOR_VALVE) {
-        float pressure, temperature;
-        float pressure = pressureSensor.readPressureInPa();
+        float pressure = pressureSensor->getPressureInPa();
         if (pressure && pressure < PRESSURE_VALVE_CLOSED_LIMIT/HYSTERESIS) {
+<<<<<<< Updated upstream
             Log.println("Detected pressure drop - surmising valve is closed.");
+=======
+            Log.printf("Detected pressure drop (to %.1f kPa) - assuming valve is closed\n", pressure / 1000.);
+>>>>>>> Stashed changes
             node.machinestate = MachineState::WAITINGFORCARD;
+            return;
         };
         static unsigned lst = 0;
         if (millis() - lst > 1000) {
             lst = millis();
+<<<<<<< Updated upstream
             if (millis() & 1024) {
                 node.updateDisplay("","YES",true);
                 node.updateDisplayStateMsg("check that both",0);
@@ -288,6 +307,15 @@ void loop() {
                 _displayy.display();
             };
             node.buzzerOk();
+=======
+            
+            node.updateDisplay("","YES",true);
+            
+            node.updateDisplayStateMsg("check that",0);
+            node.updateDisplayStateMsg("VALVES is CLOSED ",1);
+            
+            node.buzzerErr();
+>>>>>>> Stashed changes
         };
     }
     else if (node.machinestate == UNLOCKED) {

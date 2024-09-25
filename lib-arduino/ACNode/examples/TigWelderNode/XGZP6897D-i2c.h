@@ -1,5 +1,7 @@
 #include <Wire.h>
 
+// Datasheet: ; https://cfsensor.com/wp-content/uploads/2022/11/XGZP6847D-Pressure-Sensor-V2.5.pdf
+
 #define XGZP6897D_DEFAULT_ADDR (0x6d) // i2c default address
 
 #define CMD (0x30)   // conversion command
@@ -8,9 +10,9 @@
 #define PRESS (0x06) // regiser for pressure, 3 long, big endian, two complement
 #define TMEMP (0x09) // registerfor temperature, 2 long, big endian, two complement
 
-class XGZP6897x {
+class XGZP6897D {
 public:
-    // For K - see page 9 of datasheet; https://cfsensor.com/wp-content/uploads/2022/11/XGZP6847D-Pressure-Sensor-V2.5.pdf
+    // For K - see page 9 of datasheet
     //
     // Pressure        K
     // range(kpa)  (divisor)
@@ -25,7 +27,8 @@ public:
     // 2≤P≤4        2048
     // 1≤P<2        4096
     //
-    XGZP6897x(uint16_t Kdiv, unsigned char i2caddr = XGZP6897D_DEFAULT_ADDR,  TwoWire* wire = &Wire) : _wire(wire), _K(Kdiv), _i2caddr(i2caddr) {};
+    XGZP6897D(uint16_t Kdiv, uint8_t i2caddr = XGZP6897D_DEFAULT_ADDR,  TwoWire* wire = &Wire) :
+    _wire(wire), _K(Kdiv), _i2caddr(i2caddr) {};
     
     float getTemperatureInC() {
         _readBoth();
@@ -37,7 +40,7 @@ public:
         return _pressure;
     };
 private:
-    unsigned char _i2caddr;
+    uint8_t _i2caddr;
     TwoWire * _wire;
     unsigned long _K;
     float _temperature, _pressure;
@@ -53,7 +56,7 @@ private:
         _wire->beginTransmission(_i2caddr);
         _wire->write(CMD);
         _wire->endTransmission();
-        _wire->requestFrom(_i2caddr, byte(1));
+        _wire->requestFrom(_i2caddr, (uint8_t)1);
         return (_wire->read() & SCO);
     };
     
@@ -74,17 +77,18 @@ private:
         _wire->beginTransmission(_i2caddr);
         _wire->write(PRESS); // pressure is the first 3 byts; so reading 5 byts from here also gets the two for temperature.
         _wire->endTransmission();
-
-        _wire->requestFrom(_i2caddr, 3+2);
+        
+        _wire->requestFrom(_i2caddr, (uint8_t)3+2);
         unsigned char buff[5];
         for(int i = 0; i < 5; i++)
             buff[i] = _wire->read();
         
-        int32_t p = (buff[0] << 24) | (buff[1] << 16) | (buff[2] << 8); // big endian order, preserve two complement
-        p >>= 8;
+        // Read in big endian order, preserve two complement by keeping top byte high
+        int32_t p = (buff[0] << 24) | (buff[1] << 16) | (buff[2] << 8);
+        p >>= 8; // And shift to he normal range; preserving sign.
         int16_t t = (buff[3] <<  8) | (buff[4]);      // big endian order, two complement
         
         _pressure = float(p) / _K;
         _temperature = float(t) / 256.;
     };
-}
+};
