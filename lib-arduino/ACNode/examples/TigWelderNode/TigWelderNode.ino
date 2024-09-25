@@ -27,6 +27,9 @@
 #include <EEPROM.h>
 #include <XGZP6897x.h> // i2c pressure sensor
 
+// Image of closing valve/torch trigger
+#include "valve-icon.h"
+
 #ifndef MACHINE
 #define MACHINE             "tigwelder"
 #endif
@@ -90,11 +93,10 @@ public:
         float pressure = pressureSensor.readPressureInPa();
         float temperature =pressureSensor.readTemperatureInC();
 
-
         _display->clearDisplay();
         _display->print_centred("Gas");
         _display->printf("Press: %.1f [kPa]\n", pressure/1000.):
-        _display->printf("Temp : %.1f [C]\n", temperature);
+        _display->printf("Temp : %.1f [%cC]\n", temperature, ADAFRUIT_GFX_DEGREE_SYMBOL);
     }
 };
 
@@ -111,9 +113,17 @@ void setup() {
     pressureSensor = new XGZP6897D(KpressureSensor);
     if (!pressureSensor.begin())
         Log.println("ERROR pressure sensor not responding");
-    
+ 
+    // Extra state after approval; but before the welder is actually
+    // switched on with the operator switch on the front panel.
+    //
     UNLOCKED = node.machinestate.addState("Switch Welder on", LED::LED_ON,
                                           30 * 1000,  MachineState::WAITINGFORCARD, false);
+    
+    // Detect that we're actually welding; resets any auto-off timers. And we keep
+    // track of the minutes of gas-flow; in the hope that we can somewhat automate
+    // the logistics around (new) gas bottles. E.g. warning ahead of time, etc.
+    //
     WELDING = node.machinestate.addState("Welding", LED::LED_ON,
                                          MachineState::NEVER, MachineState::WAITINGFORCARD, false);
     
@@ -122,7 +132,7 @@ void setup() {
     
     powerDetect->setCallback([](const int newState) {
         if ((node.machinestate == MachineState::CHECKINGCARD || node.machinestate == MachineState::WAITINGFORCARD) && newState == LOW) {
-            Log.println("Alert: Power observed while " MACHINE " should be off.");
+            Log.println("Alert: Power observed while " MACHINE " should be off");
             node.machinestate = FAULTED;
             power_fault++;
         }
@@ -142,7 +152,7 @@ void setup() {
             welding_save();;
         }
         else if (node.machinestate == WELDING && newState == HIGH) {
-            Log.println("Machine switched off while welding?!");
+            Log.println("Odd, machine switched off while welding?!");
             node.machinestate = WAITING_FOR_VALVE;
             bad_poweroff++;
             welding_save();
@@ -165,7 +175,7 @@ void setup() {
             wr.welding_timer = 0.5 + wt/1000.;
             node.machinestate = POWERED;
         } else {
-            Log.printf("Alert: Unexpected change in motor current; state is %s and the current is %s\n",
+            Log.printf("Alert: Unexpected Welding/Powered change; state is %s and the trigger is %s\n",
                        node.machinestate.label(), newState ? "ON" : "OFF");
         }
     }, CHANGE);
@@ -180,11 +190,12 @@ void setup() {
         char * p = __FILE__;
         char * q = rindex(p,'/');
         if (q) p = q;
-        report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
+        report["fw"] = FILE2FIRMWARE(__FILE__) " " __DATE__ " " __TIME__;
         report["power_fault"] = power_fault;
         report["bad_poweroff"] = bad_poweroff;
         report["normal_poweroff"] = normal_poweroff;
         report["idle_poweroff"] = idle_poweroff;
+        report["welding_secs"] = wr.welding_timer;
     });
     
     node.setOnChangeCallback(MachineState::WAITINGFORCARD, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
@@ -193,6 +204,7 @@ void setup() {
             // go idle after an hour of non-use; but actually alert people
             // to the fact that this happened.
             //
+            Log.println("Power switched off; waiting for valve to be closed");
             node.machinestate = WAITING_FOR_VALVE;
             idle_poweroff++;
         }
@@ -202,13 +214,13 @@ void setup() {
     });
     
     node.onApproval([](const char *machine) {
-        Log.println("Action Approved.");
         // We allow 'taking over this machine while it is on' -- hence this check for
         // if it is powered; and in that case -also- accepting a new approval.
         //
         if ((node.machinestate != POWERED) &&
             (node.machinestate != MachineState::CHECKINGCARD)
             ) {
+            Log.println("Rejecting tag swipe; not expecting one");
             node.buzzerErr();
             return;
         };
@@ -229,7 +241,7 @@ void setup() {
     
     node.setOffCallback([&](const int newState) {
         if (node.machinestate == UNLOCKED) {
-            Log.println("Poweron canceled by button press");
+            Log.println("Power-on canceled by button press");
             node.machinestate = MachineState::WAITINGFORCARD;
         }
     },FALLING);
@@ -259,19 +271,23 @@ void loop() {
         float pressure, temperature;
         float pressure = pressureSensor.readPressureInPa();
         if (pressure && pressure < PRESSURE_VALVE_CLOSED_LIMIT/HYSTERESIS) {
-            Log.println("Detected pressure drop - assuming valve is closed.");
+            Log.println("Detected pressure drop - surmising valve is closed.");
             node.machinestate = MachineState::WAITINGFORCARD;
         };
         static unsigned lst = 0;
         if (millis() - lst > 1000) {
             lst = millis();
-            
-            node.updateDisplay("","YES",true);
-            
-            node.updateDisplayStateMsg("check that both",0);
-            node.updateDisplayStateMsg("VALVES are CLOSED ",1);
-            
-            node.buzzerErr();
+            if (millis() & 1024) {
+                node.updateDisplay("","YES",true);
+                node.updateDisplayStateMsg("check that both",0);
+                node.updateDisplayStateMsg("VALVES are CLOSED & ",1);
+                node.updateDisplayStateMsg("press torch trigger ",1);
+            } else {
+                _display.clearDisplay();
+                _display.drawCentredBitmap(valve_icon,valve_icon_width,valve_icon_height,SH110X_WHITE);
+                _displayy.display();
+            };
+            node.buzzerOk();
         };
     }
     else if (node.machinestate == UNLOCKED) {

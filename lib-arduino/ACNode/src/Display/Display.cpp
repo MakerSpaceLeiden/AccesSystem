@@ -13,6 +13,8 @@ void Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
     clearDisplay();
     drawCentredBitmap(msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
     if (bootmsg) {
+        setCursor(0,0);
+        setFont(FONT_SMALL);
         setTextSize(1);
         setTextColor(SH110X_WHITE);
         print_centred((char*)bootmsg, false);
@@ -28,36 +30,47 @@ void Display::setDisplayScreensaver(bool on) {
     oled_command(on ? SH110X_DISPLAYOFF : SH110X_DISPLAYON);
 }
 
+#define getBBX(str,w,h) uint16_t w,h; { int16_t x,y; getTextBounds(str,0,0,&x,&y,&w,&h); }
+
 void Display::updateDisplay(const char * title, String left, String right, bool rebuildFull) {
     if (rebuildFull) {
         clearDisplay();
         setTextSize(1);
+        setFont(FONT_LARGE);
         setTextColor(SH110X_WHITE);
-        int i = SCREEN_WIDTH - 6 * strlen(title);
-        setCursor(i>0 ? i/2 : 0, 0);
+
+        getBBX(title,w,h);
+        setCursor((SCREEN_WIDTH - w)/2,h);
         println(title);
-        setFont(NULL); // Fairly large 5x7 font
-        
+
+        setFont(FONT_MEDIUM);        
         if (left.length() || right.length()) {
+            const uint16_t WBOX = 60;
             setTextColor(SH110X_BLACK);
-            drawFastHLine(0,SCREEN_HEIGHT-8*3-1,SCREEN_WIDTH,SH110X_WHITE);
-            drawFastHLine(0,SCREEN_HEIGHT-8*2+3,SCREEN_WIDTH,SH110X_WHITE);
+            drawFastHLine(0,SCREEN_HEIGHT-8-4,SCREEN_WIDTH,SH110X_WHITE);
+            drawFastHLine(0,SCREEN_HEIGHT-1,SCREEN_WIDTH,SH110X_WHITE);
+            
+            if (left.length()) {
+                getBBX(left,w,h);
+                fillRect(0, SCREEN_HEIGHT-8-2, WBOX, 8, SH110X_WHITE);
+                setCursor((WBOX-w)/2,SCREEN_HEIGHT-h+3);  // We assume these to be always uppercase; hence the h+3
+                println(left);
+            };
+            
+            if (right.length()) {
+                getBBX(right,w,h);
+                fillRect(SCREEN_WIDTH-WBOX,  SCREEN_HEIGHT-8-2, 60, 8, SH110X_WHITE);
+                setCursor(SCREEN_WIDTH-WBOX+(WBOX-w)/2,SCREEN_HEIGHT-h+3); // We assume these to be always uppercase; hence the h+3
+                println(right);
+            };
         };
-        
-        if (left.length()) {
-            fillRect(0, SCREEN_HEIGHT-8*3+1, 60, 9, SH110X_WHITE);
-            setCursor(1,SCREEN_HEIGHT-8*3+2);
-            println(left);
-        };
-        
-        if (right.length()) {
-            fillRect(SCREEN_WIDTH-60,  SCREEN_HEIGHT-8*3+1, 60, 9, SH110X_WHITE);
-            setCursor(SCREEN_WIDTH-right.length()*6,SCREEN_HEIGHT-8*3+2);
-            println(right);
-        };
+        // Uncommet for layout checks
+        // drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SH110X_WHITE);
+        display();
     };
-    display();
 };
+
+
 
 void Display::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {
     int y = SCREEN_HEIGHT-16;

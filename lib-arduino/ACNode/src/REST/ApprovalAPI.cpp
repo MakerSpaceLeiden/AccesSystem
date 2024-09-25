@@ -120,7 +120,6 @@ void ApprovalAPI::loop() {
     if (interval && last_update &&  millis() - last_update < interval)
         return;
     
-    last_update = millis();
         
     if (!needsUpdate()) {
         interval =  (3600  + (esp_random() & 0xFF)) * 1000;
@@ -143,10 +142,13 @@ bool ApprovalAPI::needsUpdate() {
     if (n < 0)
         return false;
     buff[n] = 0; // damages last byte.
-    
+
+
     unsigned long cntr = atoi((char *)buff);
     Log.printf("Change identifier: %08x: %s\n", cntr, identifier == cntr ? "no changes" : "*Changed!*");
-    
+
+    last_update = millis();
+
     return (cntr != identifier);
 }
 
@@ -349,7 +351,8 @@ void ApprovalDeck::render_pane(bool refresh) {
     _display->printf("      %sZ\n",ts);
     _display->printf("Age  :%s\n",since(_approvalAPI->datadate));
     _display->println();
-    _display->printf("Check:%s ago\n",since((millis() - _approvalAPI->last_update)/1000));
+        _display->printf("Check:%s ago\n", _approvalAPI->last_update ?
+                         since((millis() - _approvalAPI->last_update)/1000) : "never");
 };
 
 
