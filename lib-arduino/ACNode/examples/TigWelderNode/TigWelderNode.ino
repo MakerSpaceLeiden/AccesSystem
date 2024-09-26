@@ -42,8 +42,8 @@
 #define WELDING_VOLTAGE     (node.OPTO1) // Detect voltage from the pushbutton in the torch.
 
 // Outputs:
-#define POWER_GPIO          (node.OUT0)   // Controls mains power to on/off switch
-#define VALVE_GPIO          (node.OUT1)   // Open/close the 12V-DC gas valve; when low; valve is shut
+#define POWER_GPIO          (node.OUT0)   // Controls mains power to on/off switch and the cutoff valve.
+#define SOLENOID_GPIO          (node.OUT1)   // Open/close the 12V-DC torch operated valve inside the ; when low; valve is shut
 
 // Generate with 'echo -n Password | openssl md5 or
 // use https://www.md5hashgenerator.com/. No \0,
@@ -66,6 +66,7 @@ ButtonDebounce *powerDetect, *weldingDetect;
 MachineState::machinestate_t UNLOCKED; // Can be powered on with front button
 MachineState::machinestate_t WELDING;  // Button on torch is pressed.
 MachineState::machinestate_t WAITING_FOR_VALVE;  // Waiting for the valve to be closed.
+MachineState::machinestate_t CHECK_VALVE_CLOSED;  // Check if the valvue is closed.
 
 const unsigned int MAX_SECS_IDLE  = 2*3600; // Auto off timeout
 
@@ -98,49 +99,37 @@ public:
 
         _display->clearDisplay();
         _display->print_centred("Gas");
-<<<<<<< Updated upstream
-        _display->printf("Press: %.1f [kPa]\n", pressure/1000.):
-        _display->printf("Temp : %.1f [%cC]\n", temperature, ADAFRUIT_GFX_DEGREE_SYMBOL);
-=======
         _display->printf("Press: %.1f [kPa]\n", pressure/1000.);
         _display->printf("Temp : %.1f [C]\n", temperature);
->>>>>>> Stashed changes
     }
 };
+
 
 void setup() {
     Serial.begin(115200);
     Log.printf("\nBooting(): %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
     
+    expandedPinMode(SOLENOID_GPIO, OUTPUT);
+    node.setMonitoredOutput(SOLENOID_GPIO, 0); // value in the off, solenoid closed
+
     expandedPinMode(POWER_GPIO, OUTPUT);
     node.setMonitoredOutput(POWER_GPIO, 0); // relay in the off/safe position
     
-    expandedPinMode(VALVE_GPIO, OUTPUT);
-    node.setMonitoredOutput(VALVE_GPIO, 0); // value in the off, valve closed
-    
     pressureSensor = new XGZP6897D(KpressureSensor);
-<<<<<<< Updated upstream
-    if (!pressureSensor.begin())
-        Log.println("ERROR pressure sensor not responding");
- 
-    // Extra state after approval; but before the welder is actually
-    // switched on with the operator switch on the front panel.
-    //
-=======
-    
->>>>>>> Stashed changes
     UNLOCKED = node.machinestate.addState("Switch Welder on", LED::LED_ON,
                                           30 * 1000,  MachineState::WAITINGFORCARD, false);
-    
-    // Detect that we're actually welding; resets any auto-off timers. And we keep
+
+      // Detect that we're actually welding; resets any auto-off timers. And we keep
     // track of the minutes of gas-flow; in the hope that we can somewhat automate
     // the logistics around (new) gas bottles. E.g. warning ahead of time, etc.
     //
     WELDING = node.machinestate.addState("Welding", LED::LED_ON,
                                          MachineState::NEVER, MachineState::WAITINGFORCARD, false);
+    CHECK_VALVE_CLOSED = node.machinestate.addState("Close Valve!", LED::LED_ON,
+                                                      MachineState::NEVER, MachineState::WAITINGFORCARD, false);
     WAITING_FOR_VALVE = node.machinestate.addState("Close Valve", LED::LED_ON,
-                                         MachineState::NEVER, MachineState::WAITINGFORCARD, false);
-        
+                                         30*1000, CHECK_VALVE_CLOSED, false);
+
     powerDetect = new ButtonDebounce(POWER_VOLTAGE);
     powerDetect->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
     
@@ -152,8 +141,7 @@ void setup() {
         }
         else if (node.machinestate == UNLOCKED && newState == LOW) {
             Log.println("Machine switched on with front switch");
-            node.machinestate = POWERED
-            ;
+            node.machinestate = POWERED;
         }
         else if (node.machinestate == FAULTED && newState == HIGH) {
             Log.println("Alert: Odd powerstate cleared.");
@@ -205,7 +193,9 @@ void setup() {
         char * p = __FILE__;
         char * q = rindex(p,'/');
         if (q) p = q;
-        report["fw"] = FILE2FIRMWARE(__FILE__) " " __DATE__ " " __TIME__;
+        char tmp[256];
+        snprintf(tmp,sizeof(tmp),"%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__,__TIME__);
+        report["fw"] = tmp;
         report["power_fault"] = power_fault;
         report["bad_poweroff"] = bad_poweroff;
         report["normal_poweroff"] = normal_poweroff;
@@ -250,7 +240,7 @@ void setup() {
     node.setMenuCallback([&](const int newState) {
         if (node.machinestate == WAITING_FOR_VALVE) {
             Log.println("Valve confirmed closed by button press");
-            node.machinestate = MachineState::WAITINGFORCARD;
+            node.machinestate = CHECK_VALVE_CLOSED;
         }
     },FALLING);
     
@@ -284,40 +274,38 @@ void loop() {
     if (node.machinestate == WAITING_FOR_VALVE) {
         float pressure = pressureSensor->getPressureInPa();
         if (pressure && pressure < PRESSURE_VALVE_CLOSED_LIMIT/HYSTERESIS) {
-<<<<<<< Updated upstream
-            Log.println("Detected pressure drop - surmising valve is closed.");
-=======
+
             Log.printf("Detected pressure drop (to %.1f kPa) - assuming valve is closed\n", pressure / 1000.);
->>>>>>> Stashed changes
             node.machinestate = MachineState::WAITINGFORCARD;
             return;
         };
         static unsigned lst = 0;
         if (millis() - lst > 1000) {
             lst = millis();
-<<<<<<< Updated upstream
             if (millis() & 1024) {
                 node.updateDisplay("","YES",true);
-                node.updateDisplayStateMsg("check that both",0);
-                node.updateDisplayStateMsg("VALVES are CLOSED & ",1);
+                node.updateDisplayStateMsg("CLOSE VALVE &",0);
                 node.updateDisplayStateMsg("press torch trigger ",1);
             } else {
-                _display.clearDisplay();
-                _display.drawCentredBitmap(valve_icon,valve_icon_width,valve_icon_height,SH110X_WHITE);
-                _displayy.display();
+                _display->clearDisplay();
+                _display->drawCentredBitmap(valve_icon, 128, 64, SH110X_WHITE);
+                _display->display();
             };
             node.buzzerOk();
-=======
-            
-            node.updateDisplay("","YES",true);
-            
-            node.updateDisplayStateMsg("check that",0);
-            node.updateDisplayStateMsg("VALVES is CLOSED ",1);
-            
-            node.buzzerErr();
->>>>>>> Stashed changes
         };
-    }
+    } else if (node.machinestate ==  CHECK_VALVE_CLOSED) {
+        // Try to see if the user actually closed the valve by
+        // opening the torch valve for 0.3 second.
+        node.setMonitoredOutput(POWER_GPIO, HIGH); // needed - perhaps rewire the phase from main
+        node.setMonitoredOutput(SOLENOID_GPIO, HIGH);
+        delay(330);
+        // leave it to the normal loop to switch above back to right setting.
+        node.buzzerOk();
+        // Go back to waiting for the valve to be closed.
+        // The pressure drop should be picked up and auto change
+        // the state to WAITING FOR CARD
+        node.machinestate = WAITING_FOR_VALVE;
+        }
     else if (node.machinestate == UNLOCKED) {
         String left = node.machinestate.timeLeftInThisState();
         node.updateDisplayStateMsg("Auto off: " + left, 1);
@@ -327,5 +315,5 @@ void loop() {
     node.setMonitoredOutput(POWER_GPIO, r); // needs to be high to engage the relay
     
     bool v = (node.machinestate == POWERED) || (node.machinestate == WELDING);
-    node.setMonitoredOutput(VALVE_GPIO, v); // needs to be high to open the valve
+    node.setMonitoredOutput(SOLENOID_GPIO, v); // needs to be high to open the valve
 }

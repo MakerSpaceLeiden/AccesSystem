@@ -1,7 +1,6 @@
 
 #include "Display/DejaVu_Sans_Bold_6-2.h"
-#define FONT_SMALL  (&DejaVu_Sans_Bold_8)
-
+#define FONT_SMALL  NULL
 
 #include "Display/DejaVu_Sans_Bold_8-2.h"
 #define FONT_MEDIUM (&DejaVu_Sans_Bold_8)

@@ -5,11 +5,11 @@
 #include "EEPROM.h"
 
 #define WRE_IDENT "WR02"
-#define WRE_VERSION (*(unsigned int*)WRE_IDENT)
+#define WRE_VERSION (*(unsigned long *)WRE_IDENT)
 EEPROMClass welding_stats(WRE_IDENT);
 
 typedef struct welding_rec {
-    unsigned int version;
+    unsigned long version;
     unsigned long welding_timer;
     unsigned long bottle_date;
 } welding_rec_t;
@@ -19,7 +19,7 @@ static void welding_init() {
     welding_stats.begin(sizeof(welding_rec_t));
     size_t n = welding_stats.readBytes(0, &wr, sizeof(wr));
     
-    if (n >= sizeof(wr) && wr.version != WRE_VERSION) {
+    if (n >= sizeof(wr) && wr.version == WRE_VERSION) {
         Debug.println("Welding data from EEPROM read OK");
         return;
     };
@@ -33,8 +33,8 @@ static void welding_init() {
     welding_stats.writeBytes(0, &wr, sizeof(wr));
     welding_stats.commit();
     
-    welding_stats.readBytes(0, &wr, sizeof(wr));
-    if (n >= sizeof(wr) && wr.version != WRE_VERSION) {
+    n = welding_stats.readBytes(0, &wr, sizeof(wr));
+    if (n < sizeof(wr) || wr.version != WRE_VERSION || wr.welding_timer != 0) {
         Log.println("***** Welding EEPROM corrupt");
         return;
     };

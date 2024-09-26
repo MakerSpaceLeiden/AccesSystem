@@ -43,7 +43,7 @@ void Display::updateDisplay(const char * title, String left, String right, bool 
         setCursor((SCREEN_WIDTH - w)/2,h);
         println(title);
 
-        setFont(FONT_MEDIUM);        
+        setFont(FONT_SMALL);        
         if (left.length() || right.length()) {
             const uint16_t WBOX = 60;
             setTextColor(SH110X_BLACK);
@@ -69,8 +69,6 @@ void Display::updateDisplay(const char * title, String left, String right, bool 
         display();
     };
 };
-
-
 
 void Display::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {
     int y = SCREEN_HEIGHT-16;
@@ -131,10 +129,17 @@ void Display::print_centered_QR(char * titleOrNull, char * url) {
             int p = 1;
             while ((s*(p+1) <= _d->SCREEN_WIDTH) && (s*(p+1) <= (_d->SCREEN_HEIGHT))) p++;
             int ox = (_d->SCREEN_WIDTH - p*s)/2;
-            // We cannot pass anything to this lambda; as it maps to C, rather than c++.
+            
+            // For height - two options
+            //
+            // 1) We cannot pass anything to this lambda; as it maps to C, rather than c++.
             // So we use the state of the cursor to dected an empty title.
             //
-            int oy = _d->getCursorY() ? (_d->SCREEN_HEIGHT - p*s -1) : (_d->SCREEN_HEIGHT - p*s)/2;
+            // int oy = _d->getCursorY() ? (_d->SCREEN_HEIGHT - p*s -1) : (_d->SCREEN_HEIGHT - p*s)/2;
+            
+            // 2) Always low - because of beze
+            //
+            int oy = _d->SCREEN_HEIGHT - p*s -1;
             for (int y = 0; y < s; y++)
                 for (int x = 0; x < s; x++)
                     if (p == 1)
@@ -151,8 +156,4 @@ void Display::print_centered_QR(char * titleOrNull, char * url) {
         print_centred(titleOrNull);
     };
     esp_qrcode_generate(&qrc,url);
-    Log.printf("Showing QR %s%s with text: <%s>\n", 
-               titleOrNull ? titleOrNull : "",
-               titleOrNull ? "" : " ", 
-               url);
 }

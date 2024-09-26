@@ -3,8 +3,10 @@
 #include "Display/fonts.h"
 
 void Deck::display(bool refresh) {
-    if (refresh)
+    if (refresh) {
         _display->clearDisplay();
+        Debug.println("Clearing display");
+    };
     
     _display->setFont(FONT_SMALL);
     _display->setTextSize(1);

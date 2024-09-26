@@ -47,6 +47,13 @@ void BlackNodev111::begin() {
     xpinMode(OPTO3, INPUT);
         
     super::begin();
+    
+    xanalogWrite(LEDA,1); delay(50);
+    xanalogWrite(LEDB,1); delay(50); xanalogWrite(LEDA,0);
+    xanalogWrite(LEDC,1); delay(50); xanalogWrite(LEDB,0);
+    xanalogWrite(LEDD,1); delay(50); xanalogWrite(LEDC,0);
+    xanalogWrite(LEDE,1); delay(50); xanalogWrite(LEDD,0);
+                                     xanalogWrite(LEDE,0);
 }
 
 void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {

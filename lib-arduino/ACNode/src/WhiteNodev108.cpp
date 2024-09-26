@@ -208,8 +208,9 @@ void WhiteNodev108::begin() {
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         Debug.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
         errorLed->set(machinestate.ledState());
-        
+
         _display->setDisplayScreensaver(current == SCREENSAVER);
+        
         _display->updateDisplayStateMsg(machinestate.label());
 
         if (current == FAULTED) {
@@ -249,7 +250,12 @@ void WhiteNodev108::begin() {
             machinestate.setState(MachineState::WAITINGFORCARD);
             Debug.println("Aborting INFO screen to handle swipe");
         };
+        
+
         machinestate = MachineState::CHECKINGCARD;
+        _display->updateDisplay(machine, "", "", true);
+        _display->updateDisplayStateMsg(machinestate.label());
+
         if (_swipeCB)
             return _swipeCB(tag);
         
