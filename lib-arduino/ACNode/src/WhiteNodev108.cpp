@@ -285,7 +285,6 @@ void WhiteNodev108::begin() {
     
     _display->updateDisplay(machine, "","MORE", true);
     
-     
     super::begin(BOARD_NG);
 }
 
