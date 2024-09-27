@@ -39,6 +39,7 @@ public:
         _readBoth();
         return _pressure;
     };
+    const float ERRVAL = -999;
 private:
     uint8_t _i2caddr;
     TwoWire * _wire;
@@ -78,7 +79,12 @@ private:
         _wire->write(PRESS); // pressure is the first 3 byts; so reading 5 byts from here also gets the two for temperature.
         _wire->endTransmission();
         
-        _wire->requestFrom(_i2caddr, (uint8_t)3+2);
+        uint8_t r = _wire->requestFrom(_i2caddr, (uint8_t)(3+2));
+        if (r < 5) {
+            _pressure = _temperature = ERRVAL;
+            return;
+        };
+        
         unsigned char buff[5];
         for(int i = 0; i < 5; i++)
             buff[i] = _wire->read();

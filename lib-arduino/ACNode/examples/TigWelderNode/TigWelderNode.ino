@@ -25,10 +25,8 @@
  */
 #include <BlackNodev111.h>
 
-
 #include "use_counters.h" // i2c pressure sensor
 #include "XGZP6897D-i2c.h" // i2c pressure sensor
-
 
 // Image of closing valve/torch trigger
 #include "valve-icon.h"
@@ -43,7 +41,15 @@
 
 // Outputs:
 #define POWER_GPIO          (node.OUT0)   // Controls mains power to on/off switch and the cutoff valve.
-#define SOLENOID_GPIO          (node.OUT1)   // Open/close the 12V-DC torch operated valve inside the ; when low; valve is shut
+#define SOLENOID_GPIO       (node.OUT1)   // Open/close the 12V-DC torch operated valve inside the.
+
+// Give the user up to 30 seconds to close the valve & confirm
+// this either by pressing OK or by operating the torch. If not
+// we check every LET_USER_DO_IT_TIMEOUT to see if it is done
+// and keep beeping until we detect no pressure after we open
+// the torch valve ourselves.
+//
+#define LET_USER_DO_IT_TIMEOUT (30 * 1000)
 
 // Generate with 'echo -n Password | openssl md5 or
 // use https://www.md5hashgenerator.com/. No \0,
@@ -116,19 +122,24 @@ void setup() {
     node.setMonitoredOutput(POWER_GPIO, 0); // relay in the off/safe position
     
     pressureSensor = new XGZP6897D(KpressureSensor);
+    
+    // After swiping a tag - the tig welder is powered; but the user
+    // still needs to operate the switch on the front. This gives the
+    // user 30 seconds to do that.
     UNLOCKED = node.machinestate.addState("Switch Welder on", LED::LED_ON,
                                           30 * 1000,  MachineState::WAITINGFORCARD, false);
 
-      // Detect that we're actually welding; resets any auto-off timers. And we keep
-    // track of the minutes of gas-flow; in the hope that we can somewhat automate
-    // the logistics around (new) gas bottles. E.g. warning ahead of time, etc.
+    // Detect that we're actually welding; resets any auto-off timers. And also we
+    // keep track of the minutes of gas-flow; in the hope that we can somewhat
+    // automate the logistics around (new) gas bottles and payment at some point
+    // in the future.
     //
     WELDING = node.machinestate.addState("Welding", LED::LED_ON,
                                          MachineState::NEVER, MachineState::WAITINGFORCARD, false);
     CHECK_VALVE_CLOSED = node.machinestate.addState("Close Valve!", LED::LED_ON,
                                                       MachineState::NEVER, MachineState::WAITINGFORCARD, false);
     WAITING_FOR_VALVE = node.machinestate.addState("Close Valve", LED::LED_ON,
-                                         30*1000, CHECK_VALVE_CLOSED, false);
+                                 LET_USER_DO_IT_TIMEOUT, CHECK_VALVE_CLOSED, false);
 
     powerDetect = new ButtonDebounce(POWER_VOLTAGE);
     powerDetect->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
@@ -294,16 +305,20 @@ void loop() {
             node.buzzerOk();
         };
     } else if (node.machinestate ==  CHECK_VALVE_CLOSED) {
-        // Try to see if the user actually closed the valve by
+        // 1) Try to see if the user actually closed the valve by
         // opening the torch valve for 0.3 second.
         node.setMonitoredOutput(POWER_GPIO, HIGH); // needed - perhaps rewire the phase from main
         node.setMonitoredOutput(SOLENOID_GPIO, HIGH);
+        expandedDigitalWrite(node.LEDC,HIGH);
         delay(330);
-        // leave it to the normal loop to switch above back to right setting.
-        node.buzzerOk();
-        // Go back to waiting for the valve to be closed.
+        expandedDigitalWrite(node.LEDC,LOW);
+
+        // 2) Then go back to waiting for the valve to be closed.
+        //
         // The pressure drop should be picked up and auto change
-        // the state to WAITING FOR CARD
+        // the state to WAITING FOR CARD. Or if not - the machine
+        // will keep beeting and try this every LET_USER_DO_IT_TIMEOUT.
+        //
         node.machinestate = WAITING_FOR_VALVE;
         }
     else if (node.machinestate == UNLOCKED) {
@@ -311,9 +326,13 @@ void loop() {
         node.updateDisplayStateMsg("Auto off: " + left, 1);
     };
     
+    expandedDigitalWrite(node.LEDB,(node.machinestate == WAITING_FOR_VALVE));
+
     bool r = (node.machinestate == UNLOCKED) || (node.machinestate == POWERED) || (node.machinestate == WELDING);
     node.setMonitoredOutput(POWER_GPIO, r); // needs to be high to engage the relay
     
-    bool v = (node.machinestate == POWERED) || (node.machinestate == WELDING);
-    node.setMonitoredOutput(SOLENOID_GPIO, v); // needs to be high to open the valve
+    // We normally do not operate the torch-gas solenoid in the machine; so it
+    // should be off.
+    //
+    node.setMonitoredOutput(SOLENOID_GPIO, LOW);
 }
