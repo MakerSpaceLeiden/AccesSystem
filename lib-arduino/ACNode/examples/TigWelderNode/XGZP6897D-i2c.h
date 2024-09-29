@@ -46,44 +46,67 @@ private:
     unsigned long _K;
     float _temperature, _pressure;
     
-    void _startConversion() {
+    bool _startConversion() {
+        uint8_t err;
+        
         _wire->beginTransmission(_i2caddr);
         _wire->write(CMD);
         _wire->write(SCO | BOTH);
-        _wire->endTransmission();
+        err = _wire->endTransmission();
+
+        if (err != 0) {
+            Serial.printf("XGZP6897D: SC - fail %d != 0\n", err);
+            return false;
+        };
+
+        return true;
     };
     
     bool _checkConversion() {
+        uint8_t err;
+        
         _wire->beginTransmission(_i2caddr);
         _wire->write(CMD);
-        _wire->endTransmission();
+        err = _wire->endTransmission();
+        
+        if (err != 0) {
+            Serial.printf("XGZP6897D: CC - fail %d != 0\n", err);
+            return false;
+        };
+        
         _wire->requestFrom(_i2caddr, (uint8_t)1);
         return (_wire->read() & SCO);
     };
     
     void _readBoth() {
-        _startConversion();
+        uint8_t err;
+        _pressure = _temperature = ERRVAL;
+        
+        if (!_startConversion())
+            return;
         
         // conversion should take 20 mSeconds; so
-        // bail out after 40.
+        // bail out after 35 mSeconds.
         //
-        for(int i = 0; !_checkConversion(); i++) {
-            if (i > 7) {
-                _pressure = _temperature = 0;
+        unsigned long lst = millis();
+        while(!_checkConversion()) {
+            if (millis() - lst > 35) {
+                Serial.println("CC timeout");
                 return;
-            }
-            delay(5);
+            };
         };
         
         _wire->beginTransmission(_i2caddr);
         _wire->write(PRESS); // pressure is the first 3 byts; so reading 5 byts from here also gets the two for temperature.
-        _wire->endTransmission();
-        
-        uint8_t r = _wire->requestFrom(_i2caddr, (uint8_t)(3+2));
-        if (r < 5) {
-            _pressure = _temperature = ERRVAL;
+        err = _wire->endTransmission();
+        if (err) {
+            Serial.printf("XGZP6897D: CC - fail %d != 0\n", err);
             return;
         };
+
+        uint8_t r = _wire->requestFrom(_i2caddr, (uint8_t)(3+2));
+        if (r < 5)
+            return;
         
         unsigned char buff[5];
         for(int i = 0; i < 5; i++)
