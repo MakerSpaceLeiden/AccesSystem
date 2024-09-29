@@ -1,4 +1,5 @@
 #include <qrcode.h> // Part of the ESP32 package
+#include <esp_debug_helpers.h>
 
 #include "Display/Display.h"
 #include "Display/msl-logo.h"
@@ -33,41 +34,61 @@ void Display::setDisplayScreensaver(bool on) {
 #define getBBX(str,w,h) uint16_t w,h; { int16_t x,y; getTextBounds(str,0,0,&x,&y,&w,&h); }
 
 void Display::updateDisplay(const char * title, String left, String right, bool rebuildFull) {
+    if (0) Debug.printf("updateDisplay(%s,%s,%s,%s)\n",
+                 title ? title : "NULL",
+                 left, right, rebuildFull ? "true" : "false");
+
     if (rebuildFull) {
         clearDisplay();
         setTextSize(1);
         setFont(FONT_LARGE);
         setTextColor(SH110X_WHITE);
+        int nY = 0;
+        
+        if (title) {
+            getBBX(title,w,h);
+            setCursor((SCREEN_WIDTH - w)/2,h);
+            println(title);
+            nY = getCursorY() + 2;
+        };
+        
+        // Fix the sizing in the buttons height wise on
+        // an all caps string. So left and right stay
+        // on the same baseline.
+        setFont(FONT_SMALL);
+        getBBX("XXXXXXX",W,H);
 
-        getBBX(title,w,h);
-        setCursor((SCREEN_WIDTH - w)/2,h);
-        println(title);
-
-        setFont(FONT_SMALL);        
         if (left.length() || right.length()) {
-            const uint16_t WBOX = 60;
+            const uint16_t WBOX = 128/2 - 4;
             setTextColor(SH110X_BLACK);
-            drawFastHLine(0,SCREEN_HEIGHT-8-4,SCREEN_WIDTH,SH110X_WHITE);
-            drawFastHLine(0,SCREEN_HEIGHT-1,SCREEN_WIDTH,SH110X_WHITE);
-            
+            {
+                drawFastHLine(0,SCREEN_HEIGHT-H-5,SCREEN_WIDTH,SH110X_WHITE);
+                drawFastHLine(0,SCREEN_HEIGHT-1,SCREEN_WIDTH,SH110X_WHITE);
+            };
             if (left.length()) {
+                fillRect(0, SCREEN_HEIGHT-H-3, WBOX, H+1, SH110X_WHITE);
                 getBBX(left,w,h);
-                fillRect(0, SCREEN_HEIGHT-8-2, WBOX, 8, SH110X_WHITE);
-                setCursor((WBOX-w)/2,SCREEN_HEIGHT-h+3);  // We assume these to be always uppercase; hence the h+3
+                setCursor((WBOX-w)/2,SCREEN_HEIGHT-H-2);
                 println(left);
             };
             
             if (right.length()) {
+                fillRect(SCREEN_WIDTH-WBOX,  SCREEN_HEIGHT-H-3, WBOX, H+1, SH110X_WHITE);
                 getBBX(right,w,h);
-                fillRect(SCREEN_WIDTH-WBOX,  SCREEN_HEIGHT-8-2, 60, 8, SH110X_WHITE);
-                setCursor(SCREEN_WIDTH-WBOX+(WBOX-w)/2,SCREEN_HEIGHT-h+3); // We assume these to be always uppercase; hence the h+3
+                setCursor(SCREEN_WIDTH-WBOX+(WBOX-w)/2,SCREEN_HEIGHT-h-2);
                 println(right);
             };
         };
+
+        // Make normal continued print easier by putting the
+        // cursor in a sane location.
+        setTextColor(SH110X_WHITE);
+        setCursor(0,nY);
+        
         // Uncommet for layout checks
         // drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, SH110X_WHITE);
-        display();
     };
+    display();
 };
 
 void Display::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {

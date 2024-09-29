@@ -51,8 +51,6 @@ super(machine,wired)
 
 void WhiteNodev108::pop() {
     Serial.begin(115200);
-
-    errorLed = new LED(LED_INDICATOR);
     
     // Non standard pins for i2c.
     Wire.begin(I2C_SDA, I2C_SCL);
@@ -70,12 +68,18 @@ void WhiteNodev108::pop() {
     
     xpinMode(OPTO0, INPUT);
     xpinMode(OPTO1, INPUT);
+    
+    if (!errorLed)
+        errorLed = new LED(LED_INDICATOR);
+
+    _deskCtrl = new DeckController();
 };
 
 // bracketing with a timer to keep some cadence. We should
 // moved to timer/interrupt async queue.
 //
 #define BUZZ_MIN_INTERVAL (50)
+
 void WhiteNodev108::buzzer(bool onOff) {
     while(onOff && ((millis() - _last_buzz) < BUZZ_MIN_INTERVAL)) { delay(1); };
     xdigitalWrite(BUZZER, onOff ? HIGH : LOW);
@@ -98,6 +102,8 @@ void WhiteNodev108::buzzerErr() {
 };
 
 void WhiteNodev108::begin() {
+    errorLed->begin();
+    
     // All nodes have a build-in RFID reader; so fine to hardcode this.
     //
     _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
@@ -120,18 +126,21 @@ void WhiteNodev108::begin() {
     });
     addHandler(ota);
 
-    _deskCtrl.addDeck( new QrDeck(this, machine));
-    _deskCtrl.addDeck( new InfoDeck(this));
-    _deskCtrl.addDeck( new ApprovalDeck(this, _approvalAPI));
-    _deskCtrl.addDeck( new LogQrDeck(this));
-    _deskCtrl.addDeck( new SNTPDeck(this));
-    _deskCtrl.addDeck( new FirmwareDeck(this));
-    _deskCtrl.addDeck( new OTADeck(this,ota));
-    _deskCtrl.addDeck( new MqttDeck(this));
-    _deskCtrl.addDeck( new RestDeck(this, _restAPI));
+    _deskCtrl->addDeck( new QrDeck(this, machine));
+    _deskCtrl->addDeck( new InfoDeck(this));
+
+    approvalDeck = new ApprovalDeck(this, _approvalAPI);
+    _deskCtrl->addDeck( approvalDeck );
+
+    _deskCtrl->addDeck( new LogQrDeck(this));
+    _deskCtrl->addDeck( new SNTPDeck(this));
+    _deskCtrl->addDeck( new FirmwareDeck(this));
+    _deskCtrl->addDeck( new OTADeck(this,ota));
+    _deskCtrl->addDeck( new MqttDeck(this));
+    _deskCtrl->addDeck( new RestDeck(this, _restAPI));
     
     if (strstr(machine,"test"))
-        _deskCtrl.addDeck(new ButtonsDeck(this, iostates));
+        _deskCtrl->addDeck(new ButtonsDeck(this, iostates));
     
     if (_wired)
         ETH.begin(WN_ETH_PHY_ADDR, WN_ETH_PHY_POWER, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_TYPE, WN_ETH_CLK_MODE);
@@ -149,35 +158,52 @@ void WhiteNodev108::begin() {
     setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
     tzset();
 #endif
+    
     offButton = new ButtonDebounce(OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
         Debug.printf("OFF button %s\n",newState ? "released" : "pressed");
-        if (machinestate == SCREENSAVER) {
-            machinestate = MachineState::WAITINGFORCARD;
-            return;
-        };
-        if (machinestate == INFODISPLAY && newState == LOW) {
-            Debug.println("Exiting INFO by button press");
-            machinestate = MachineState::WAITINGFORCARD;
-            _deskCtrl.close();
-            return;
-        };
+
         if (_offCallBack &&
             (_offCallBackMode == CHANGE ||
              (newState && (_offCallBackMode == ONHIGH || _offCallBackMode == RISING)) ||
              (!newState &&(_offCallBackMode == ONLOW || _offCallBackMode == FALLING))
              ))
-            _offCallBack(newState);
-        else
-            Debug.println("Left button activity ignored.");
+            if (_offCallBack(newState))
+                return;
+
+        if (machinestate == SCREENSAVER) {
+            machinestate = MachineState::WAITINGFORCARD;
+            Debug.println("Switching off the screensaver");
+            return;
+        } else
+        if (machinestate == INFODISPLAY && newState == LOW) {
+            if (currentDeck() == approvalDeck) {
+                Log.println("Forcing an immediate update");
+                _approvalAPI->scheduleImmediateUpdate();
+                return;
+            };
+            
+            Debug.println("Exiting INFO by button press");
+            machinestate = MachineState::WAITINGFORCARD;
+            _deskCtrl->close();
+            return;
+        };
     },  CHANGE);
     
     menuButton = new ButtonDebounce(MENU_BUTTON);
     menuButton->setCallback([&](const int newState) {
         Debug.printf("MENU button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
-        
+        if (_menuCallBack &&
+            (_menuCallBackMode == CHANGE ||
+             (newState && (_menuCallBackMode == ONHIGH || _menuCallBackMode == RISING)) ||
+             (!newState &&(_menuCallBackMode == ONLOW || _menuCallBackMode == FALLING))
+             ))
+            if (_menuCallBack(newState))
+                return;
+
         if (machinestate == SCREENSAVER) {
             machinestate = MachineState::WAITINGFORCARD;
+            Debug.println("Switching off the screensaver");
             return;
         };
         if (machinestate.safeForOTA() /*  MachineState::WAITINGFORCARD */ && newState == LOW && machinestate != INFODISPLAY) {
@@ -186,48 +212,50 @@ void WhiteNodev108::begin() {
             return;
         };
         if (machinestate == INFODISPLAY && newState == LOW) {
-            if (!_deskCtrl.next()) {
-                _deskCtrl.close();
+            if (!_deskCtrl->next()) {
+                _deskCtrl->close();
                 machinestate = MachineState::WAITINGFORCARD;
                 Debug.println("At last page");
             } else {
+                machinestate.resetTimeout();
                 Debug.println("Next page");
             }
             return;
         };
-        if (_menuCallBack &&
-            (_menuCallBackMode == CHANGE ||
-             (newState && (_menuCallBackMode == ONHIGH || _menuCallBackMode == RISING)) ||
-             (!newState &&(_menuCallBackMode == ONLOW || _menuCallBackMode == FALLING))
-             ))
-            _menuCallBack(newState);
-        else
-            Debug.println("MENU button activity ignored.");
     },  CHANGE);
     
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         Debug.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
+
+        if (last == INFODISPLAY) {
+            _deskCtrl->close();
+            Debug.println("INFO display closed.");
+        };
+        
         errorLed->set(machinestate.ledState());
+        _display->clearDisplay();
 
         _display->setDisplayScreensaver(current == SCREENSAVER);
-        
-        _display->updateDisplayStateMsg(machinestate.label());
 
         if (current == FAULTED) {
-            _display->updateDisplay(machine, "", "", true);
+            updateDisplay("", "", true);
             Debug.println("Machine poweron disabled - machine on/off switch in the 'on' position.");
             errors++;
         } else if (current == MachineState::WAITINGFORCARD) {
-            _display->updateDisplay(machine, "", "MORE", true);
+            updateDisplay("", "MORE", true);
             if (last == MachineState::CHECKINGCARD)
                 buzzerErr();
         } else if (current == MachineState::CHECKINGCARD)
-            _display->updateDisplay(machine, "", "", true);
+            updateDisplay("", "", true);
         else if (current == INFODISPLAY) {
-            _deskCtrl.first();
+            _deskCtrl->first();
             return;
-        }
-        else if (_onChangeCB && (current == _onChangeState || _onChangeState ==MachineState::ALL_STATES))
+        };
+
+        if (current != INFODISPLAY)
+            updateDisplayStateMsg(machinestate.label());
+
+        if (_onChangeCB && (current == _onChangeState || _onChangeState ==MachineState::ALL_STATES))
             _onChangeCB(last, current);
     });
     
@@ -251,10 +279,16 @@ void WhiteNodev108::begin() {
             Debug.println("Aborting INFO screen to handle swipe");
         };
         
-
-        machinestate = MachineState::CHECKINGCARD;
-        _display->updateDisplay(machine, "", "", true);
-        _display->updateDisplayStateMsg(machinestate.label());
+        // Only go through the checking card rigamarole if we
+        // are in a normal check. For the specials, such aws
+        // when adding instructions or confirming maintenance,
+        // we stay in the actual state.
+        //
+        if (machinestate == MachineState::WAITINGFORCARD) {
+            machinestate = MachineState::CHECKINGCARD;
+            updateDisplay("", "", true);
+            updateDisplayStateMsg(machinestate.label());
+        };
 
         if (_swipeCB)
             return _swipeCB(tag);
@@ -273,23 +307,25 @@ void WhiteNodev108::begin() {
         machinestate = MachineState::TRANSIENTERROR;
     });
     
-    onDenied([&](const char *machine) {
+    onDenied([&](const char *reason) {
         buzzerErr();
         if (machinestate == SCREENSAVER) {
             machinestate = MachineState::WAITINGFORCARD;
+            Debug.println("Switching off the screensaver");
             return;
         };
         machinestate = MachineState::REJECTED;
+        _display->updateDisplayStateMsg(reason, 2);
         buzzerErr();
     });
     
-    _display->updateDisplay(machine, "","MORE", true);
-    
+    updateDisplay("","MORE", true);
     super::begin(BOARD_NG);
 }
 
 void WhiteNodev108::updateDisplay(String left, String right, bool rebuildFull) {
-    _display->updateDisplay(moi,left,right,rebuildFull);
+    // Debug.printf("WhiteNodev108::updateDisplay %d\n", rebuildFull);
+    _display->updateDisplay(machine,left,right,rebuildFull);
 };
 
 void WhiteNodev108::updateDisplayStateMsg(String msg,int line) {
@@ -303,15 +339,32 @@ void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB swipeCB) {
 
 void WhiteNodev108::loop() {
     super::loop();
-    _deskCtrl.update(); // a no-op if a static page is curently shown.
+    if (_deskCtrl)
+        _deskCtrl->update(); // a no-op if a static page is curently shown.
+    else
+        Log.println("**** eh ***");
     
     if (machinestate == POWERED) {
-        String left = machinestate.timeLeftInThisState();
         // Show the countdown to poweroff; only when the machine
-        // has been idle for a singificant bit of time.
+        // has been idle for a singificant bit of time and in the
+        // last 30 seconds (the latter when the TO is short for
+        // testing purposes).
         //
-        if (left.length() && machinestate.secondsInThisState() > SHOW_COUNTDOWN_TIME_AFTER)
-            updateDisplayStateMsg("Auto off: " + left, 1);
+        if (
+                (machinestate.secondsLeftInThisState() < 45) ||
+                (machinestate.secondsInThisState() > SHOW_COUNTDOWN_TIME_AFTER)
+            )
+            updateDisplayStateMsg("Auto off in " + machinestate.timeLeftInThisState(), 2);
+        
+        static unsigned long lst = 0;
+        if (machinestate.secondsLeftInThisState() < 30 && millis() - lst > 1000) {
+            lst = millis();
+            if (machinestate.secondsLeftInThisState() < 2) {
+                buzzer(true); delay(1000); buzzer(false);
+            } else {
+                buzzerOk();
+            };
+        };
     };
     
     if ((machinestate == MachineState::WAITINGFORCARD) && (machinestate.secondsInThisState() > SCREENSAVER_DELAY)) {
@@ -324,7 +377,6 @@ void WhiteNodev108::report(JsonObject & report) {
     report["manual_poweroff"] = manual_poweroff;
     report["idle_poweroff"] = idle_poweroff;
     report["errors"] = errors;
-    
     report["ota"] = true;
     
     super::report(report);
@@ -349,11 +401,11 @@ void WhiteNodev108::setNodeDeck(Deck * deck) {
     // Node specific decks, if they exists; are always the first one
     // you see when pressing info/more.
     //
-    _deskCtrl.addDeckAsFirst(deck);
+    _deskCtrl->addDeckAsFirst(deck);
 }
 
 void WhiteNodev108::addDeck(Deck * deck) {
-    _deskCtrl.addDeck(deck);
+    _deskCtrl->addDeck(deck);
 }
 
 void ButtonsDeck::render_pane(bool refresh) {

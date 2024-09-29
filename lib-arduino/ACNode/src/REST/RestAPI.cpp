@@ -225,22 +225,24 @@ void RestDeck::render_pane(bool refresh) {
     if(!refresh)
         return;
 
-    const int L = 16;
-    char tmp[128];
-    char tmp2[L+1];
-    
-    _display->print_centred("REST");
-    if (!_restAPI)
+
+    if (!_restAPI) {
+        _display->print_centred("NO REST");
         return;
-    
-    _display->printf("ID: %s\n\n", _restAPI->_terminalName);
+    };
+    _display->print_centred((char *)_restAPI->_terminalName);
+
+    char tmp[128];
+    snprintf(tmp,sizeof(tmp),"%s %s", _restAPI->ready() ? "OK" : "pending", _restAPI->getStatLabel());
+    _display->print_centred(tmp, false);
 
     sha256toHEX(sha256_client, tmp);
-    
+    const int L = 16;
+    char tmp2[L+1];
+
     for(int i = 0; i < 64/L; i++) {
         strncpy(tmp2, tmp + L*i, L); tmp2[L] = '\0';
         _display->print("  ");
         _display->println(tmp2);
     };
-    // Also show state ?? and paired yes/no
 };

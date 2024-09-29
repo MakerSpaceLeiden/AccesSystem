@@ -197,7 +197,7 @@ void MachineState::loop()
     
     if (laststate != machinestate) {
         Debug.printf("Changed from state <%s> to state <%s>\n", label(laststate), label(machinestate));
-        
+
         if (_state2stateStruct[machinestate]->onChangeCB)
             _state2stateStruct[machinestate]->onChangeCB(laststate, machinestate);
         else if (_state2stateStruct[ALL_STATES]->onChangeCB)
@@ -207,9 +207,10 @@ void MachineState::loop()
             _state2stateStruct[laststate]->timeInState += (millis() - laststatechange) / 1000;
             _state2stateStruct[laststate]->stateCnt ++;
         };
+        if (_led) _led->set(ledState());
+
         laststate = machinestate;
         laststatechange = millis();
-        if (_led) _led->set(ledState());
         return;
     };
     
@@ -226,7 +227,7 @@ void MachineState::loop()
         laststate = machinestate;
         machinestate = _state2stateStruct[machinestate]->failStateOnTimeout;
         
-        Log.printf("Time-out (%f seconds); transition from %d<%s> to %d<%s>\n",
+        Debug.printf("Time-out (%f seconds); transition from %d<%s> to %d<%s>\n",
                    _state2stateStruct[laststate]->maxTimeInMilliSeconds/1000.,
                    laststate, label(laststate),
                    machinestate, label(machinestate));
@@ -237,7 +238,7 @@ void MachineState::loop()
         millis() - laststatechange > _state2stateStruct[machinestate]->autoReportCycle && \
         millis() - lastReport > _state2stateStruct[machinestate]->autoReportCycle)
     {
-        Log.printf("State: %s now for %lu seconds", label(laststate), (millis() - laststatechange) / 1000);
+        Debug.printf("State: %s now for %lu seconds", label(laststate), (millis() - laststatechange) / 1000);
         lastReport = millis();
     };
     

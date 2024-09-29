@@ -55,7 +55,7 @@ private:
         err = _wire->endTransmission();
 
         if (err != 0) {
-            Serial.printf("XGZP6897D: SC - fail %d != 0\n", err);
+            // Serial.printf("XGZP6897D: SC - fail %d != 0\n", err);
             return false;
         };
 
@@ -70,7 +70,7 @@ private:
         err = _wire->endTransmission();
         
         if (err != 0) {
-            Serial.printf("XGZP6897D: CC - fail %d != 0\n", err);
+            // Serial.printf("XGZP6897D: CC - fail %d != 0\n", err);
             return false;
         };
         
@@ -91,7 +91,7 @@ private:
         unsigned long lst = millis();
         while(!_checkConversion()) {
             if (millis() - lst > 35) {
-                Serial.println("CC timeout");
+                // Serial.println("CC timeout");
                 return;
             };
         };
@@ -100,7 +100,7 @@ private:
         _wire->write(PRESS); // pressure is the first 3 byts; so reading 5 byts from here also gets the two for temperature.
         err = _wire->endTransmission();
         if (err) {
-            Serial.printf("XGZP6897D: CC - fail %d != 0\n", err);
+            // Serial.printf("XGZP6897D: CC - fail %d != 0\n", err);
             return;
         };
 

@@ -24,7 +24,11 @@ public:
         WIFI_FAIL_REBOOT /* reboot; then retry from scratch */
     } state_t;
     virtual const char *name() { return "RestAPI"; };
-
+    const char * getStatLabel() {
+        const char *label[] ={ "NTP", "CA", "REG", "SWIPE", "CHK", "FLL", "DNE", "RET", "RBO" };
+        if (md < 0 || md > WIFI_FAIL_REBOOT) return "???";
+        return label[md];
+    };
     void begin();
     void loop();
     bool ready() { return FULLY_REGISTERED == md; };

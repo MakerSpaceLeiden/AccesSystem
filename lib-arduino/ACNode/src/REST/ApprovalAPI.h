@@ -25,13 +25,27 @@ public:
     ApprovalEntry(String name, acl_t has, acl_t needs) : name(name), has(has),needs(needs) {};
     String name;
     acl_t has, needs;
+    bool ok() { return (has & needs) == needs; };
+
+    const char * status() {
+        if ((needs & ACL_MASK_ACTIVE) && (has & ACL_MASK_ACTIVE) == 0)
+            return "inactive";
+        if ((needs & ACL_MASK_PERMIT) && (has & ACL_MASK_PERMIT) == 0)
+            return "no permit on file";
+        if ((needs & ACL_MASK_FORM) && (has & ACL_MASK_FORM) == 0)
+            return "no waiver on file";
+        if ((needs & ACL_MASK_APPROVE) && (has & ACL_MASK_APPROVE) == 0)
+            return "no trustee approval";
+        
+        return "Machine disabled";
+    };
 };
 
 class ApprovalDeck;
 class ApprovalAPI : public ACBase {
 public:
     virtual const char *name() { return "ApprovalAPI"; };
-    ApprovalAPI(RestAPI * r) : _restAPI(r), blob(NULL), identifier(0) {};
+    ApprovalAPI(RestAPI * r, const char * machine) : _restAPI(r), blob(NULL), identifier(0), machine(machine) {};
     
     ApprovalEntry * getEntry(const char * tag);
     bool canApprove();
@@ -41,10 +55,11 @@ public:
     void report(JsonObject& report);
 
     void scheduleImmediateUpdate();
+    void scheduleForcedReload();
     
 private:
     RestAPI * _restAPI;
-    
+    const char * machine;
     const unsigned char * blob;
     size_t blob_len;
 
@@ -79,8 +94,8 @@ private:
 
 friend class ApprovalDeck;
     unsigned long last_update = 0; // millis
-    unsigned long identifier;   // unqiue, opaque identifier
-    unsigned long datadate;     // date of creation
+    unsigned long identifier = 0;   // unqiue, opaque identifier
+    unsigned long datadate = 0;     // date of creation
 };
 
 class ApprovalDeck : public Deck {

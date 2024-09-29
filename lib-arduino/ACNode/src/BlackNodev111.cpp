@@ -19,7 +19,8 @@ void BlackNodev111::begin() {
     //
     ExpandedGPIO::getInstance().addAW9523();
     
-    // Reduce the current to a sensible level (Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5)
+    // Reduce the current to a sensible level.
+    // Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5.
     //
     Wire.beginTransmission(0x58);
     Wire.write(0x11);
@@ -45,15 +46,20 @@ void BlackNodev111::begin() {
     xpinMode(OPTO1, INPUT);
     xpinMode(OPTO2, INPUT);
     xpinMode(OPTO3, INPUT);
-        
+
+    yesButton = new ButtonDebounce(YES_BUTTON);
+    yesButton->setCallback([&](const int newState) {
+        Debug.printf("YES button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
+        if (_yesCallBack &&
+            (_yesCallBackMode == CHANGE ||
+             (newState && (_yesCallBackMode == ONHIGH || _yesCallBackMode == RISING)) ||
+             (!newState &&(_yesCallBackMode == ONLOW || _yesCallBackMode == FALLING))
+             ))
+            if (_yesCallBack(newState))
+                return;
+    });
+
     super::begin();
-    
-    xanalogWrite(LEDA,1); delay(50);
-    xanalogWrite(LEDB,1); delay(50); xanalogWrite(LEDA,0);
-    xanalogWrite(LEDC,1); delay(50); xanalogWrite(LEDB,0);
-    xanalogWrite(LEDD,1); delay(50); xanalogWrite(LEDC,0);
-    xanalogWrite(LEDE,1); delay(50); xanalogWrite(LEDD,0);
-                                     xanalogWrite(LEDE,0);
 }
 
 void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
@@ -63,7 +69,7 @@ void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
         expectOut2 = val ? HIGH : LOW;
     xdigitalWrite(num,val);
 }
-
+                           
 bool BlackNodev111::getMonitoredOutput(uint8_t num) {
     xpinMode(num,INPUT);
     bool out = digitalRead(num);
@@ -75,23 +81,33 @@ bool BlackNodev111::monitoredOutputIsOK(uint8_t num) {
     bool expect = (num == OUT0) ? expectOut1 : expectOut2;
 
     xpinMode(num,INPUT);
-    bool curr = digitalRead(num);
+    bool curr = xdigitalRead(num);
     xpinMode(num,OUTPUT);
     
     return expect == curr;
 }
 
+void BlackNodev111::setYesCallback(ButtonCallback callback, int mode ) {
+    _yesCallBack = callback;
+    _yesCallBackMode = mode;
+}
+    
 void BlackNodev111::loop() {
     super::loop();
     xanalogWrite(LEDE,hearthbeat());
+
+    static unsigned last = millis();
+    if (millis() - last < 10*1000)
+        return;
+        
     // Quite hardware specific; the relay can only be forced 'on' - either by a GPIO or
     // by a switch. It cannot be forced off. So we can only sensibly detect an 'illegal' on;
-    // while it was expected to be off.
+    // while it was expected to be off. Not sure if this reliable / does not cause glitches.
     //
     if (expectOut1 == LOW) {
         static unsigned long lst = 0;
         if (!monitoredOutputIsOK(OUT0)){
-            if (lst == 0 || millis() - lst > 5 * 60 * 1000) {
+            if (lst == 0 || millis() - lst > 60 * 1000) {
                 Log.printf("Warning - Output 1 measured as %s at hardware level; it should be %s.\n",
                            getMonitoredOutput(OUT0) ? "HIGH" : "LOW", expectOut1  ? "HIGH" : "LOW");
                 lst = millis();
@@ -100,11 +116,14 @@ void BlackNodev111::loop() {
             xanalogWrite(LEDA,255);
         } else lst = 0;
     };
-    
+
+#if 0
+    // Not yet reliable on out2, out1 is fine. We need to change
+    // this to a proper extra pin from the AW for both cases.
     if (expectOut2 == LOW) {
         static unsigned long lst = 0;
-            if (!monitoredOutputIsOK(OUT1)) {
-            if (lst == 0 || millis() - lst > 5 * 60 * 1000) {
+        if (!monitoredOutputIsOK(OUT1)) {
+            if (lst == 0 || millis() - lst > 60 * 1000) {
                 Log.printf("Warning - Output 2 measured as %s at hardware level; it should be %s.\n",
                            getMonitoredOutput(OUT1) ? "HIGH" : "LOW", expectOut2  ? "HIGH" : "LOW");
                 lst = millis();
@@ -113,4 +132,5 @@ void BlackNodev111::loop() {
             xanalogWrite(LEDA,255);
         } else lst = 0;
     };
+#endif
 }

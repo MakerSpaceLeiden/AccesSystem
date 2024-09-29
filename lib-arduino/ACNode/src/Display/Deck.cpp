@@ -5,7 +5,6 @@
 void Deck::display(bool refresh) {
     if (refresh) {
         _display->clearDisplay();
-        Debug.println("Clearing display");
     };
     
     _display->setFont(FONT_SMALL);

@@ -94,7 +94,7 @@ void OTAWithDisplay::begin() {
         };
         
         if (strstr(_acnodebase->moi,"test"))
-            Log.println("OTA process started (Not wiping private keys in test ode).");
+            Log.println("OTA process started (Not wiping private keys in test code).");
         else {
             Log.println("OTA process started -- wiping private keys.");
             if (_pre_secrets_cb)
@@ -185,8 +185,9 @@ void OTADeck::render_pane(bool refresh) {
         return;
     
     _display->print_centred("OTA");
-    _display->printf("Host : %s\n",ArduinoOTA.getHostname().c_str());
-    _display->printf("Port : %d\n",OTA_PORT);
-    _display->printf("Slice: %s\n",ArduinoOTA.getPartitionLabel().c_str());
-    _display->printf("Paswd: %s\n",_ota->_ota_password_hash ? "hash set" : "UNSET");
+    _display->printf("Host:%s\n",ArduinoOTA.getHostname().c_str());
+    _display->printf("Port:%d\n",OTA_PORT);
+    if (ArduinoOTA.getPartitionLabel())
+        _display->printf("Slce:%s\n",ArduinoOTA.getPartitionLabel().c_str());
+    _display->printf("Pass:%s\n",_ota->_ota_password_hash ? "hash set" : "UNSET");
 };

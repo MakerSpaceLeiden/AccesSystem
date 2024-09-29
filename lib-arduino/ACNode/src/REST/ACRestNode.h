@@ -28,9 +28,11 @@ public:
     MachineState machinestate;
     MachineState::machinestate_t WAIT_FOR_PAIRING, PAIRING_FAILED, PAIRING;
 
+    ApprovalEntry * lastApproved() { return _lastApproved; };
 protected:
     RestAPI * _restAPI;
     ApprovalAPI *_approvalAPI;
+    ApprovalEntry * _lastApproved;
 private:
 };
 #endif

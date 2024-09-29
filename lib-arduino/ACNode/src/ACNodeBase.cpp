@@ -71,14 +71,14 @@ void ACNodeBase::pop() {
     Log.setIdentifier(moi);
     Debug.setIdentifier(moi);
     
-    const std::shared_ptr<LOGBase> & th = std::make_shared<TelnetSerialStream>(telnetSerialStream);
     const std::shared_ptr<LOGBase> & wh = std::make_shared<WebSerialStream>(webSerialStream);
-    
-    Log.addPrintStream(th);
     Log.addPrintStream(wh);
-
     Debug.addPrintStream(wh);
+
+    const std::shared_ptr<LOGBase> & th = std::make_shared<TelnetSerialStream>(telnetSerialStream);
     Debug.addPrintStream(th);
+    Log.addPrintStream(th);
+
 #ifdef SYSLOG_HOST
   syslogStream.setDestination(SYSLOG_HOST);
   syslogStream.setRaw(true);
@@ -86,7 +86,6 @@ void ACNodeBase::pop() {
   syslogStream.setPort(SYSLOG_PORT);
 #endif
     Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
-    Debug.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 #endif
 };
 
@@ -191,11 +190,6 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
         (*it)->begin();
     }
 
-    // We need things like OTA full set up. So we do this as
-    // 'late' as we can.
-    //
-    Log.println("MDNS Responder started");
-    MDNS.begin(moi);
     Log.printf("Host details %s (%s)\n", moi, localIP().toString().c_str());
 }
 
@@ -254,12 +248,9 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     
     const int del = 3; // seconds.
     unsigned long start = millis();
-    Debug.print("Connecting..");
     while (!isConnected() && (millis() - start < del * 1000)) {
-        delay(500);
-        Debug.print(".");
+        delay(100);
     };
-    Debug.println("Connected.");
     
     if (!_wired && !isConnected()) {
         // Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
@@ -269,7 +260,10 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     else
         if(_ssid)
             Log.printf("Wifi connected to <%s>\n", WiFi.SSID().c_str());
-    
+
+    Log.println("MDNS Responder started");
+    MDNS.begin(moi);
+
     _espClient = WiFiClient();
     _client = PubSubClient(_espClient);
     _client.setServer(mqtt_server, mqtt_port);

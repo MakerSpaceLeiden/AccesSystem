@@ -31,7 +31,8 @@ void SNTPDeck::render_pane(bool refresh) {
     char ds[10], ts[10];
     strftime(ds,sizeof(ds),"%Y-%m-%d",t);
     strftime(ts,sizeof(ts),"%H:%M:%S",t);
-    _display->println("   -- SNTP --");
+
+    _display->print_centred("SNTP");
     _display->printf("Date :%s\n",ds);
     _display->printf("Time :%s\n",ts);
     
@@ -60,7 +61,7 @@ void SNTPDeck::render_pane(bool refresh) {
 
 void FirmwareDeck::render_pane(bool refresh) {
     if (!refresh) return;
-    _display->println(" -- Firmware --");
+    _display->print_centred("Firmware");
     _display->printf("Dev :%s\n", _acnode->name());
     _display->printf("Date:%s\n",__DATE__);
     _display->printf("Time:%s\n",__TIME__);
@@ -68,7 +69,7 @@ void FirmwareDeck::render_pane(bool refresh) {
 
 void MqttDeck::render_pane(bool refresh) {
     if (!refresh) return;
-    _display->println("    -- MQTT --");
+    _display->print_centred("MQTT");
     char buff[16],*p = _acnode->mqtt_server,*q=(char*)"Host";
     while(*p) {
         char * s = index(p,'.');
@@ -82,14 +83,13 @@ void MqttDeck::render_pane(bool refresh) {
     };
     _display->printf("Port :%u\n",_acnode->mqtt_port);
     _display->printf("Topic:%s/%s\n",_acnode->mqtt_topic_prefix,_acnode->logpath);
-    _display->printf(" /%s/#\n",_acnode->moi);
 };
 
 void QrDeck::render_pane(bool refresh) {
     if (!refresh) return;
     char url[128];
     snprintf(url,sizeof(url),QR_URL_REDIRECT_TEMPLATE,_str);
-    _display->print_centered_QR(NULL, url);
+    _display->print_centered_QR("wiki", url);
 };
 
 void LogQrDeck::render_pane(bool refresh) {

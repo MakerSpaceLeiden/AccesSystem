@@ -72,6 +72,13 @@ int ExpandedGPIO::xdigitalRead(uint8_t pin) {
 
 
 void ExpandedGPIO::xdigitalWrite(uint8_t pin, uint8_t val) {
+#if 0
+    // Useful for debugging AW9523 glitches caused by something
+    // in AdafruitIO perhaps not doing an endTransmission().
+    //
+    if (pin == (PIN_HPIO_AW9523 | (8+7)))
+        Log.println(val ? "xdigitalWrite(buzzer,ON)" : "xdigitalWrite(buzzer,OFF)");
+#endif
     if ((pin & PIN_GPIO_MASK) == PIN_HPIO_PLAIN) {
         digitalWrite(pin,val);
         return;

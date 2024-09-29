@@ -12,11 +12,11 @@ class DeckController;
 class Deck {
 public:
     Deck(ACNodeBase * node) : _acnode(node) {};
+    void display(bool refresh = true);
 
 protected:
     ACNodeBase * _acnode;
 
-    void display(bool refresh);
     virtual void render_pane(bool refresh) {
         if (refresh)
             _display->print("*****\nNOT IMPLEMENTED\n*****");

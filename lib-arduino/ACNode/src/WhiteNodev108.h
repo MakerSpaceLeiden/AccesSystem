@@ -4,7 +4,7 @@
 #define _H_WHITE108
 
 #include <Wire.h>
-#include <ExpandedGPIO.h>
+#include "ExpandedGPIO.h"
 #include <ButtonDebounce.h>
 #include "Display/Deck.h"
 #include "Display/Display.h"
@@ -99,7 +99,7 @@ public:
         _ota_md5 = NULL;
     };
     virtual const char * name() { return "WhiteNodev108"; }
-    typedef std::function<void(const int)> ButtonCallback;
+    typedef std::function<bool(const int)> ButtonCallback;
     
     WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_REST);
     WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_REST);
@@ -125,8 +125,10 @@ public:
 
     void setNodeDeck(Deck * deck);
     void addDeck(Deck * deck);
+    Deck * currentDeck() { return _deskCtrl->current(); };
+    
 protected:
-    LED * errorLed;
+    LED * errorLed = NULL;
     void pop();
     iostate_t * iostates;
 
@@ -134,8 +136,9 @@ private:
     // reader build into the board - so only one type; and it is hardcoded.
     //
     RFID_MFRC522 * _reader;
-    DeckController _deskCtrl;    
-    
+    DeckController *_deskCtrl;
+    ApprovalDeck *approvalDeck;
+
     ButtonDebounce *offButton, *menuButton;
     ButtonCallback _offCallBack, _menuCallBack = NULL;
     int _offCallBackMode, _menuCallBackMode;

@@ -11,21 +11,19 @@ void DeckController::addDeckAsFirst(Deck *d) {
 void DeckController::update() { // redraw (if needed).
     if (!_is_showing)
         return;
-    Deck * d = *_currentDeck;
-    d->display(false);
+    Deck * d = * _currentDeck;
+    if (d)
+        d->display(false);
 };
 
 void DeckController::close() {
-    _display->clearDisplay();
-    _display->print_centred(" closing ");
-    _display->display();
     _is_showing = false;
     _currentDeck = _decks.begin();
 };
 
 void DeckController::first() {
-    _currentDeck = _decks.begin();
     _is_showing = true;
+    _currentDeck = _decks.begin();
     Deck * d = *_currentDeck;
     d->display(true);
 }
@@ -36,8 +34,8 @@ void DeckController::first() {
 bool DeckController::next() {
     _currentDeck++;
     if (_currentDeck == _decks.end()) {
-        Log.println("Last deck - aborting");
         _currentDeck = _decks.begin();
+        _is_showing = false;
         return false;
     };
     _is_showing = true;

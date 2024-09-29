@@ -426,7 +426,7 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
         keystore.end();
     }
     
-    Log.println("\nWe are fully paired - we've proven to each other we know the secret & there is no MITM.");
+    Log.println("We are fully paired - we've proven to each other we know the secret & there is no MITM.");
     ok = true;
     
     ret = NOERROR;

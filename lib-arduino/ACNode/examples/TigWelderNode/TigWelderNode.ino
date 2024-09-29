@@ -68,7 +68,8 @@ MachineState::machinestate_t CHECK_VALVE_CLOSED;  // Check if the valvue is clos
 MachineState::machinestate_t SWAPPING_BOTTLE, THANKS_BOTTLE;
 MachineState::machinestate_t IDLE_POWER_OFF; // state reached on idle (as opposed to a normal power off)
 
-const unsigned int MAX_SECS_IDLE  = 2*3600; // Auto off timeout, in seconds
+const unsigned int MAX_SECS_IDLE  = 2*3600; // Auto off timeout, in seconds; when not used, etc.
+const unsigned int MAX_SECS_POWERON = 120; // Time to actually turn on the machine; before we go to safe again.
 
 // Give the user 2 minutes to close the valve; while we check occasionally.
 //
@@ -92,11 +93,14 @@ class MachineDeck : public Deck {
 public:
     MachineDeck(BlackNodev111 * node) : Deck(node) {};
     void render_pane(bool refresh) {
+        if (!refresh)
+            return;
         _display->clearDisplay();
         _display->print_centred(MACHINE);
-        _display->printf("On/Off  :%s\n", powerDetect->state() ? "on" : "off");
-        _display->printf("Welding :%s\n", weldingDetect->state() ? "pressed" : "off");
-        _display->printf("        :%d [mins]\n", 0.5 + wr.welding_timer/60.);
+        _display->updateDisplay("Bottle","SWAP","NEXT",true);
+        _display->setCursor(0,12);
+                
+        _display->printf("Welding :%lu [mins]\n", (wr.welding_timer+30UL)/60UL);
         if (wr.bottle_date) {
             char buff[20];
             struct tm *p = localtime((time_t*)&(wr.bottle_date));
@@ -111,40 +115,45 @@ public:
         };
     }
 };
+MachineDeck machineDeck(&node);
+
 class GasDeck : public Deck {
 public:
     GasDeck(BlackNodev111 * node) : Deck(node) {};
     void render_pane(bool refresh) {
-        if (millis() - lst < 500)
-            return;
+        char buff[64];
+
+        if (refresh) {
+                _display->clearDisplay();
+                _display->updateDisplay("gas","","NEXT",true);
+        }
+        if (millis() - lst > 500){
         lst = millis();
-        
+
         float pressure = pressureSensor->getPressureInPa();
+
+        if (pressure == pressureSensor->ERRVAL)
+            _display->updateDisplayStateMsg("Press : FAILED",0);
+        else {
+            snprintf(buff,sizeof(buff),"Press :%6.1f kPa", pressure/1000.);
+            _display->updateDisplayStateMsg(buff,0);
+            snprintf(buff,sizeof(buff),"        %6.2f bar", pressure/1000000.);
+            _display->updateDisplayStateMsg(buff,1);
+        };
+
         float temperature = pressureSensor->getTemperatureInC();
 
-        _display->updateDisplay("gas","SWAP","NEXT",true);
-
-        _display->setFont(FONT_SMALL);
-        _display->setTextColor(SH110X_WHITE);
-        _display->setCursor(0,12);
-        
-        _display->printf("Press: ");
-        if (pressure == pressureSensor->ERRVAL)
-            _display->printf("FAIL\n");
-        else {
-            _display->printf("%6.1f kPa\n", pressure/1000.);
-            _display->printf("       %6.2f bar\n", pressure/1000000.);
-        };
-        _display->printf("Temp : ");
         if (temperature == pressureSensor->ERRVAL)
-            _display->printf("FAIL\n");
-        else
-            _display->printf("%6.1f %cC\n", temperature, ADAFRUIT_GFX_DEGREE_SYMBOL);
-
+            _display->updateDisplayStateMsg("Temp  : FAILED",3);
+        else {
+            snprintf(buff,sizeof(buff),"Temp  : %6.1f %cC ", temperature, ADAFRUIT_GFX_DEGREE_SYMBOL);
+            _display->updateDisplayStateMsg(buff,2);
+        };
+        };
         _display->display();
     }
 private:
-    unsigned long lst = millis();
+    unsigned long lst = 0;
 };
 GasDeck gasDeck(&node);
 
@@ -178,7 +187,7 @@ void setup() {
     // still needs to operate the switch on the front. This gives the
     // user 30 seconds to do that.
     UNLOCKED = node.machinestate.addState("Switch Welder on", LED::LED_ON,
-                                          30 * 1000,  MachineState::WAITINGFORCARD, false);
+                                          MAX_SECS_POWERON * 1000,  MachineState::WAITINGFORCARD, false);
 
     // Detect that we're actually welding; resets any auto-off timers. And also we
     // keep track of the minutes of gas-flow; in the hope that we can somewhat
@@ -212,7 +221,7 @@ void setup() {
                                          MachineState::NEVER, MachineState::WAITINGFORCARD, false);
 
     node.machinestate.setTimeoutState(POWERED,IDLE_POWER_OFF);
-    node.machinestate.setTimeout(POWERED,60 * 1000);
+    node.machinestate.setTimeout(POWERED, MAX_SECS_IDLE*1000);
         
     expandedPinMode(POWER_VOLTAGE, INPUT);
     powerDetect = new ButtonDebounce(POWER_VOLTAGE);
@@ -261,7 +270,7 @@ void setup() {
         } else if (node.machinestate == WELDING && newState == HIGH) {
             // Debug.println("Done welding.");
             unsigned long wt = millis() - lst;
-            wr.welding_timer = 0.5 + wt/1000.;
+            wr.welding_timer += (wt+500UL)/1000UL;
             node.machinestate = POWERED;
         }
     }, CHANGE);
@@ -271,7 +280,7 @@ void setup() {
     node.set_master("master");
     
     node.setNodeDeck(&gasDeck);
-    node.setNodeDeck(new MachineDeck(&node));
+    node.setNodeDeck(&machineDeck);
     
     node.onReport([](JsonObject & report) {
         char * p = __FILE__;
@@ -294,8 +303,9 @@ void setup() {
         } else
         if (current == IDLE_POWER_OFF) {
             // Special case for the Welder - we do not want to silently
-            // go idle after an hour of non-use; but actually alert people
-            // to the fact that this happened.
+            // switch off after an hour of non-use; but actually alert people
+            // to the fact that this happened; so someone hopefully closes
+            // the valve.
             //
             Log.println("Power switched off after a long idle time; waiting for valve to be closed");
             node.machinestate = WAITING_FOR_VALVE;
@@ -376,10 +386,10 @@ void setup() {
     },FALLING);
  
     node.setOffCallback([&](const int newState) -> bool {
-        if (node.machinestate == INFODISPLAY && (node.currentDeck() == &gasDeck)) {
+        if (node.machinestate == INFODISPLAY && (node.currentDeck() == &machineDeck)) {
             Log.println("Swapping bottle process initiated");
             node.machinestate = SWAPPING_BOTTLE;
-            return true;
+            // return true;
         } else
         if (node.machinestate == SWAPPING_BOTTLE) {
             Log.println("Swapping bottle cancled");
@@ -404,27 +414,37 @@ void setup() {
 }
 
 void loop() {
-if (0) {
+    node.loop();
+
+    bool r = (node.machinestate == UNLOCKED) || (node.machinestate == POWERED) || (node.machinestate == WELDING);
+    node.setMonitoredOutput(POWER_GPIO, r); // needs to be high to engage the relay
+    
+    // We normally do not operate the torch-gas solenoid in the machine; so it
+    // should be off.
+    //
+    node.setMonitoredOutput(SOLENOID_GPIO, LOW);
+
+    // Disco test - for checking out hardware
+    if (0) {
         static unsigned long lst = millis();
         static int i = 0;
-        if (millis() - lst > 3000) {
+        if (millis() - lst > 300) {
                 lst = millis();
-                expandedAnalogWrite(node.LEDA, (i & 1) ? 255 : 0);
-                expandedAnalogWrite(node.LEDB, (i & 1) ? 255 : 0);
-                expandedAnalogWrite(node.LEDC, (i & 1) ? 255 : 0);
-                expandedAnalogWrite(node.LEDD, (i & 1) ? 255 : 0);
-                expandedAnalogWrite(node.LEDE, (i & 1) ? 255 : 0);
-                expandedDigitalWrite(node.OUT0, i & 1);
-                expandedDigitalWrite(node.OUT1, i & 1);
-                expandedDigitalWrite(node.LED_INDICATOR, i & 1);
+                expandedAnalogWrite(node.LEDA, (i % 8 == 0) ? 255 : 0);
+                expandedAnalogWrite(node.LEDB, (i % 8 == 1) ? 255 : 0);
+                expandedAnalogWrite(node.LEDC, (i % 8 == 2) ? 255 : 0);
+                expandedAnalogWrite(node.LEDD, (i % 8 == 3) ? 255 : 0);
+                expandedAnalogWrite(node.LEDE, (i % 8 == 4) ? 255 : 0);
+                expandedDigitalWrite(node.OUT0, i % 8 == 5);
+                expandedDigitalWrite(node.OUT1, i % 8 == 6);
+                expandedDigitalWrite(node.LED_INDICATOR, i % 8 == 7);
                 i++;
                 Debug.println((i&1) ? "ON" : "OFF");
         };
-        return;
-};
-    node.loop();
+    };
 
-    if (1) {
+    // for checking the sensors/connections.
+    if (0) {
         static unsigned long lst = millis();
         if (millis() - lst > 1000) {
             lst = millis();
@@ -441,25 +461,45 @@ if (0) {
         };
     };
 
+    static float pressure = 0;
+    static bool valveOpen = false;
+    static unsigned long lastValveOpen = 0;
+    {
+            static unsigned lst = 0;
+            if (millis() - lst > 250) {
+                lst = millis();
+                float pressure = pressureSensor->getPressureInPa();
+                if (pressure == pressureSensor->ERRVAL) {
+                    static unsigned lst = 0;
+                    if (millis() - lst > 60*1000) {
+                        Log.printf("Failed to read pressure sensor\n");
+                        lst = millis();
+                        };
+                    expandedDigitalWrite(node.LED_INDICATOR, HIGH);
+                }
+                if (pressure > PRESSURE_VALVE_CLOSED_LIMIT * HYSTERESIS) {
+                    valveOpen = true;
+                    lastValveOpen = millis();
+                } else
+                if (pressure < PRESSURE_VALVE_CLOSED_LIMIT / HYSTERESIS)
+                    valveOpen = false;
+
+            };
+            expandedAnalogWrite(node.LEDD, valveOpen ? 255 : 0);
+    };
+
     if (node.machinestate == MachineState::WAITINGFORCARD) {
         static unsigned lst = 0;
         if (millis() - lst > 30*1000) {
             lst = millis();
-            float pressure = pressureSensor->getPressureInPa();
-            if (pressure == pressureSensor->ERRVAL)
-                Log.printf("Failed to read pressure sensor\n");
-            else
-            if (pressure && (pressure > PRESSURE_VALVE_CLOSED_LIMIT * HYSTERESIS)) {
+            if (valveOpen) {
                 Log.printf("Detected pressure (%.1f kPa)- assuming problem with the valve\n", pressure / 1000.);
                 node.machinestate = WAITING_FOR_VALVE;
-            } else {
-                // Debug.printf("Pressure %.1f kPa, %.2f bar\n",pressure / 1000, pressure / 1000000.);
             }
         };
     } else
     if (node.machinestate == WAITING_FOR_VALVE) {
-        float pressure = pressureSensor->getPressureInPa();
-        if (pressure != pressureSensor->ERRVAL && pressure < PRESSURE_VALVE_CLOSED_LIMIT/HYSTERESIS) {
+        if (!valveOpen) {
             Log.printf("Detected pressure drop (to %.1f kPa) - assuming valve is closed\n", pressure / 1000.);
             node.machinestate = MachineState::WAITINGFORCARD;
             valve_check_counter = 0;
@@ -471,8 +511,7 @@ if (0) {
             node.buzzerOk();
         };
     } else if (node.machinestate ==  CHECK_VALVE_CLOSED) {
-        float pressure = pressureSensor->getPressureInPa();
-        if (pressure != pressureSensor->ERRVAL && pressure < PRESSURE_VALVE_CLOSED_LIMIT/HYSTERESIS) {
+        if (!valveOpen) {
             Log.printf("Detected pressure drop (to %.1f kPa) - assuming valve is closed\n", pressure / 1000.);
             node.machinestate = MachineState::WAITINGFORCARD;
             valve_check_counter = 0;
@@ -484,13 +523,12 @@ if (0) {
             // opening the torch valve for 0.3 second.
             //
             node.buzzer(true);
-            node.setMonitoredOutput(POWER_GPIO, HIGH); // needed - perhaps rewire the phase from main
             node.setMonitoredOutput(SOLENOID_GPIO, HIGH);
             expandedAnalogWrite(node.LEDC,255);
             delay(BLEED_TIME_MS);
             valve_check_counter++;
             expandedAnalogWrite(node.LEDC,0);
-            node.setMonitoredOutput(POWER_GPIO, LOW); // needed - perhaps rewire the phase from main
+            node.setMonitoredOutput(SOLENOID_GPIO, LOW);
             node.buzzer(false);
             lst = millis();
         }
@@ -499,13 +537,4 @@ if (0) {
         node.updateDisplayStateMsg("Auto off in " + left, 2);
     };
 
-    expandedAnalogWrite(node.LEDD,(node.machinestate == WAITING_FOR_VALVE) ? 255 : 0);
-
-    bool r = (node.machinestate == UNLOCKED) || (node.machinestate == POWERED) || (node.machinestate == WELDING);
-    node.setMonitoredOutput(POWER_GPIO, r); // needs to be high to engage the relay
-    
-    // We normally do not operate the torch-gas solenoid in the machine; so it
-    // should be off.
-    //
-    node.setMonitoredOutput(SOLENOID_GPIO, LOW);
 }

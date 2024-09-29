@@ -197,7 +197,7 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
             };
         } else {
             unsetCache(_lasttag);
-            Log.printf("Received a DENID to power on %s\n", machine);
+            Log.printf("Received a DENIED to power on %s\n", machine);
             if (_denied_callback) {
                 _denied_callback(machine);
                 return ACNode::CMD_CLAIMED;

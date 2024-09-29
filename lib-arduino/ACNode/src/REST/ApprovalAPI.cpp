@@ -111,17 +111,24 @@ void ApprovalAPI::scheduleImmediateUpdate() {
         interval = 5000;
 }
 
+void ApprovalAPI::scheduleForcedReload() {
+    interval = 999;
+}
+
 void ApprovalAPI::loop() {
     // We need authentication before we can do anything.
     //
-    if (_restAPI->state() != RestAPI::FULLY_REGISTERED)
+    if (_restAPI->state() != RestAPI::FULLY_REGISTERED && _restAPI->state() != RestAPI::DONE)
         return;
     
     if (interval && last_update &&  millis() - last_update < interval)
         return;
     
-        
+    if (interval == 999)
+        Log.println("Executing forced update");
+    else
     if (!needsUpdate()) {
+        Debug.println("No TagDB update needed");
         interval =  (3600  + (esp_random() & 0xFF)) * 1000;
         return;
     };
@@ -143,9 +150,8 @@ bool ApprovalAPI::needsUpdate() {
         return false;
     buff[n] = 0; // damages last byte.
 
-
     unsigned long cntr = atoi((char *)buff);
-    Log.printf("Change identifier: %08x: %s\n", cntr, identifier == cntr ? "no changes" : "*Changed!*");
+    Log.printf("Change identifier: %08x: %s (previous: %08d)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", identifier);
 
     last_update = millis();
 
@@ -154,7 +160,8 @@ bool ApprovalAPI::needsUpdate() {
 
 void ApprovalAPI::updateTagDB() {
     char url[256];
-    snprintf(url,sizeof(url), ACL_URL PATH_GETTAGS "/%s", "Pottery%20oven" /* machine */);
+    char tmp[64];
+    snprintf(url,sizeof(url), ACL_URL PATH_GETTAGS "/%s", _argencode(tmp,sizeof(tmp),machine));
     
     unsigned char * buff = NULL;
     size_t len = 32 * 1024; // ~1k/10 active users -- so enough for 300+ users.
@@ -212,9 +219,13 @@ bool ApprovalAPI::import(const unsigned char * binfile, size_t len) {
 void ApprovalAPI::report(JsonObject& report) {
     report["bintag_id"] = identifier;
     report["bintag_ntags"] = ntags;
-    char buff[32];
-    strncpy(ctime((const time_t *) &datadate),buff,32);
-    buff[25]='\0';
+    char buff[32] = "never";
+    
+    
+    if (datadate) {
+        strncpy(ctime((const time_t *) &datadate),buff,32);
+        buff[25]='\0';
+    };
     report["bintag_date"] = buff;
 };
 
@@ -337,11 +348,13 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
 void ApprovalDeck::render_pane(bool refresh) {
     if(!refresh)
         return;
-    _display->println("   -- TAG DB --");
-    if (!_approvalAPI)
-        return;
-    _display->printf("ID   :%08x\n",_approvalAPI->identifier);
 
+    _display->print_centred("TAG DB");
+    if (!_approvalAPI) {
+        _display->printf("not ready");
+        return;
+    };
+    _display->printf("ID   :%08x\n",_approvalAPI->identifier);
 
     struct tm * t = gmtime((const time_t *)&(_approvalAPI->datadate));
     char ds[10], ts[10];
@@ -349,9 +362,8 @@ void ApprovalDeck::render_pane(bool refresh) {
     strftime(ts,sizeof(ts),"%H:%M:%S",t);
     _display->printf("Dated:%s\n",ds);
     _display->printf("      %sZ\n",ts);
-    _display->printf("Age  :%s\n",since(_approvalAPI->datadate));
-    _display->println();
-        _display->printf("Check:%s ago\n", _approvalAPI->last_update ?
+    _display->printf("Age  :%s\n\n",since(_approvalAPI->datadate));
+    _display->printf("Check:%s\n", _approvalAPI->last_update ?
                          since((millis() - _approvalAPI->last_update)/1000) : "never");
 };
 
