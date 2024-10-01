@@ -13,8 +13,6 @@ void BlackNodev111::pop() {
 };
 
 void BlackNodev111::begin() {
-    Serial.println("BlackNodev11 begin.");
-    
     // Starting with v1.11 - non core I/O is provided by an i2c IO/Expander.
     //
     ExpandedGPIO::getInstance().addAW9523();
@@ -47,7 +45,7 @@ void BlackNodev111::begin() {
     xpinMode(OPTO2, INPUT);
     xpinMode(OPTO3, INPUT);
 
-    yesButton = new ButtonDebounce(YES_BUTTON);
+    yesButton = new IODebounce(YES_BUTTON);
     yesButton->setCallback([&](const int newState) {
         Debug.printf("YES button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
         if (_yesCallBack &&
@@ -58,6 +56,7 @@ void BlackNodev111::begin() {
             if (_yesCallBack(newState))
                 return;
     });
+    addHandler(yesButton);
 
     super::begin();
 }

@@ -151,7 +151,7 @@ bool ApprovalAPI::needsUpdate() {
     buff[n] = 0; // damages last byte.
 
     unsigned long cntr = atoi((char *)buff);
-    Log.printf("Change identifier: %08x: %s (previous: %08d)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", identifier);
+    Log.printf("Change identifier: %08x: %s (previous: %08x)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", identifier);
 
     last_update = millis();
 
@@ -181,9 +181,16 @@ void ApprovalAPI::updateTagDB() {
 
 bool ApprovalAPI::import(const unsigned char * binfile, size_t len) {
     
-    const unsigned char prefix[] = { 0x4d, 0x53, 0x4c, 0x31 }; // MSL1
-    if (bcmp(prefix, binfile, 4)) {
-        Log.println("Not an MSL1 file");
+    const unsigned char prefix1[] = { 0x4d, 0x53, 0x4c, 0x31 }; // MSL1
+    const unsigned char prefix2[] = { 0x4d, 0x53, 0x4c, 0x32 }; // MSL2
+
+    version =  UNK;
+    if (!bcmp(prefix1, binfile, 4))
+        version = MSLv1;
+    else if (!bcmp(prefix2, binfile, 4))
+        version = MSLv2;
+    else {
+        Log.printf("Unknown tagblob version\n");
         return false;
     };
     
@@ -317,14 +324,14 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     mbedtls_sha256_update_ret(&sha_ctx, ptr + 64, 4); // In network order.
     mbedtls_sha256_finish_ret(&sha_ctx, uiv);
     
-    unsigned char plaintextname[paddedlen]; // i.e. include any padding.
+    unsigned char plaintext[paddedlen]; // i.e. include any padding.
     
     mbedtls_aes_context aes;
     memset(&aes, 0, sizeof(mbedtls_aes_context));
     mbedtls_aes_init(&aes);
     if (
         (0 != mbedtls_aes_setkey_dec(&aes, dec, 256)) ||
-        (0 != mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_DECRYPT, paddedlen, uiv, padded_enc_name, plaintextname ))
+        (0 != mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_DECRYPT, paddedlen, uiv, padded_enc_name, plaintext ))
         ) {
             Log.println("getEntry: Failed to CBC decrypt");
             return NULL;
@@ -335,14 +342,34 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     // Removed PKCS#7 padding - as traditionally used with AES.
     // https://www.ietf.org/rfc/rfc2315.txt; section 10.3, page 21 Note 2.
     //
-    uint8_t pad = plaintextname[paddedlen-1];
+    uint8_t pad = plaintext[paddedlen-1];
     if (pad >=paddedlen) {
         Log.println("getEntry: Failed to CBC decrypt - padding problem");
         return NULL;
     };
-    plaintextname[paddedlen - pad] = '\0';
+
+    for(;pad;pad++)
+        plaintext[paddedlen - pad] = '\0';
     
-    return new ApprovalEntry((char*)plaintextname, has, needs);
+    if (version == MSLv1)
+        return new ApprovalEntry((char*)plaintext, has, needs);
+    
+    char * p = (char*) plaintext;
+    char * uid = p; p += strlen(uid) +1;
+    
+    if (p > (char*)plaintext + sizeof(plaintext)) {
+        Log.println("getEntry: malformed uid");
+        return NULL;
+    };
+        
+    char * shortName = p; p += strlen(uid) +1;
+        if (p > (char*)plaintext + sizeof(plaintext)) {
+        Log.println("getEntry: malformed shortname");
+        return NULL;
+    };
+    char * name = p;
+    
+    return new ApprovalEntry(uid, name, shortName, has, needs);
 }
 
 void ApprovalDeck::render_pane(bool refresh) {

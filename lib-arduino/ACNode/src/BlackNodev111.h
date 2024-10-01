@@ -98,7 +98,7 @@ public:
 private:
     int8_t expectOut1 = -1;
     int8_t expectOut2 = -1;
-    ButtonDebounce *yesButton;
+    IODebounce *yesButton;
     ButtonCallback _yesCallBack;
     int _yesCallBackMode;
     

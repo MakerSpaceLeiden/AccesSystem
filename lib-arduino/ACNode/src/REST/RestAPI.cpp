@@ -240,6 +240,7 @@ void RestDeck::render_pane(bool refresh) {
     const int L = 16;
     char tmp2[L+1];
 
+    _display->setCursor(0,24);
     for(int i = 0; i < 64/L; i++) {
         strncpy(tmp2, tmp + L*i, L); tmp2[L] = '\0';
         _display->print("  ");

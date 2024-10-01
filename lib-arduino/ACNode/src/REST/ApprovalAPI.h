@@ -8,35 +8,46 @@
 #include "Display/Deck.h"
 
 typedef unsigned char acl_t;
-#define ACL_MASK_ACTIVE     (1)     // required to operate  / is set to active (see below APPROVE)
-#define ACL_MASK_PERMIT     (2)     // requires instruction / has been given instruction
-#define ACL_MASK_FORM       (4)     // requires the form to be filled out / has a form on file
-#define ACL_MASK_APPROVE    (8)     // requires approval by the trustee / has been approved (active) or is defacto approved
-#define ACL_MASK_OVERRIDE  (16)     // requires override/has ability to override a (locked) machine that needs this.
+#define ACL_MASK_ACTIVE      (1)     // required to operate  / is set to active (see below APPROVE)
+#define ACL_MASK_PERMIT      (2)     // requires instruction / has been given instruction
+#define ACL_MASK_FORM        (4)     // requires the form to be filled out / has a form on file
+#define ACL_MASK_APPROVE     (8)     // requires approval by the trustee / has been approved (active) or is defacto approved
+#define ACL_MASK_INSTRUCTOR (16)     // can give instruction
+#define ACL_MASK_BUDGET     (32)     // sufficient budget / needs to have budget
+#define ACL_MASK_OVERRIDE   (64)     // requires override/has ability to override a (locked) machine that needs this.
 #ifndef ACL_URL
 #define ACL_URL         "https://some-crm:4443/acl/api" // Instance of https://github.com/MakerSpaceLeiden/makerspaceleiden-crm
 #endif
 
 #define PATH_GETCOUNTER "/v1/getchangecounter"
 #define PATH_GETTAGS    "/v1/gettags4machineBIN"
+// #define PATH_GETTAGS    "/v2/gettags4machineBIN"
 
 class ApprovalEntry {
 public:
-    ApprovalEntry(String name, acl_t has, acl_t needs) : name(name), has(has),needs(needs) {};
-    String name;
+    ApprovalEntry(String name, acl_t has, acl_t needs)
+        : name(name), has(has),needs(needs) {};
+    ApprovalEntry(String uid, String name, String shortName, acl_t has, acl_t needs)
+        : uid(uid), shortName(shortName), name(name), has(has),needs(needs) {};
+
+    String name, shortName, uid;
     acl_t has, needs;
     bool ok() { return (has & needs) == needs; };
 
     const char * status() {
         if ((needs & ACL_MASK_ACTIVE) && (has & ACL_MASK_ACTIVE) == 0)
-            return "inactive";
+            return "tag inactive";
         if ((needs & ACL_MASK_PERMIT) && (has & ACL_MASK_PERMIT) == 0)
             return "no permit on file";
         if ((needs & ACL_MASK_FORM) && (has & ACL_MASK_FORM) == 0)
             return "no waiver on file";
         if ((needs & ACL_MASK_APPROVE) && (has & ACL_MASK_APPROVE) == 0)
             return "no trustee approval";
-        
+        if ((needs & ACL_MASK_OVERRIDE) && (has & ACL_MASK_OVERRIDE) == 0)
+            return "out of order";
+        if ((needs & ACL_MASK_BUDGET) && (has & ACL_MASK_BUDGET) == 0)
+            return "no cash";
+
         return "Machine disabled";
     };
 };
@@ -93,6 +104,7 @@ private:
     const unsigned char * getEntryPtr(unsigned char * saltedtag);
 
 friend class ApprovalDeck;
+    enum { UNK, MSLv1, MSLv2 } version;  
     unsigned long last_update = 0; // millis
     unsigned long identifier = 0;   // unqiue, opaque identifier
     unsigned long datadate = 0;     // date of creation

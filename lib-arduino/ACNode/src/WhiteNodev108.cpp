@@ -73,6 +73,7 @@ void WhiteNodev108::pop() {
         errorLed = new LED(LED_INDICATOR);
 
     _deskCtrl = new DeckController();
+    addHandler(_deskCtrl);
 };
 
 // bracketing with a timer to keep some cadence. We should
@@ -152,14 +153,12 @@ void WhiteNodev108::begin() {
     esp_sntp_servermode_dhcp(true);
 #endif
 #else
-#define _(x) #x
-    Debug.print("NTP Pool: "); Debug.println(_(NTP_POOL));
     configTime(0, 0, NTP_POOL);
     setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
     tzset();
 #endif
     
-    offButton = new ButtonDebounce(OFF_BUTTON);
+    offButton = new IODebounce(OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
         Debug.printf("OFF button %s\n",newState ? "released" : "pressed");
 
@@ -189,8 +188,9 @@ void WhiteNodev108::begin() {
             return;
         };
     },  CHANGE);
+    addHandler(offButton);
     
-    menuButton = new ButtonDebounce(MENU_BUTTON);
+    menuButton = new IODebounce(MENU_BUTTON);
     menuButton->setCallback([&](const int newState) {
         Debug.printf("MENU button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
         if (_menuCallBack &&
@@ -223,18 +223,17 @@ void WhiteNodev108::begin() {
             return;
         };
     },  CHANGE);
+    addHandler(menuButton);
     
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         Debug.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
 
-        if (last == INFODISPLAY) {
-            _deskCtrl->close();
-            Debug.println("INFO display closed.");
-        };
-        
         errorLed->set(machinestate.ledState());
-        _display->clearDisplay();
 
+        if (last == INFODISPLAY)
+            _deskCtrl->close();
+            
+        _display->clearDisplay();
         _display->setDisplayScreensaver(current == SCREENSAVER);
 
         if (current == FAULTED) {
@@ -245,13 +244,16 @@ void WhiteNodev108::begin() {
             updateDisplay("", "MORE", true);
             if (last == MachineState::CHECKINGCARD)
                 buzzerErr();
-        } else if (current == MachineState::CHECKINGCARD)
+        } else if (current == MachineState::CHECKINGCARD) {
             updateDisplay("", "", true);
-        else if (current == INFODISPLAY) {
+        } else if (current == INFODISPLAY) {
             _deskCtrl->first();
             return;
+        } else if (current == MachineState::REJECTED) {
+            _display->updateDisplayStateMsg(_lasterrmsg,1);
+            buzzerErr();
         };
-
+        
         if (current != INFODISPLAY)
             updateDisplayStateMsg(machinestate.label());
 
@@ -308,15 +310,8 @@ void WhiteNodev108::begin() {
     });
     
     onDenied([&](const char *reason) {
-        buzzerErr();
-        if (machinestate == SCREENSAVER) {
-            machinestate = MachineState::WAITINGFORCARD;
-            Debug.println("Switching off the screensaver");
-            return;
-        };
+        _lasterrmsg = reason;
         machinestate = MachineState::REJECTED;
-        _display->updateDisplayStateMsg(reason, 2);
-        buzzerErr();
     });
     
     updateDisplay("","MORE", true);
@@ -337,8 +332,7 @@ void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB swipeCB) {
     _swipeCB = swipeCB;
 };
 
-void WhiteNodev108::loop() {
-    super::loop();
+void WhiteNodev108::loop() {    
     if (_deskCtrl)
         _deskCtrl->update(); // a no-op if a static page is curently shown.
     else
@@ -351,8 +345,8 @@ void WhiteNodev108::loop() {
         // testing purposes).
         //
         if (
-                (machinestate.secondsLeftInThisState() < 45) ||
-                (machinestate.secondsInThisState() > SHOW_COUNTDOWN_TIME_AFTER)
+            (machinestate.secondsLeftInThisState() < 45) ||
+            (machinestate.secondsInThisState() > SHOW_COUNTDOWN_TIME_AFTER)
             )
             updateDisplayStateMsg("Auto off in " + machinestate.timeLeftInThisState(), 2);
         
@@ -371,6 +365,8 @@ void WhiteNodev108::loop() {
         Debug.println("Enabling screensaver");
         machinestate.setState(SCREENSAVER);
     };
+    
+    super::loop();
 }
 
 void WhiteNodev108::report(JsonObject & report) {

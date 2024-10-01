@@ -58,8 +58,7 @@
 const char ota_password_hash[] = OTA_PASSWD_HASH;
 
 BlackNodev111 node = BlackNodev111(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
-
-ButtonDebounce *powerDetect, *weldingDetect;
+IODebounce *powerDetect, *weldingDetect;
 
 MachineState::machinestate_t UNLOCKED; // Can be powered on with front button
 MachineState::machinestate_t WELDING;  // Button on torch is pressed.
@@ -85,9 +84,6 @@ XGZP6897D *pressureSensor;
 #define KpressureSensor (8) // 1MPa sensor
 #define PRESSURE_VALVE_CLOSED_LIMIT (6*1000 /* Pascal */) // below this pressure valve is assumed closed.
 #define HYSTERESIS (1+0.10) // 10% hysteresis either way -- to prevent flapping.
-
-int valve_check_counter = 0;
-const int MAX_VALVE_CHECKS = 10;
 
 class MachineDeck : public Deck {
 public:
@@ -132,22 +128,23 @@ public:
 
         float pressure = pressureSensor->getPressureInPa();
 
+        int line = 0;
         if (pressure == pressureSensor->ERRVAL)
-            _display->updateDisplayStateMsg("Press : FAILED",0);
+            _display->updateDisplayStateMsg("Press : FAILED",line++);
         else {
             snprintf(buff,sizeof(buff),"Press :%6.1f kPa", pressure/1000.);
-            _display->updateDisplayStateMsg(buff,0);
+            _display->updateDisplayStateMsg(buff,line++);
             snprintf(buff,sizeof(buff),"        %6.2f bar", pressure/1000000.);
-            _display->updateDisplayStateMsg(buff,1);
+            _display->updateDisplayStateMsg(buff,line++);
         };
 
         float temperature = pressureSensor->getTemperatureInC();
 
         if (temperature == pressureSensor->ERRVAL)
-            _display->updateDisplayStateMsg("Temp  : FAILED",3);
+            _display->updateDisplayStateMsg("Temp  : FAILED",line++);
         else {
             snprintf(buff,sizeof(buff),"Temp  : %6.1f %cC ", temperature, ADAFRUIT_GFX_DEGREE_SYMBOL);
-            _display->updateDisplayStateMsg(buff,2);
+            _display->updateDisplayStateMsg(buff,line++);
         };
         };
         _display->display();
@@ -224,7 +221,7 @@ void setup() {
     node.machinestate.setTimeout(POWERED, MAX_SECS_IDLE*1000);
         
     expandedPinMode(POWER_VOLTAGE, INPUT);
-    powerDetect = new ButtonDebounce(POWER_VOLTAGE);
+    powerDetect = new IODebounce(POWER_VOLTAGE);
     powerDetect->setDigitalReadFunction(&expandedDigitalRead);
     powerDetect->setCallback([](const int newState) {
         // Debug.println(newState ? "OPTO2: Power OFF" : "OPTO2: Power ON");
@@ -255,9 +252,10 @@ void setup() {
             welding_save();
         }
     }, CHANGE);
+    node.addHandler(powerDetect);
     
     expandedPinMode(WELDING_VOLTAGE, INPUT);
-    weldingDetect = new ButtonDebounce(WELDING_VOLTAGE);
+    weldingDetect = new IODebounce(WELDING_VOLTAGE);
     weldingDetect->setDigitalReadFunction(&expandedDigitalRead);
     weldingDetect->setCallback([](const int newState) {
         // Debug.println(newState ? "OPTO1: No gas flow/solenoid off" : "OPTO1: gas flow/solenoid on");
@@ -274,7 +272,8 @@ void setup() {
             node.machinestate = POWERED;
         }
     }, CHANGE);
-    
+    node.addHandler(weldingDetect);
+
     node.setOTAPasswordHash(ota_password_hash);
     node.set_mqtt_prefix("ac");
     node.set_master("master");
@@ -407,9 +406,9 @@ void setup() {
         return false;
     },FALLING);
     
-    welding_init();
     node.begin();
-    
+    welding_init();
+
     Log.printf("Starting loop(): %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
 }
 
@@ -481,9 +480,9 @@ void loop() {
                     valveOpen = true;
                     lastValveOpen = millis();
                 } else
-                if (pressure < PRESSURE_VALVE_CLOSED_LIMIT / HYSTERESIS)
+                if (pressure < PRESSURE_VALVE_CLOSED_LIMIT / HYSTERESIS) {
                     valveOpen = false;
-
+                };
             };
             expandedAnalogWrite(node.LEDD, valveOpen ? 255 : 0);
     };
@@ -493,16 +492,15 @@ void loop() {
         if (millis() - lst > 30*1000) {
             lst = millis();
             if (valveOpen) {
-                Log.printf("Detected pressure (%.1f kPa)- assuming problem with the valve\n", pressure / 1000.);
+                Log.printf("Detected pressure (%.1f kPa)- assuming valve is open\n", pressure / 1000.);
                 node.machinestate = WAITING_FOR_VALVE;
             }
         };
     } else
     if (node.machinestate == WAITING_FOR_VALVE) {
         if (!valveOpen) {
-            Log.printf("Detected pressure drop (to %.1f kPa) - assuming valve is closed\n", pressure / 1000.);
+            Log.printf("Detected pressure drop (to %.1f kPa) - assuming valve is now closed\n", pressure / 1000.);
             node.machinestate = MachineState::WAITINGFORCARD;
-            valve_check_counter = 0;
             return;
         };
         static unsigned lst = millis();
@@ -512,22 +510,26 @@ void loop() {
         };
     } else if (node.machinestate ==  CHECK_VALVE_CLOSED) {
         if (!valveOpen) {
-            Log.printf("Detected pressure drop (to %.1f kPa) - assuming valve is closed\n", pressure / 1000.);
+            Log.printf("Detected pressure drop (to %.1f kPa) - assuming valve is now closed\n", pressure / 1000.);
             node.machinestate = MachineState::WAITINGFORCARD;
-            valve_check_counter = 0;
             return;
         };
         static unsigned lst = 0;
         if (millis() - lst > 1500) {
-            // Check to see if the user actually closed the valve by
-            // opening the torch valve for 0.3 second.
-            //
             node.buzzer(true);
+
+            // Check to see if the user actually closed the valve by
+            // opening the torch valve for BLEED_TIME_MS.
+            //
             node.setMonitoredOutput(SOLENOID_GPIO, HIGH);
+
+            // 12v check valve needs to be also open for this check:
+            node.setMonitoredOutput(POWER_GPIO, HIGH);
+ 
             expandedAnalogWrite(node.LEDC,255);
             delay(BLEED_TIME_MS);
-            valve_check_counter++;
             expandedAnalogWrite(node.LEDC,0);
+            
             node.setMonitoredOutput(SOLENOID_GPIO, LOW);
             node.buzzer(false);
             lst = millis();

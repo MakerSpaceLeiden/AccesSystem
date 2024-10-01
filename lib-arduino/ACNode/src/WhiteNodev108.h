@@ -5,7 +5,7 @@
 
 #include <Wire.h>
 #include "ExpandedGPIO.h"
-#include <ButtonDebounce.h>
+#include "util/IODebounce.h"
 #include "Display/Deck.h"
 #include "Display/Display.h"
 #include "Display/DeckController.h"
@@ -139,7 +139,7 @@ private:
     DeckController *_deskCtrl;
     ApprovalDeck *approvalDeck;
 
-    ButtonDebounce *offButton, *menuButton;
+    IODebounce *offButton, *menuButton;
     ButtonCallback _offCallBack, _menuCallBack = NULL;
     int _offCallBackMode, _menuCallBackMode;
     
@@ -156,7 +156,8 @@ private:
     unsigned long manual_poweroff = 0;
     unsigned long idle_poweroff = 0;
     unsigned long errors = 0;
-
+    const char * _lasterrmsg = NULL;
+    
     const char * _ota_md5;
     unsigned long _last_buzz = 0;
 #if 0

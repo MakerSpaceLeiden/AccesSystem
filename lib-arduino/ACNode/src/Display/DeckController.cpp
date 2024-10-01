@@ -11,6 +11,14 @@ void DeckController::addDeckAsFirst(Deck *d) {
 void DeckController::update() { // redraw (if needed).
     if (!_is_showing)
         return;
+    _needs_update = true;
+};
+
+void DeckController::loop() {
+    if (!(_is_showing && _needs_update))
+            return;
+    _needs_update = false;
+
     Deck * d = * _currentDeck;
     if (d)
         d->display(false);
