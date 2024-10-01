@@ -390,7 +390,7 @@ void ApprovalDeck::render_pane(bool refresh) {
     _display->printf("Dated:%s\n",ds);
     _display->printf("      %sZ\n",ts);
     _display->printf("Age  :%s\n\n",since(_approvalAPI->datadate));
-    _display->printf("Check:%s\n", _approvalAPI->last_update ?
+    _display->printf("Check:%s ago\n", _approvalAPI->last_update ?
                          since((millis() - _approvalAPI->last_update)/1000) : "never");
 };
 

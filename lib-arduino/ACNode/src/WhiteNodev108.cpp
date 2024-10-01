@@ -333,11 +333,6 @@ void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB swipeCB) {
 };
 
 void WhiteNodev108::loop() {    
-    if (_deskCtrl)
-        _deskCtrl->update(); // a no-op if a static page is curently shown.
-    else
-        Log.println("**** eh ***");
-    
     if (machinestate == POWERED) {
         // Show the countdown to poweroff; only when the machine
         // has been idle for a singificant bit of time and in the
