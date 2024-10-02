@@ -76,7 +76,7 @@ const unsigned int LET_USER_DO_IT_TIMEOUT_MS  = 30 * 1000;
 
 // How long to let the solenoid bleed the gas before we
 // expect the pressure to drop enough to notice.
- const unsigned int BLEED_TIME_MS = 250;
+ const unsigned int BLEED_TIME_MS = 1000;
 
 unsigned long power_fault = 0, normal_poweroff = 0, bad_poweroff = 0, idle_poweroff = 0;
 
@@ -338,17 +338,20 @@ void setup() {
         Log.printf("onApproval callback state: %s\n", node.machinestate.label());
         if (node.machinestate == SWAPPING_BOTTLE) {
             ApprovalEntry * e = node.lastApproved();
+            
+            const char * shortName = e ? e->shortName.c_str() : "Unknown";
+            welding_bottle_reset(shortName);
+            
             const char * name = e ? e->name.c_str() : "Unknown";
-
             Log.printf("Bottle reported swapped by %s, used for %d seconds\n",
                        name, wr.welding_timer);
-
-            welding_bottle_reset(name);
+                       
             node.machinestate = THANKS_BOTTLE;
             return;
         } else
         if ((node.machinestate != POWERED) &&
-            (node.machinestate != MachineState::CHECKINGCARD)
+            (node.machinestate != MachineState::CHECKINGCARD) &&
+            (node.machinestate != MachineState::WAITINGFORCARD)
             ) {
             Log.println("Rejecting tag swipe; not expecting one");
             node.buzzerErr();
@@ -463,19 +466,30 @@ void loop() {
     static float pressure = 0;
     static bool valveOpen = false;
     static unsigned long lastValveOpen = 0;
+    static char pressbuff[12];
     {
             static unsigned lst = 0;
-            if (millis() - lst > 250) {
+            if (millis() - lst > 200) {
                 lst = millis();
-                float pressure = pressureSensor->getPressureInPa();
-                if (pressure == pressureSensor->ERRVAL) {
+                float p = pressureSensor->getPressureInPa();
+                if (p == pressureSensor->ERRVAL) {
                     static unsigned lst = 0;
                     if (millis() - lst > 60*1000) {
                         Log.printf("Failed to read pressure sensor\n");
                         lst = millis();
                         };
                     expandedDigitalWrite(node.LED_INDICATOR, HIGH);
+                    snprintf(pressbuff,sizeof(pressbuff),"press-fail");
+                }  else {
+                    if (pressure == 0) pressure = p;
+                    pressure = (pressure*2. + p)/3.;
+                    snprintf(pressbuff,sizeof(pressbuff),"%5.0f kPa", pressure/1000.);
                 }
+                if (node.machinestate == MachineState::WAITINGFORCARD ||
+                    node.machinestate == POWERED ||
+                    node.machinestate == WELDING
+                ) node.updateDisplayStateMsg(pressbuff, 2);
+
                 if (pressure > PRESSURE_VALVE_CLOSED_LIMIT * HYSTERESIS) {
                     valveOpen = true;
                     lastValveOpen = millis();
@@ -486,13 +500,13 @@ void loop() {
             };
             expandedAnalogWrite(node.LEDD, valveOpen ? 255 : 0);
     };
-
+    
     if (node.machinestate == MachineState::WAITINGFORCARD) {
         static unsigned lst = 0;
-        if (millis() - lst > 30*1000) {
+        if (millis() - lst > 5*1000) {
             lst = millis();
             if (valveOpen) {
-                Log.printf("Detected pressure (%.1f kPa)- assuming valve is open\n", pressure / 1000.);
+                Log.printf("Detected pressure (%.0f kPa)- assuming valve is open\n", pressure / 1000.);
                 node.machinestate = WAITING_FOR_VALVE;
             }
         };
@@ -515,7 +529,7 @@ void loop() {
             return;
         };
         static unsigned lst = 0;
-        if (millis() - lst > 1500) {
+        if (millis() - lst > 1000) {
             node.buzzer(true);
 
             // Check to see if the user actually closed the valve by
@@ -523,7 +537,8 @@ void loop() {
             //
             node.setMonitoredOutput(SOLENOID_GPIO, HIGH);
 
-            // 12v check valve needs to be also open for this check:
+            // 12v check valve needs to be also open for this check
+            // to work.
             node.setMonitoredOutput(POWER_GPIO, HIGH);
  
             expandedAnalogWrite(node.LEDC,255);

@@ -48,6 +48,7 @@ void BlackNodev111::begin() {
     yesButton = new IODebounce(YES_BUTTON);
     yesButton->setCallback([&](const int newState) {
         Debug.printf("YES button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
+
         if (_yesCallBack &&
             (_yesCallBackMode == CHANGE ||
              (newState && (_yesCallBackMode == ONHIGH || _yesCallBackMode == RISING)) ||
@@ -55,6 +56,13 @@ void BlackNodev111::begin() {
              ))
             if (_yesCallBack(newState))
                 return;
+
+        if( machinestate == SCREENSAVER) {
+            machinestate = MachineState::WAITINGFORCARD;
+            Debug.println("Switching off the screensaver");
+            return;
+        };
+        
     });
     addHandler(yesButton);
 

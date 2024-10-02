@@ -66,12 +66,12 @@ MachineState::machinestate_t MachineState::state() {
 
 void MachineState::setState(machinestate_t s) {
     Log.printf("Changing state; %s -> %s\n", label(machinestate), label(s));
-    machinestate = s;
+    newstate = s;
     if (_led) _led->set(ledState());
 }
 
 void MachineState::operator=(machinestate_t s) {
-    machinestate = s;
+    setState(s);
 }
 
 void MachineState::setOnLoopCallback(uint8_t state, THandlerFunction_OnLoopCB onLoopCB) {
@@ -165,7 +165,7 @@ MachineState::MachineState(LED * led) {
     _initState(ALL_STATES, 	"<default>",            LED::LED_IDLE,         NEVER, ALL_STATES     );
     
     laststate = OUTOFORDER;
-    machinestate = BOOTING;
+    newstate = machinestate = BOOTING;
 };
 
 // ACBase - standard handlers.
@@ -190,6 +190,8 @@ void MachineState::report(JsonObject& report) {
 
 void MachineState::loop()
 {
+    machinestate = newstate;
+    
     if (_state2stateStruct[machinestate] == NULL) {
         Log.printf("State %d reached - which us undefind. ignoring.", machinestate);
         return;
@@ -225,12 +227,12 @@ void MachineState::loop()
             _state2stateStruct[ALL_STATES]->onTimeoutCB(machinestate);
         
         laststate = machinestate;
-        machinestate = _state2stateStruct[machinestate]->failStateOnTimeout;
+        newstate = _state2stateStruct[machinestate]->failStateOnTimeout;
         
-        Debug.printf("Time-out (%f seconds); transition from %d<%s> to %d<%s>\n",
+        Debug.printf("Time-out (%f seconds); will transition from %d<%s> to %d<%s>\n",
                    _state2stateStruct[laststate]->maxTimeInMilliSeconds/1000.,
                    laststate, label(laststate),
-                   machinestate, label(machinestate));
+                     newstate, label(newstate));
         return;
     };
     

@@ -26,7 +26,7 @@ typedef unsigned char acl_t;
 class ApprovalEntry {
 public:
     ApprovalEntry(String name, acl_t has, acl_t needs)
-        : name(name), has(has),needs(needs) {};
+        : name(name), shortName(name), has(has),needs(needs) {};
     ApprovalEntry(String uid, String name, String shortName, acl_t has, acl_t needs)
         : uid(uid), shortName(shortName), name(name), has(has),needs(needs) {};
 
@@ -94,7 +94,8 @@ private:
     unsigned long interval = 0;
 
     bool import(const unsigned char * binfile, size_t len);
-    bool needsUpdate();
+    typedef enum update_res { NO_UPDATE_NEEDED, FAIL, NEEDS_UPDATE } update_t;
+    update_t needsUpdate();
     void updateTagDB();
     
     const char * TAGBINFILE = "/msl1.bin";

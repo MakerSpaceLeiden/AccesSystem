@@ -186,7 +186,7 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
 #ifdef PROFILE_BASE
         (*it)->micros_in_loop = 0;
 #endif
-        Debug.printf("%s->begin()\n", (*it)->name());
+        // Debug.printf("%s->begin()\n", (*it)->name());
         (*it)->begin();
     }
 
@@ -398,6 +398,7 @@ void ACNodeBase::loop() {
     bool show = (millis() - lst) > 100 *1000;
     if (show)
         Debug.println("Profile (in microSeconds):");
+    
     for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
         unsigned long s = micros();
         (*it)->loop();
@@ -405,7 +406,8 @@ void ACNodeBase::loop() {
         
         if ((*it)->micros_in_loop == 0)
             (*it)->micros_in_loop = delta;
-        (*it)->micros_in_loop = ((*it)->micros_in_loop * 50 + delta)/51;
+        
+        (*it)->micros_in_loop = ((*it)->micros_in_loop * 500 + delta)/501;
         
         if (show)
             Debug.printf("   %12lu %08x %s\n",(*it)->micros_in_loop,(*it), (*it)->name());

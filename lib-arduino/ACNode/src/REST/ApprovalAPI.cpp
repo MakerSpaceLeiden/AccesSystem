@@ -107,7 +107,7 @@ void ApprovalAPI::begin() {
 void ApprovalAPI::scheduleImmediateUpdate() {
     if (millis() - last_update > 5 * 1000)
         interval = 0;
-    else 
+    else
         interval = 5000;
 }
 
@@ -124,38 +124,50 @@ void ApprovalAPI::loop() {
     if (interval && last_update &&  millis() - last_update < interval)
         return;
     
-    if (interval == 999)
+    
+    update_t t;
+    if (interval == 999) {
         Log.println("Executing forced update");
+        t = NEEDS_UPDATE;
+    }
     else
-    if (!needsUpdate()) {
-        Debug.println("No TagDB update needed");
-        interval =  (3600  + (esp_random() & 0xFF)) * 1000;
-        return;
+        t = needsUpdate();
+    
+    switch(t) {
+        case FAIL:
+            Debug.println("TagDB update failed, scheduling retry");
+            interval =  (600  + (esp_random() & 0xFF)) * 1000;
+            break;
+        case NO_UPDATE_NEEDED:
+            Debug.println("No TagDB update needed");
+            interval =  (3600  + (esp_random() & 0xFF)) * 1000;
+            break;
+        case NEEDS_UPDATE:
+            updateTagDB();
+            // Retry relatively soon - as updates tend to come in blocks. And
+            // if above failed - we want to retry quite soon too as well.
+            //
+            interval =  (200  + (esp_random() & 0xFF)) * 1000;
+            break;
     };
-    
-    updateTagDB();
-    
-    // Retry relatively soon - as updates tend to come in blocks. And
-    // if above failed - we want to retry quite soon too as well.
-    //
-    interval =  (200  + (esp_random() & 0xFF)) * 1000;
+    last_update = millis();
 };
 
-bool ApprovalAPI::needsUpdate() {
+ApprovalAPI::update_t ApprovalAPI::needsUpdate() {
     unsigned char * buff = NULL;
     char url[] = ACL_URL PATH_GETCOUNTER;
     size_t len = 1024;
     int n = _restAPI->get(url,&len,&buff);
     if (n < 0)
-        return false;
+        return FAIL;
     buff[n] = 0; // damages last byte.
-
+    
     unsigned long cntr = atoi((char *)buff);
-    Log.printf("Change identifier: %08x: %s (previous: %08x)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", identifier);
-
+    Log.printf("TagDB identifier: %08x: %s (previous: %08x)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", identifier);
+    
     last_update = millis();
-
-    return (cntr != identifier);
+    
+    return (cntr != identifier) ? NEEDS_UPDATE : NO_UPDATE_NEEDED;
 }
 
 void ApprovalAPI::updateTagDB() {
@@ -183,7 +195,7 @@ bool ApprovalAPI::import(const unsigned char * binfile, size_t len) {
     
     const unsigned char prefix1[] = { 0x4d, 0x53, 0x4c, 0x31 }; // MSL1
     const unsigned char prefix2[] = { 0x4d, 0x53, 0x4c, 0x32 }; // MSL2
-
+    
     version =  UNK;
     if (!bcmp(prefix1, binfile, 4))
         version = MSLv1;
@@ -212,9 +224,12 @@ bool ApprovalAPI::import(const unsigned char * binfile, size_t len) {
         Log.printf("Tagblob currupted\n");
         return false;
     };
-    Log.printf("Loaded %lu TAGs with ID 0x%08x, size %lu, dated %s",
-               ntags, identifier, len, ctime((const time_t *) &datadate));
-
+    Log.printf("Loaded %lu TAGs with ID 0x%08x, size %lu, version %s, dated %s",
+               ntags, identifier, len,
+               version == MSLv2 ? "MSLv2" : "MSLv1",
+               ctime((const time_t *) &datadate)
+               );
+    
     // Swap the file in; take over the malloc/free
     //
     if (blob) free((void*)blob);
@@ -297,9 +312,14 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     size_t paddedlen = (size_t)*(unsigned char*)(mptr + 2);
     unsigned char * padded_enc_name = (unsigned char *)mptr + 3;
     
-    if ((paddedlen % 16) ||(paddedlen > 64))
+    if (paddedlen % 16) {
+        Log.println("getEntry: size not a multiple of 16");
         return NULL;
-    
+    };
+    if (paddedlen > 256 || paddedlen < 2) {
+        Log.printf("getEntry: %u too large/small\n",paddedlen);
+        return NULL;
+    };
     // Construct the decryption key for the user entry; from
     // the key entry
     //
@@ -343,17 +363,19 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     // https://www.ietf.org/rfc/rfc2315.txt; section 10.3, page 21 Note 2.
     //
     uint8_t pad = plaintext[paddedlen-1];
-    if (pad >=paddedlen) {
-        Log.println("getEntry: Failed to CBC decrypt - padding problem");
+    if (pad >= paddedlen) {
+        Log.printf("getEntry: Failed to decrypt - padding problem (%u>=%u)\n", pad, paddedlen);
         return NULL;
     };
-
-    for(;pad;pad++)
+    
+    // for(;pad;pad--)
         plaintext[paddedlen - pad] = '\0';
     
     if (version == MSLv1)
         return new ApprovalEntry((char*)plaintext, has, needs);
     
+    // For version MSLv2 we have 3; \0 terminated fields.
+    //
     char * p = (char*) plaintext;
     char * uid = p; p += strlen(uid) +1;
     
@@ -361,28 +383,32 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
         Log.println("getEntry: malformed uid");
         return NULL;
     };
-        
+    
     char * shortName = p; p += strlen(uid) +1;
-        if (p > (char*)plaintext + sizeof(plaintext)) {
+    if (p > (char*)plaintext + sizeof(plaintext)) {
         Log.println("getEntry: malformed shortname");
         return NULL;
     };
     char * name = p;
-    
+    if (p+strlen(name) > (char*)plaintext + sizeof(plaintext)) {
+        Log.println("getEntry: malformed name");
+        return NULL;
+    };
+
     return new ApprovalEntry(uid, name, shortName, has, needs);
 }
 
 void ApprovalDeck::render_pane(bool refresh) {
     if(!refresh)
         return;
-
+    
     _display->print_centred("TAG DB");
     if (!_approvalAPI) {
         _display->printf("not ready");
         return;
     };
     _display->printf("ID   :%08x\n",_approvalAPI->identifier);
-
+    
     struct tm * t = gmtime((const time_t *)&(_approvalAPI->datadate));
     char ds[10], ts[10];
     strftime(ds,sizeof(ds),"%Y-%m-%d",t);
@@ -391,7 +417,7 @@ void ApprovalDeck::render_pane(bool refresh) {
     _display->printf("      %sZ\n",ts);
     _display->printf("Age  :%s\n\n",since(_approvalAPI->datadate));
     _display->printf("Check:%s ago\n", _approvalAPI->last_update ?
-                         since((millis() - _approvalAPI->last_update)/1000) : "never");
+                     since((millis() - _approvalAPI->last_update)/1000) : "never");
 };
 
 
@@ -409,7 +435,7 @@ const unsigned char testfile[1021] = {
      
      Salt=13b77375a4fa7b913fa471b4cf85ad53d32037e8e6f349793e1b472171131856
      saltedtag=8d0ae8e1ec9be3431d24c5e43c24ab74e3f8e510808c8af8155f9d20f700586f
-
+     
      Tag: 1-2-5 -- Leo Tags
      saltedkey=103d456e2ac4ec5f9962c75bf485df85d0d11909e5f051410a7101603a9aa316
      tagkey=0c0a76e0b23c5e7900b587040aa0437a143846cbec90a4e504dca2d05fef180a
@@ -421,7 +447,7 @@ const unsigned char testfile[1021] = {
      enc=d1a50e0cb0641933c0bc3f1f6172ca23
      key=1c37338e98f8b22699d7405ffe259cffc4e95fc20960f5a40eada3b06575bb1c
      resulting clr=4c656f20546167730808080808080808 (sans padding)
-
+     
      */
     0x4d, 0x53, 0x4c, 0x31, 0x00, 0x00, 0x00, 0xce, 0x66, 0xe1, 0xc6, 0xd9, 0x00, 0x00, 0x02, 0xec,
     0x00, 0x00, 0x00, 0xa5, 0x13, 0xb7, 0x73, 0x75, 0xa4, 0xfa, 0x7b, 0x91, 0x3f, 0xa4, 0x71, 0xb4,

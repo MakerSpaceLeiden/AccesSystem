@@ -84,7 +84,7 @@ private:
     } state_t;
     state_t * _state2stateStruct[256];
     
-    machinestate_t machinestate, laststate;
+    machinestate_t machinestate = OUTOFORDER, laststate = OUTOFORDER, newstate = BOOTING;
     unsigned long laststatechange, lastReport;
     
     state_t * _initState(uint8_t state, state_t dflt);
@@ -149,7 +149,7 @@ public:
                      const char * label,
                      LED::led_state_t ledState = LED::LED_ERROR,
                      time_t timeout = NEVER,
-                     machinestate_t nextstate = WAITINGFORCARD,
+                     machinestate_t newstate = WAITINGFORCARD,
                      unsigned long timeoutTransitions = NEVER,
                      unsigned long autoReportCycle = NEVER,
                      THandlerFunction_OnLoopCB onLoopCB = NULL,
