@@ -31,6 +31,10 @@ void ACNodeRest::pop() {
         };
     });
     
+    machinestate.setOnChangeCallback(MachineState::WAITINGFORCARD, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+        clearLastApproved();
+    });
+    
     machinestate.setState(MachineState::BOOTING);
     addHandler(&machinestate);
 
@@ -107,6 +111,22 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
     _approvalAPI->scheduleImmediateUpdate();
     _deny++;
 };
+
+void ACNodeRest::clearLastApproved() {
+    if (_lastApproved)
+        delete _lastApproved;
+    _lastApproved = NULL;
+}
+
+ApprovalEntry * ACNodeRest::lastApproved() {
+    return _lastApproved;
+};
+
+void ACNodeRest::sentNotification(String dest, String subject, String msg) {
+    String sender = _lastApproved ? _lastApproved->uid : "";
+    _restAPI->sentNotification(sender, dest, subject, msg);
+}
+
 
 #if 0
 void ACNodeRest::loop() {

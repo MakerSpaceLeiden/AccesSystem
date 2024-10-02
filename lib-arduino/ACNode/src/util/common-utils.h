@@ -2,6 +2,8 @@
 #define _H_UTIL_COMMONS
 #include <mbedtls/base64.h>
 #include <string.h>
+#include <vector>
+
 #include <ExpandedGPIO.h>
 
 #ifndef SHA256_BLOCK_SIZE
@@ -48,3 +50,4 @@ extern double coreTemp();
 
 char *_argencode(char *dst, size_t n, const char *src);
 char * sha256toHEX(unsigned char sha256[256 / 8], char buff[256 / 4 + 1]);
+String encodeargs(std::vector<String> pairs);

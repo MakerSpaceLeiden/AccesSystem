@@ -28,7 +28,11 @@ public:
     MachineState machinestate;
     MachineState::machinestate_t WAIT_FOR_PAIRING, PAIRING_FAILED, PAIRING;
 
-    ApprovalEntry * lastApproved() { return _lastApproved; };
+    void clearLastApproved();
+    ApprovalEntry * lastApproved();
+    
+    void sentNotification(String dest, String subject, String msg);
+
 protected:
     RestAPI * _restAPI;
     ApprovalAPI *_approvalAPI;
