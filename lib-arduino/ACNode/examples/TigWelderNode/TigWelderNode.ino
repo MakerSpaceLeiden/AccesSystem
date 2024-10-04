@@ -243,13 +243,13 @@ void setup() {
             Log.println("Normal poweroff with switch on front.");
             node.machinestate = CHECK_VALVE_CLOSED;
             normal_poweroff++;
-            welding_save();
+            welding_save(true);
         }
         else if (node.machinestate == WELDING && newState == HIGH) {
             Log.println("Odd, machine switched off while welding?!");
             node.machinestate = CHECK_VALVE_CLOSED;
             bad_poweroff++;
-            welding_save();
+            welding_save(true);
         }
     }, CHANGE);
     node.addHandler(powerDetect);
@@ -351,6 +351,7 @@ void setup() {
         } else
         if ((node.machinestate != POWERED) &&
             (node.machinestate != MachineState::CHECKINGCARD) &&
+            (node.machinestate != SCREENSAVER) &&
             (node.machinestate != MachineState::WAITINGFORCARD)
             ) {
             Log.println("Rejecting tag swipe; not expecting one");
@@ -501,7 +502,12 @@ void loop() {
             expandedAnalogWrite(node.LEDD, valveOpen ? 255 : 0);
     };
     
-    if (node.machinestate == MachineState::WAITINGFORCARD) {
+    // If we are in some idle mode - check the pressure every 5 seconds or so.
+    //
+    if (node.machinestate == MachineState::WAITINGFORCARD  ||
+        node.machinestate == SCREENSAVER  ||
+        node.machinestate == MachineState::OUTOFORDER)
+    {
         static unsigned lst = 0;
         if (millis() - lst > 5*1000) {
             lst = millis();

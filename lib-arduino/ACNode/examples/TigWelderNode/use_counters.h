@@ -45,12 +45,13 @@ static void welding_init() {
 };
 
 static void welding_save(bool force = false) {
-    // do not record stuff under 5 seconds unless forced
+    // Only write things if there is an actual change.
     //
-    static unsigned lst = wr.welding_timer;
-    if (wr.welding_timer - lst < 5 && !force)
+    welding_rec_t c;
+    welding_stats.readBytes(0, &c, sizeof(c));
+    if (wr.version = c.version && wr.welding_timer == c.welding_timer && wr.bottle_date == c.bottle_date)
         return;
-    
+
     welding_stats.writeBytes(0, &wr, sizeof(wr));
     welding_stats.commit();
 }

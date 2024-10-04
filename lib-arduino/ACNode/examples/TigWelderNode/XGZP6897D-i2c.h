@@ -1,7 +1,11 @@
+// Copyright (c) 2024, Dirk-Willem van Gulik, All Rights Reserved.
+//                     Under the Apache Software License version version 2.0
+//
 #include <Wire.h>
 
-// Datasheet: ; https://cfsensor.com/wp-content/uploads/2022/11/XGZP6847D-Pressure-Sensor-V2.5.pdf
-
+// See datasheet: ; https://cfsensor.com/wp-content/uploads/2022/11/XGZP6847D-Pressure-Sensor-V2.5.pdf
+// for below magic values.
+//
 #define XGZP6897D_DEFAULT_ADDR (0x6d) // i2c default address
 
 #define CMD (0x30)   // conversion command
@@ -9,6 +13,8 @@
 #define BOTH (0b010) // which conversions to run (both, no sleep)
 #define PRESS (0x06) // regiser for pressure, 3 long, big endian, two complement
 #define TMEMP (0x09) // registerfor temperature, 2 long, big endian, two complement
+
+#define DEBUG if (false) Serial
 
 class XGZP6897D {
 public:
@@ -51,11 +57,11 @@ private:
         
         _wire->beginTransmission(_i2caddr);
         _wire->write(CMD);
-        _wire->write(SCO | BOTH);
+        _wire->write(SCO | BOTH); // Not yet found the trick to just do either temp or pressure.
         err = _wire->endTransmission();
 
         if (err != 0) {
-            // Serial.printf("XGZP6897D: SC - fail %d != 0\n", err);
+            DEBUG.printf("XGZP6897D: _startConversion - fail %d != 0\n", err);
             return false;
         };
 
@@ -70,7 +76,7 @@ private:
         err = _wire->endTransmission();
         
         if (err != 0) {
-            // Serial.printf("XGZP6897D: CC - fail %d != 0\n", err);
+            DEBUG.printf("XGZP6897D: _checkConversion - fail %d != 0\n", err);
             return false;
         };
         
@@ -78,6 +84,10 @@ private:
         return (_wire->read() & SCO);
     };
     
+    // We've not figured out from the datasheet how to convert
+    // just either of the two values; so we're for now stuck
+    // with reading both.
+    //
     void _readBoth() {
         uint8_t err;
         _pressure = _temperature = ERRVAL;
@@ -91,7 +101,7 @@ private:
         unsigned long lst = millis();
         while(!_checkConversion()) {
             if (millis() - lst > 35) {
-                // Serial.println("CC timeout");
+                DEBUG.println("_readBoth - conversion timeout");
                 return;
             };
         };
@@ -100,7 +110,7 @@ private:
         _wire->write(PRESS); // pressure is the first 3 byts; so reading 5 byts from here also gets the two for temperature.
         err = _wire->endTransmission();
         if (err) {
-            // Serial.printf("XGZP6897D: CC - fail %d != 0\n", err);
+            DEBUG.printf("XGZP6897D: _readBoth - readout fail %d != 0\n", err);
             return;
         };
 
