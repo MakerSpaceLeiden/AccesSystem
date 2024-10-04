@@ -8,6 +8,8 @@
 
 #include "Display/Deck.h"
 
+#define NOTIFY_API_PATH "api/v3/notify"
+
 #ifndef _H_RestAPI
 #define _H_RestAPI
 class RestAPI : public ACBase {
@@ -42,6 +44,8 @@ public:
     RestAPI& onPaired(THandlerFunction_NotifyPaired fn) { _paired_cb = fn; return *this; };
 
     state_t state() { return md; };
+    
+    void sentNotification(String sender, String dest, String subject, String msg);
     
     JsonDocument get(const char *url);
     

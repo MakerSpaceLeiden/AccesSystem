@@ -45,6 +45,21 @@ static unsigned char hex_digit(unsigned char c) {
     return "0123456789ABCDEF"[c & 0x0F];
 };
 
+String encodeargs(std::vector<String> pairs) {
+    String out = "";
+    if (pairs.size() % 2 != 0)
+        return "ARGERROR";
+    
+    for (int i=0;i<pairs.size();i+=2) {
+        char tmp[512];
+        if (i) out += "&";
+        out += String(_argencode(tmp, sizeof(tmp), pairs[i].c_str()));
+        out += "=";
+        out += String(_argencode(tmp, sizeof(tmp), pairs[i+1].c_str()));
+    };
+    return out;
+};
+
 char *_argencode(char *dst, size_t n, const char *src)
 {
     char c, *d = dst;

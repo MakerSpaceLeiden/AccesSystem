@@ -66,7 +66,8 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp) 
         free(*buffp);
     return -1;
 }
-    
+
+
 JsonDocument RestAPI::get(const char *url) {
     rest_ret_t ret;
 
@@ -90,6 +91,26 @@ JsonDocument RestAPI::get(const char *url) {
     
     JsonDocument emptyDoc;
     return emptyDoc;
+}
+
+void RestAPI::sentNotification(String sender, String dest, String subject, String msg) {
+    String payload = encodeargs({
+        "from", sender.length() ? sender : _terminalName,
+        "to", dest,
+        "subject", subject,
+        "msg", msg
+    });
+
+    rest_ret_t ret;
+    raw_rest(_terminalName,TERMINAL_URL NOTIFY_API_PATH,NULL,NULL,&ret,payload);
+    
+    if (ret != NOERROR_OK) {
+        Log.printf("Sending of message %s to %s failed\n", subject.c_str(), dest.c_str());
+    } else {
+        Debug.printf("Message %s to %s sent\n", subject.c_str(), dest.c_str());
+    };
+    // it is best effort - so we're not reporting any errors; nor are we queueing
+    // things in case of error.
 }
 
 void RestAPI::loop()
@@ -219,6 +240,7 @@ void RestAPI::loop()
     Log.printf("Freezeout: %lu - ret %d\n", freezeout, ret);
 };
 
+
 extern unsigned char sha256_client[32];
 
 void RestDeck::render_pane(bool refresh) {
@@ -247,3 +269,4 @@ void RestDeck::render_pane(bool refresh) {
         _display->println(tmp2);
     };
 };
+

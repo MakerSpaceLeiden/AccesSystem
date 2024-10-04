@@ -436,7 +436,7 @@ exit:
     return ret;
 };
 
-size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret) {
+size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret, String encodedpostargs) {
     WiFiClientSecure client;
     unsigned char sha256[32];
     JsonDocument res;
@@ -461,7 +461,7 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     https.setUserAgent(terminalName);
 
     Debug.printf("URL: %s\n", url);
-    int httpCode = https.GET();
+    int httpCode = encodedpostargs.length() ? https.POST(encodedpostargs) : https.GET();
     if (httpCode < 0) {
         Log.printf("raw_rest - network issue: %s\n", h2s(httpCode));
         goto exit;

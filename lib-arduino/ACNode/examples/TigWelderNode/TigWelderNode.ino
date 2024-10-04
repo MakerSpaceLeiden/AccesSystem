@@ -36,6 +36,10 @@
 #define MACHINE             "tigwelder"
 #endif
 
+#ifndef CRM_WELDER_GROUP
+#define CRM_WELDER_GROUP "welders"
+#endif
+
 // Sensors
 #define WELDING_VOLTAGE     (node.OPTO0) // Detect voltage across the flow valve operated by the torch pushbutton.
 #define POWER_VOLTAGE       (node.OPTO1) // Detect that the device is powered on (post on/off front switch)
@@ -335,17 +339,25 @@ void setup() {
         // We allow 'taking over this machine while it is on' -- hence this check for
         // if it is powered; and in that case -also- accepting a new approval.
         //
-        Log.printf("onApproval callback state: %s\n", node.machinestate.label());
+        Debug.printf("onApproval callback state: %s\n", node.machinestate.label());
         if (node.machinestate == SWAPPING_BOTTLE) {
             ApprovalEntry * e = node.lastApproved();
-            
             const char * shortName = e ? e->shortName.c_str() : "Unknown";
-            welding_bottle_reset(shortName);
-            
             const char * name = e ? e->name.c_str() : "Unknown";
-            Log.printf("Bottle reported swapped by %s, used for %d seconds\n",
-                       name, wr.welding_timer);
+            char tmp[256];
+
+            snprintf(tmp,sizeof(tmp),
+                "Argon gas bottle was swapped by %s;"
+                " the previous button was used for %.1f hours (%lu seconds to be exact)\n",
+                       name, wr.welding_timer/3600., wr.welding_timer);
                        
+            // not yet enabled - awaiting update of CRM.
+            //
+            if (0) node.sentNotification(CRM_WELDER_GROUP, "TIG Bottle changed", tmp);
+            Log.print(tmp);
+
+            welding_bottle_reset(shortName);
+
             node.machinestate = THANKS_BOTTLE;
             return;
         } else
