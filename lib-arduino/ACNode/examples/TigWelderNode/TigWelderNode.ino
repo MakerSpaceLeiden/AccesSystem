@@ -85,7 +85,7 @@ const unsigned int LET_USER_DO_IT_TIMEOUT_MS  = 30 * 1000;
 
 // How long to let the solenoid bleed the gas before we
 // expect the pressure to drop enough to notice.
- const unsigned int BLEED_TIME_MS = 1000;
+ const unsigned int BLEED_TIME_MS = 3000;
 
 unsigned long power_fault = 0, normal_poweroff = 0, bad_poweroff = 0, idle_poweroff = 0;
 
@@ -305,6 +305,8 @@ void setup() {
     });
     
     node.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+        Debug.printf("TigWelderNode: Changing state (%d->%d): %s\n", last, current, node.machinestate.label());
+        
         if (last == POWERED && current == MachineState::WAITINGFORCARD) {
             Log.println("Power switched off; waiting for valve to be closed");
             node.machinestate = CHECK_VALVE_CLOSED;
@@ -464,7 +466,7 @@ void loop() {
     };
 
     // for checking the sensors/connections.
-    if (0) {
+    if (1) {
         static unsigned long lst = millis();
         if (millis() - lst > 1000) {
             lst = millis();

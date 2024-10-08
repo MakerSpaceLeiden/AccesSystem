@@ -226,7 +226,7 @@ void WhiteNodev108::begin() {
     addHandler(menuButton);
     
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-        Debug.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
+        Debug.printf("WhiteNodev108: Changing state (%d->%d): %s\n", last, current, machinestate.label());
 
         errorLed->set(machinestate.ledState());
 
@@ -324,8 +324,8 @@ void WhiteNodev108::updateDisplay(String left, String right, bool rebuildFull) {
 };
 
 void WhiteNodev108::updateDisplayStateMsg(String msg,int line) {
+    // Debug.printf("Updating display: %d:%s\n",line,msg.c_str());
     _display->updateDisplayStateMsg(msg, line);
-
 }
 
 void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB swipeCB) {

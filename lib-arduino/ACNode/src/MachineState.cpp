@@ -202,7 +202,7 @@ void MachineState::loop()
 
         if (_state2stateStruct[machinestate]->onChangeCB)
             _state2stateStruct[machinestate]->onChangeCB(laststate, machinestate);
-        else if (_state2stateStruct[ALL_STATES]->onChangeCB)
+        if (_state2stateStruct[ALL_STATES]->onChangeCB)
             _state2stateStruct[ALL_STATES]->onChangeCB(laststate, machinestate);
         
         if (_state2stateStruct[laststate]) {
@@ -223,7 +223,7 @@ void MachineState::loop()
         
         if (_state2stateStruct[laststate]->onTimeoutCB)
             _state2stateStruct[laststate]->onTimeoutCB(machinestate);
-        else if (_state2stateStruct[ALL_STATES]->onTimeoutCB)
+        if (_state2stateStruct[ALL_STATES]->onTimeoutCB)
             _state2stateStruct[ALL_STATES]->onTimeoutCB(machinestate);
         
         laststate = machinestate;
