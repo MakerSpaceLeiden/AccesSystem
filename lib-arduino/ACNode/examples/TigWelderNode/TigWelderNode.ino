@@ -7,10 +7,9 @@
  
  http://www.apache.org/licenses/LICENSE-2.0
  
- Unless required by applicable law or agreed to in writing, softwareM
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF
- ANY KIND, either express or implied.
+ Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  See the License for the specific language governing permissions and
  limitations under the License.
  
@@ -35,6 +34,12 @@
 #ifndef MACHINE
 #define MACHINE             "tigwelder"
 #endif
+
+// When defined - the 12V valve is fed via two diodes from both
+// the main power/SSR control -and- from the 12v that controls
+// the relay for the 220 internal solenoid.
+//
+#define HAS_DIODES 1
 
 #ifndef CRM_WELDER_GROUP
 #define CRM_WELDER_GROUP "welders"
@@ -86,7 +91,7 @@ unsigned long power_fault = 0, normal_poweroff = 0, bad_poweroff = 0, idle_power
 
 XGZP6897D *pressureSensor;
 #define KpressureSensor (8) // 1MPa sensor
-#define PRESSURE_VALVE_CLOSED_LIMIT (6*1000 /* Pascal */) // below this pressure valve is assumed closed.
+#define PRESSURE_VALVE_CLOSED_LIMIT (15*1000 /* Pascal */) // below this pressure valve is assumed closed.
 #define HYSTERESIS (1+0.10) // 10% hysteresis either way -- to prevent flapping.
 
 class MachineDeck : public Deck {
@@ -555,10 +560,12 @@ void loop() {
             //
             node.setMonitoredOutput(SOLENOID_GPIO, HIGH);
 
+#ifndef HAS_DIODES
             // 12v check valve needs to be also open for this check
             // to work.
             node.setMonitoredOutput(POWER_GPIO, HIGH);
- 
+#endif
+
             expandedAnalogWrite(node.LEDC,255);
             delay(BLEED_TIME_MS);
             expandedAnalogWrite(node.LEDC,0);
