@@ -4,6 +4,9 @@
 #include "rest.h"
 
 #define PAY_PATH "/v2/pay"
+#define CLAIM_PATH "/v2/claim_create"
+#define CLAIM_PATH "/v2/claim_create"
+#define CLAIM_PATH "/v2/claim_create"
 
 bool PaymentAPI::pay(const char *tag, double amount, const char *lbl) {
     char buff[512];

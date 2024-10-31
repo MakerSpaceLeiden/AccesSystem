@@ -95,7 +95,15 @@ void RFID_MFRC522::reset() {
 void RFID_MFRC522::loop() {
     if ((_irqMode && cardScannedIrqSeen) || (!_irqMode && _mfrc522->PICC_IsNewCardPresent())) {
         if (_mfrc522->PICC_ReadCardSerial() &&  _mfrc522->uid.size) {
-            RFID::processAndRateLimitCard(_mfrc522->uid.uidByte,_mfrc522->uid.size);
+#if 0
+	    Debug.printf("uid size  :%lu\n", _mfrc522->uid.size);
+	    Debug.printf("uid ptr   :%p\n", _mfrc522->uid.uidByte);
+	    Debug.printf("uid str   :");
+            for(size_t i = 0; i <  _mfrc522->uid.size; i++)
+		    Debug.printf("%s%03d",  i ? "-" : "", _mfrc522->uid.uidByte[i]);
+	    Debug.printf("\n");
+#endif
+            processAndRateLimitCard(_mfrc522->uid.uidByte,_mfrc522->uid.size);
             _scan++;
         } else {
             _miss++;

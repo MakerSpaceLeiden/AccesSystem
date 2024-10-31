@@ -32,12 +32,29 @@ public:
 class PaymentAPI {
 public:
     PaymentAPI(RestAPI * restAPI) : _restAPI(restAPI) {};
-
+    
     // Historic side effect - also sets station name
     bool fetchPricelist();
+    
+    // Simple, one off, payments
     bool pay(const char * againstTag, double amount, const char * description);
-    char * claim(const char * againstTag, double amount, const char * description); // returns a claim NONCE
-    bool settle(char * claim, double amount, const char * descripotion); // settle the claim
+    
+    // Claim up to a certain amount. If not settled - it will either be auto
+    // settled or left to a human administrator (of settleAfterOrNone == 0).
+    //
+#define DO_NOT_AUTO_SETTLE (0)
+    char * claim(const char * againstUserID,
+                 double amount,
+                 const char * description,
+                 unsigned long settleSecondsAfterOrNot = DO_NOT_AUTO_SETTLE);
+    char * update(const char * againstUserID,
+                  double amount,
+                  const char * description,
+                  const char comment = NULL);
+    bool settle(char * claim,
+                double finalAamount,
+                const char * finalDescription,
+                const char comment = NULL);
     
 private:
     double amount_no_ok_needed = AMOUNT_NO_OK_NEEDED;

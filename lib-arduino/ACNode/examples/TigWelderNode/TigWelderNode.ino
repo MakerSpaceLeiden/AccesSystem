@@ -466,7 +466,7 @@ void loop() {
     };
 
     // for checking the sensors/connections.
-    if (1) {
+    if (0) {
         static unsigned long lst = millis();
         if (millis() - lst > 1000) {
             lst = millis();

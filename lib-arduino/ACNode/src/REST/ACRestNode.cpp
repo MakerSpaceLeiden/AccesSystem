@@ -66,9 +66,11 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
     _reqs++;
     
     ApprovalEntry * e = _approvalAPI->getEntry(tag);
+
+    if (e) Debug.printf("User: %s, (has=%x & needs=%x) = %x ==> %d (%s)\n",
+                 e->name.c_str(),e->has, e->needs,e->has & e->needs, (e->has & e->needs) == e->needs, e->status() );
+
     if (e && e->ok()) {
-        Debug.printf("User: %s, (has=%x & needs=%x) = %x ==> %d\n",
-                     e->name.c_str(),e->has, e->needs,e->has & e->needs, (e->has & e->needs) == e->needs );
         Log.printf("Received OK to %s on %s for %s\n", machine, operation ? operation : "power" , e->name.c_str());
 #if 0
         JsonDocument payload;
@@ -95,14 +97,16 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
     
     if (e) {
         Log.printf("Received a DENIED to power on %s for %s: %s\n", machine, e->name.c_str(), e->status());
-        delete e;
     } else {
         Log.println("Unknown tag. Denied.");
     };
     
     if (_denied_callback)
-        _denied_callback("unknown tag");
-    
+        _denied_callback(e ? e->status() : "Unknown tag");
+
+    if (e)
+        delete e;
+
     // Do we want to do a real-check at this point ? With
     // Check if we need to update the database. This may be a user
     // trying soon after a change. Via acl/api/v1/getok/<str:machine>
