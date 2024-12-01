@@ -39,12 +39,12 @@ ACBase::cmd_result_t RestAPI::handleTagSwipe(const char * tag) {
     return ACBase::CMD_CLAIMED;
 }
 
-int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp) {
+int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, String encodedpostargs) {
     unsigned char *p = NULL;
     if (buffp) p = *buffp;
     rest_ret_t ret;
 
-    size_t n = raw_rest(_terminalName,url,maxbufflenp,buffp,&ret);
+    size_t n = raw_rest(_terminalName,url,maxbufflenp,buffp,&ret,encodedpostargs);
 
     switch(ret) {
         case NOERROR_OK:
@@ -68,10 +68,10 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp) 
 }
 
 
-JsonDocument RestAPI::get(const char *url) {
+JsonDocument RestAPI::get(const char *url,String encodedpostargs) {
     rest_ret_t ret;
 
-    JsonDocument out = raw_rest(_terminalName, url, &ret);
+    JsonDocument out = raw_rest(_terminalName, url, &ret,encodedpostargs);
     switch(ret) {
         case NOERROR_OK:
         case NOERROR:
@@ -99,7 +99,7 @@ void RestAPI::sentNotification(String sender, String dest, String subject, Strin
         "to", dest,
         "subject", subject,
         "msg", msg
-    });
+    },false);
 
     rest_ret_t ret;
     raw_rest(_terminalName,TERMINAL_URL NOTIFY_API_PATH,NULL,NULL,&ret,payload);
@@ -181,10 +181,10 @@ void RestAPI::loop()
             // display.showString("pair");
             break;
         case FULLY_REGISTERED:
+            Debug.println("Pairing done");
             if (_paired_cb)
                 _paired_cb();
             md = DONE;
-            Debug.println("Pairing done");
             break;
         case RETRYABLE_FAIL:
         {

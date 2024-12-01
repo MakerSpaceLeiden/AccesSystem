@@ -49,12 +49,13 @@ void ACNodeBase::set_master(const char *p)  { strncpy(master,p, sizeof(master));
 void ACNodeBase::CONSTS() {
     Serial.begin(115200);
     while(!Serial) { delay(10); };
-    Serial.println("\n\n" __DATE__ " - " __TIME__ "\nACNode started");
+    Serial.printf("\n\n" __DATE__ " - " __TIME__ "\nACNode %p started\n", this);
     
     _acnodebase = this;
 };
 
 void ACNodeBase::pop() {
+    Serial.println("ACNodeBase::pop");
     
     strncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
     mqtt_port = MQTT_DEFAULT_PORT;
@@ -87,6 +88,7 @@ void ACNodeBase::pop() {
 #endif
     Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 #endif
+    Serial.println("ACNodeBase::pop done");
 };
 
 IPAddress ACNodeBase::localIP() {

@@ -40,18 +40,20 @@ double coreTemp() {
 }
 #endif // ESP32
 
-
 static unsigned char hex_digit(unsigned char c) {
     return "0123456789ABCDEF"[c & 0x0F];
 };
 
-String encodeargs(std::vector<String> pairs) {
+String encodeargs(std::vector<String> pairs, bool skipEmpty) {
     String out = "";
     if (pairs.size() % 2 != 0)
         return "ARGERROR";
     
     for (int i=0;i<pairs.size();i+=2) {
         char tmp[512];
+        if (skipEmpty && pairs[i].length() == 0)
+            continue;
+        
         if (i) out += "&";
         out += String(_argencode(tmp, sizeof(tmp), pairs[i].c_str()));
         out += "=";

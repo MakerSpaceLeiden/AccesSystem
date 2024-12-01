@@ -631,13 +631,13 @@ exit:
 
 
 
-JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * retp) {
+JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * retp, String encodedpostargs) {
     JsonDocument res;
     DeserializationError error;
     
     unsigned char * buff = NULL; //
     size_t len = 32 * 1024; // Capped; set to zero to uncap.
-    size_t n = raw_rest(terminalName,url,&len,&buff,retp);
+    size_t n = raw_rest(terminalName,url,&len,&buff,retp, encodedpostargs);
     
     if (*retp != NOERROR)
         goto exit;

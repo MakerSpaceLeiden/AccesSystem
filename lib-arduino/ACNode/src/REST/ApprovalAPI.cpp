@@ -384,7 +384,7 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
         return NULL;
     };
     
-    char * shortName = p; p += strlen(uid) +1;
+    char * shortName = p; p += strlen(shortName) +1;
     if (p > (char*)plaintext + sizeof(plaintext)) {
         Log.println("getEntry: malformed shortname");
         return NULL;

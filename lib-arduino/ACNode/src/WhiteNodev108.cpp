@@ -50,8 +50,6 @@ super(machine,wired)
 };
 
 void WhiteNodev108::pop() {
-    Serial.begin(115200);
-    
     // Non standard pins for i2c.
     Wire.begin(I2C_SDA, I2C_SCL);
     
@@ -142,9 +140,16 @@ void WhiteNodev108::begin() {
     
     if (strstr(machine,"test"))
         _deskCtrl->addDeck(new ButtonsDeck(this, iostates));
-    
+   
+    Serial.println("Start ETH"); 
     if (_wired)
+#if ESP_ARDUINO_VERSION_MAJOR == 2
         ETH.begin(WN_ETH_PHY_ADDR, WN_ETH_PHY_POWER, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_TYPE, WN_ETH_CLK_MODE);
+#else
+	// 3.x version - signature changes
+	ETH.begin(WN_ETH_PHY_TYPE, WN_ETH_PHY_ADDR, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_POWER, WN_ETH_CLK_MODE);
+#endif
+    Serial.println("Compelted ETH"); 
     
 #if 0
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(NTP_POOL);

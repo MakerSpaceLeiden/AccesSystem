@@ -20,7 +20,13 @@ void PurpleNodev107::begin() {
    _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
    addHandler(_reader);
 
+#if ESP_ARDUINO_VERSION_MAJOR == 2
    ETH.begin(ETH_PHY_ADDR, -1, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT);
+#else
+   // Signature changed from 3.x onward.
+   ETH.begin(ETH_PHY_TYPE, ETH_PHY_ADDR, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_POWER, ETH_CLK_MODE);
+#endif
+
 
    ACNode::begin(BOARD_NG);
 }

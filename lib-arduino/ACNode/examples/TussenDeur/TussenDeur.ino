@@ -13,136 +13,95 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
-#include <PowerNodeV11.h>
-#include <ACNode.h>
-#include <MachineState.h>
 
-#include <RFID.h>   // SPI version
+  Board: v1.11 / black; with no screen and a solenoid on OUT0
+
+  Compile settings:
+  - ESP32-WROOM-DA Module (or ESP32 Dev) with minial SPIFFs
+  Wiring:
+  - https://wiki.makerspaceleiden.nl/mediawiki/index.php/Node_Tussendeur
+
+  History:  Aart v2 node until end of 2024 (with the power from a
+  separate PoE converter); updated by v1.12 black node.
+
+*/
+#include <BlackNodev111.h>
 
 #define MACHINE          "tussendeur"
 
-#define SOLENOID_GPIO     (4)
-#define SOLENOID_OFF      (LOW)
-#define SOLENOID_ENGAGED  (HIGH)
+#define SOLENOID_GPIO (node.OUT1) // Bottom relay; wired to switch 12v
+#define BUZZ_TIME     (4) // How long to busezz the door open.
 
-#define AARTLED_GPIO      (16)
-
-#define BUZZ_TIME (8) // Buzz 8 seconds.
-
-ACNode node = ACNode(MACHINE);
-RFID reader = RFID();
-LED aartLed = LED();    // defaults to the aartLed - otherwise specify a GPIO.
-
-#ifndef OTA_PASSWD
-#error "Are you sure you want this ?! as it will disable OTA programming"
-#else
-OTA ota = OTA(OTA_PASSWD);
+// Generate with 'echo -n Password | openssl md5 or
+// use https://www.md5hashgenerator.com/. No \0,
+// cariage return or linefeed  at the end of the
+// password; just the characters of the password
+// itself.
+//
+// E.g.
+//      /bin/echo -n "SomethingSecrit" | openssl md5
+// to yeild below:
+// #define OTA_PASSWD_HASH  "0f475732f6c1a632b3e161160be0cfc5"
+//
+#ifndef OTA_PASSWD_HASH
+#error "An OTA password hash(md5) MUST be set. Sorry."
 #endif
+const char ota_password_hash[] = OTA_PASSWD_HASH;
 
-MachineState machinestate = MachineState();
-// Extra, hardware specific states
-MachineState::machinestate_t BUZZING;
+BlackNodev111 node = BlackNodev111(MACHINE);
+
+MachineState::machinestate_t BUZZING; // Extra, hardware specific states
 
 unsigned long opening_door_count  = 0, door_denied_count = 0;
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("\n\n\n");
-  Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__ );
 
-  // Init the hardware and get it into a safe state.
-  //
+  digitalWrite(SOLENOID_GPIO, LOW);
   pinMode(SOLENOID_GPIO, OUTPUT);
-  digitalWrite(SOLENOID_GPIO, SOLENOID_OFF);
+  digitalWrite(SOLENOID_GPIO, LOW);
 
   // Add the states needed for this node.
   //
-  BUZZING = machinestate.addState((const char*)"Approved",
-                                  LED::LED_IDLE,
-                                  (time_t)(BUZZ_TIME * 1000), // stay in this state for BUZZ_TIME seconds
-                                  machinestate.WAITINGFORCARD // then go back to waiting for the next swipe.
-                                 );
+  BUZZING = node.machinestate.addState((const char*)"Approved",
+                                       LED::LED_IDLE,
+                                       (time_t)(BUZZ_TIME * 1000), // stay in this state for BUZZ_TIME seconds
+                                       node.machinestate.WAITINGFORCARD // then go back to waiting for the next swipe.
+                                      );
 
-  machinestate.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-    Log.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
-    aartLed.set(machinestate.ledState());
+  node.onApproval([](const char *machine) {
+    Log.printf("Engaging the buzzer\n");
+    node.machinestate = BUZZING;
   });
 
+  node.setOTAPasswordHash(ota_password_hash);
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  node.onConnect([]() {
-    Log.println("Connected");
-    machinestate = MachineState::WAITINGFORCARD;
+  node.onReport([](JsonObject & report) {
+    char tmp[256];
+    snprintf(tmp, sizeof(tmp), "%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__, __TIME__);
+    report["fw"] = tmp;
+    report["count_open"] = opening_door_count;
+    report["count_denied"] = door_denied_count;
   });
-  node.onDisconnect([]() {
-    Log.println("Disconnected");
-    machinestate = MachineState::NOCONN;
-  });
-  node.onError([](acnode_error_t err) {
-    Log.printf("Error %d\n", err);
-    machinestate = MachineState::WAITINGFORCARD;
-  });
-  node.onApproval([](const char * machine) {
-    machinestate = BUZZING;
-    opening_door_count++;
-  });
-  node.onDenied([](const char * machine) {
-    machinestate = MachineState::WAITINGFORCARD;
-    door_denied_count ++;
-  });
-  node.onReport([](JsonObject  & report) {
-    report["state"] = machinestate.label();
-    report["opening_door_count"] = opening_door_count;
-    report["door_denied_count"] = door_denied_count;
-    report["opens"] = opening_door_count;
-#ifdef OTA_PASSWD
-    report["ota"] = true;
-#else
-    report["ota"] = false;
-#endif
-  });
-
-
-  node.addHandler(&reader);
-#ifdef OTA_PASSWD
-  node.addHandler(&ota);
-#endif
-
-  // This reports things such as FW version of the card; which can 'wedge' it. So we
-  // disable it unless we absolutely positively need that information.
-  //
-  reader.set_debug(false);
-  
-  // Enabling these will cause privacy sensitive information to appear
-  // in the logs - so best only used during development.
-  //
-  // node.set_debug(true);
-  // node.set_debugAlive(true);
-  node.addHandler(&machinestate);
 
   node.begin();
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
 }
 
 void loop() {
-  node.loop();
 
   // handle the open functon 'always'. Which boils down to
-  // turing the MOSFET that controils the solenoid of the lock
-  // on when we are in buzzing mode. Buzzing mode has a timeout
-  // of BUZZ_TIME - after which we return back to WAITINGFORCARD.
+  // turing the MOSFET that controils the relay of the solenoid
+  // of the lock on when we are in buzzing mode. Buzzing mode has a
+  // timeout of BUZZ_TIME - after which we return back to WAITINGFORCARD.
   //
-  digitalWrite(SOLENOID_GPIO, (machinestate.state() == BUZZING) ? SOLENOID_ENGAGED : SOLENOID_OFF);
+  digitalWrite(SOLENOID_GPIO, (node.machinestate.state() == BUZZING));
+  //
+  // And also buzz during this time
+  //
+  node.buzzer((node.machinestate.state() == BUZZING));
 
-  // Allmost all state is handled automatic with the defaults; except for
-  // the one were we get in such a weird one that we need to reboot in a
-  // last ditch attempt.
-  //
-  switch (machinestate.state()) {
-    case MachineState::REBOOT:
-      node.delayedReboot();
-      break;
-  };
+  node.loop();
 }

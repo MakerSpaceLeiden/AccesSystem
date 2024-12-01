@@ -33,8 +33,9 @@ public:
     
     void sentNotification(String dest, String subject, String msg);
 
-protected:
+    // Temp unprotected for payment experiments.
     RestAPI * _restAPI;
+protected:
     ApprovalAPI *_approvalAPI;
     ApprovalEntry * _lastApproved;
 private:

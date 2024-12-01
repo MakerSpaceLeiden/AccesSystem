@@ -3,36 +3,35 @@
 #include "util/common-utils.h"
 #include "rest.h"
 
-#define PAY_PATH "/v2/pay"
-#define CLAIM_PATH "/v2/claim_create"
-#define CLAIM_PATH "/v2/claim_create"
-#define CLAIM_PATH "/v2/claim_create"
+#ifndef PAY_URL
+#define PAY_URL "https://my.crm.local:443/pettycash/api"
+#endif
+
+#ifndef PAY_PATH
+#define PAY_PATH "/pettycash/api/v2"
+#endif
+
+#define CLAIM_CREATE_PATH "/claim_create"
+#define CLAIM_UPDATE_PATH "/claim_update"
+#define CLAIM_SETTLE_PATH "/claim_settle"
+
+#define CLAIM_CREATE_URL PAY_URL PAY_PATH CLAIM_CREATE_PATH
+#define CLAIM_UPDATE_URL PAY_URL PAY_PATH CLAIM_UPDATE_PATH
+#define CLAIM_SETTLE_URL PAY_URL PAY_PATH CLAIM_SETTLE_PATH
 
 bool PaymentAPI::pay(const char *tag, double amount, const char *lbl) {
     char buff[512];
     char desc[256];
     char tmp[256];
-    char * encarg;
     
     snprintf(desc, sizeof(desc), "%s. Paid at %s", lbl, _restAPI->stationname());
     
-    encarg =_argencode(tmp, sizeof(tmp), desc);
-    if (!encarg) {
-        Log.println("PaymentAPI::pay tmp buffer too small for agrumens.");
-        return false;
-    };
-    if (0) {
-        // avoid logging the tag for privacy/security-by-obscurity reasons.
-        //
-        snprintf(buff, sizeof(buff), PAY_URL PAY_PATH "?node=%s&src=%s&amount=%s&description=%s",
-                 _restAPI->stationname(), "XX-XX-XX-XXX", amount, encarg);
-        Log.print((const char*)"URL : ");
-        Log.println(buff);
-    };
-    snprintf(buff, sizeof(buff), PAY_URL PAY_PATH "?node=%s&src=%s&amount=%f&description=%s",
-             _restAPI->stationname(), tag, amount, encarg);
-    
-    JsonDocument res = _restAPI->get(buff);
+    JsonDocument res = _restAPI->get(PAY_URL PAY_PATH,encodeargs({
+        "node", String(_restAPI->stationname()),
+        "src", String(tag),
+        "amount:", String(amount),
+        "descrioption",String(desc),
+    }, false));
     return res["result"].as<bool>();
 }
 
@@ -60,21 +59,85 @@ bool PaymentAPI::fetchPricelist() {
     };
     
     JsonArray arr = res["pricelist"].as<JsonArray>();
-
+    
     int pricelistlen = arr.size();
     if (pricelistlen < 0 || pricelistlen > 256) {
         Log.println("Bogus SKU price list or too large");
         return false;
     }
     
-    pricelist = Pricelist();
+    if (pricelist)
+        delete pricelist;
+    pricelist = new Pricelist();
+    
     for (JsonVariant item : arr) {
         
         SKU sku(item["amount"],item["price"],item["desc"]);
-        pricelist.items.push_back(sku);
+        pricelist->items.push_back(sku);
         
         if (item["default"])
-            pricelist.defaultItem = sku;
+            pricelist->defaultItem =  &(pricelist->items.back());
     };
     return true;
+}
+
+char * PaymentAPI::claim(const char * againstUserID,
+                         double amount,
+                         const char * description,
+                         unsigned long settleSecondsAfterOrNot)
+{
+    std::vector<String> args = {
+        "uid", String(againstUserID),
+        "amount",String(amount),
+        "description",String(description)
+    };
+    
+    if (settleSecondsAfterOrNot != DO_NOT_AUTO_SETTLE) {
+        args.push_back("settleInSeconds");
+        args.push_back(String(settleSecondsAfterOrNot));
+    };
+    return _raw_claim(CLAIM_CREATE_URL,args);
+}
+
+bool PaymentAPI::update(const char * claim,
+                          double amount,
+                          const char * description,
+                          const char * comment) {
+    std::vector<String> args = {
+        "claim", String(claim),
+        "amount",String(amount),
+        "description",String(description ? description : ""),
+        "comment",String(comment ? comment : ""),
+    };
+    char * buff =  _raw_claim(CLAIM_UPDATE_URL,args);
+    free(buff);
+    return buff != NULL;
+}
+
+bool PaymentAPI::settle(const char * claim,
+                        double finalAamount,
+                        const char * description,
+                        const char * comment) {
+    std::vector<String> args = {
+        "claim", String(claim),
+        "amount",String(finalAamount),
+        "description",String(description ? description : ""),
+        "comment",String(comment ? comment : ""),
+    };
+    char * buff = _raw_claim(CLAIM_SETTLE_URL,args);
+    free(buff);
+    return buff != NULL;
+}
+
+char * PaymentAPI::_raw_claim(const char * url, std::vector<String> args) {
+    unsigned char  * buffp = NULL;
+    size_t max_len = 64;
+    
+    String payload = encodeargs(args,true /* strip empty strings */);
+    int ret = _restAPI->get(url,&max_len,&buffp,payload);
+    
+    if (ret <= 0)
+        return NULL;
+    
+    return (char*)buffp;
 }

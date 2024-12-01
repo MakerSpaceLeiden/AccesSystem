@@ -43,8 +43,7 @@ MachineState::state_t * MachineState::_initState(uint8_t state, MachineState::st
     if (s->label) s->label = strdup(s->label);
     
     _state2stateStruct[state] = s;
-    // Serial.printf("State: %d - %p\n", state, _state2stateStruct[state]); // ->label ? _state2stateStruct[state]->label : "????");
-    // Serial.printf("State: %d\n", state);
+    // Serial.printf("State: %d - %p - %s\n", state, _state2stateStruct[state], s->label ? s->label : "????");
     return s;
 }
 
@@ -93,7 +92,6 @@ void MachineState::setOnTimeoutCallback(uint8_t state, THandlerFunction_OnTimeou
         s = _initState(state, NULL);
     s->onTimeoutCB = onTimeoutCB;
 };
-
 
 MachineState::machinestate_t MachineState::addState(const char * label, machinestate_t nextstate) {
     return addState((state_t) {

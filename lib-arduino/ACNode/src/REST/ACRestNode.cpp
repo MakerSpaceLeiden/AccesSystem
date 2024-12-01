@@ -88,8 +88,10 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
             delete _lastApproved;
         _lastApproved = e;
         
-        if (_approved_callback)
+        if (_approved_callback) {
+            Serial.println("Calling appproval callback");
             _approved_callback(machine);
+        };
         
         _approve++;
         return;

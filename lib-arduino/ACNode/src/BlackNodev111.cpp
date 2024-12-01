@@ -4,15 +4,17 @@
 #include "util/cufflink_heartbeat.h"
 
 BlackNodev111::BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto)
-: WhiteNodev108(machine, ssid, ssid_passwd, proto)  { CONSTS(); pop(); };
+: WhiteNodev108(machine, ssid, ssid_passwd, proto)  { CONSTS(); pop(); Serial.println("constructor done"); };
 
 BlackNodev111::BlackNodev111(const char * machine, bool wired, acnode_proto_t proto )
-: WhiteNodev108(machine,wired,proto) { CONSTS(); pop(); };
+: WhiteNodev108(machine,wired,proto) { CONSTS(); pop(); Serial.println("constructor done"); };
 
 void BlackNodev111::pop() {
 };
 
 void BlackNodev111::begin() {
+    Serial.println("BlackNodev111::begin()\n");
+
     // Starting with v1.11 - non core I/O is provided by an i2c IO/Expander.
     //
     ExpandedGPIO::getInstance().addAW9523();
@@ -66,7 +68,9 @@ void BlackNodev111::begin() {
     });
     addHandler(yesButton);
 
+    Serial.println("BlackNodev111::begin() done - onto super\n");
     super::begin();
+    Serial.println("BlackNodev111::begin() - super done\n");
 }
 
 void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {

@@ -50,4 +50,4 @@ extern double coreTemp();
 
 char *_argencode(char *dst, size_t n, const char *src);
 char * sha256toHEX(unsigned char sha256[256 / 8], char buff[256 / 4 + 1]);
-String encodeargs(std::vector<String> pairs);
+String encodeargs(std::vector<String> pairs, bool skipEmpty);

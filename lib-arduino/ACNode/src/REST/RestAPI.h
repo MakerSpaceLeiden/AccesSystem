@@ -47,7 +47,7 @@ public:
     
     void sentNotification(String sender, String dest, String subject, String msg);
     
-    JsonDocument get(const char *url);
+    JsonDocument get(const char *url,String encodedpostargs = "");
     
     // Will return the actual number of bytes read; or a -1 on error.
     // if maxbufflenp is a pointer to a max value; this cap the number
@@ -56,7 +56,7 @@ public:
     // this buffer will be used; if it points to 0; it will be pointing
     // to malloc()ed buffer that needs to be freeed. If buffp is zero
     // no data is returned.
-    int get(const char *url, size_t * maxbufflenp, unsigned char ** buffp);
+    int get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, String encodedpostargs = "");
 
     String stationname() { return _stationName; }
     // const char * stationname() { return _stationName.c_str(); }
@@ -65,7 +65,6 @@ public:
 private:
     THandlerFunction_NotifyPair _pair_cb;
     THandlerFunction_NotifyPaired _paired_cb;
-
 protected:
     friend class RestDeck;
     
