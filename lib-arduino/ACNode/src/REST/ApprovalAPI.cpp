@@ -245,13 +245,13 @@ void ApprovalAPI::report(JsonObject& report) {
     
     
     if (datadate) {
-        strncpy(ctime((const time_t *) &datadate),buff,32);
+        strncpy(buff, ctime((const time_t *) &datadate),32);
         buff[25]='\0';
     };
     report["bintag_date"] = buff;
 };
 
-/* Simple binary search for a 32 byte hash.
+/* Simple binary search for a 32 byte hasn strh.
  */
 const unsigned char * ApprovalAPI::getEntryPtr(unsigned char * saltedtag) {
     for(int low = 0, high = ntags-1; low <= high;) {

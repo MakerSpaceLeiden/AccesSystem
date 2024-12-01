@@ -72,6 +72,11 @@ void setup() {
   node.onApproval([](const char *machine) {
     Log.printf("Engaging the buzzer\n");
     node.machinestate = BUZZING;
+    opening_door_count++;
+  });
+  node.onDenied([](const char *machine) {
+    node.buzzerErr();
+    door_denied_count++;
   });
 
   node.setOTAPasswordHash(ota_password_hash);
