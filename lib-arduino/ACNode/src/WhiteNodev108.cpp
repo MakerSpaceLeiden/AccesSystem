@@ -33,6 +33,8 @@
 // Extra, hardware specific states
 MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED;
 
+static const char * ntppool = NTP_POOL;
+
 Display * _display = NULL;
 
 WhiteNodev108::WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) :
@@ -158,7 +160,7 @@ void WhiteNodev108::begin() {
     esp_sntp_servermode_dhcp(true);
 #endif
 #else
-    configTime(0, 0, NTP_POOL);
+    configTime(0, 0, ntppool);
     setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
     tzset();
 #endif
@@ -374,7 +376,17 @@ void WhiteNodev108::report(JsonObject & report) {
     report["idle_poweroff"] = idle_poweroff;
     report["errors"] = errors;
     report["ota"] = true;
-    
+
+    report["ntp"] = (bool) esp_sntp_enabled()
+    report["ntppool"] = ntppool;
+    report["ntpstatus"] = sntp_get_sync_status();
+
+    char buff[27];
+    time_t t = time(NULL);
+    strncpy(buff,ctime(&t),sizeof(buff));
+    buff[25]='\0'; // strip \n
+    report["ntpdate"] = buff;
+
     super::report(report);
 }
 
