@@ -236,7 +236,7 @@ class Master(db.TextDB, DrumbeatNode.DrumbeatNode, AlertEmail.AlertEmail,PingNod
         self.logger.error("Fail in send: {}".format(str(e)))
 
     if not ok:
-       body = "{} (with tag {}) was denied on machine/door {}.\n\n\nYour friendly Spacebot".format(v['name'], tag, target_machine)
+       body = "{} was denied on machine/door {}.\n\n\nYour friendly Spacebot".format(v['name'], target_machine)
        subject = "Denied {} on {} @ MSL".format(v['name'], target_machine)
        if target_machine != 'abene' and target_machine != 'grinder':
            self.send_email(body,subject)
