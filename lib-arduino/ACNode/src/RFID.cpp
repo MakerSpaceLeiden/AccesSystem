@@ -46,5 +46,5 @@ void RFID::processAndRateLimitCard(unsigned char * bintag, size_t len) {
 void RFID::report(JsonObject& report) {
     report["rfid_scans"] = _scan;
     report["rfid_misses"] = _miss;
-    report["rfid"] = name();
+    report["rfid"] = firmwareVersionString();
 }

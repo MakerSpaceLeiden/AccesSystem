@@ -99,3 +99,14 @@ void LogQrDeck::render_pane(bool refresh) {
     _display->print_centered_QR((char *)"view log", url);
 };
 
+void RfidDeck::render_pane(bool refresh) {
+    if (!refresh) return;
+    _display->print_centred("RFID Reader");
+    if (!_reader) {
+    	_display->printf("None connected");
+        return;
+    };
+    _display->printf("Mfct:%s\n",_reader->name());
+    _display->printf("FW  :%s\n",_reader->firmwareVersionString().c_str());
+    _display->printf("Diag:%s\n",_reader->stateString().c_str());
+}

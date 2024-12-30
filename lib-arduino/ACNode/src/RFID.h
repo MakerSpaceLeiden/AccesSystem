@@ -16,6 +16,7 @@ extern volatile bool cardScannedIrqSeen;
 class RFID : public ACBase {
   public:
     virtual const char * name() { return "RFID"; };
+    String firmwareVersionString() { return String(name()); };
     
     void processAndRateLimitCard(unsigned char * buff, size_t len);
     void registerCallback(unsigned char irqpin);
@@ -25,6 +26,7 @@ class RFID : public ACBase {
     typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
 
     RFID& onSwipe(THandlerFunction_SwipeCB fn) { _swipe_cb = fn; return *this; };
+
 
     bool alive() { return true; };
   protected:

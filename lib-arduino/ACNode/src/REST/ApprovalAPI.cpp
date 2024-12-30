@@ -160,11 +160,13 @@ ApprovalAPI::update_t ApprovalAPI::needsUpdate() {
     int n = _restAPI->get(url,&len,&buff);
     if (n < 0)
         return FAIL;
-    buff[n] = 0; // damages last byte.
-    
+
+    buff[n] = 0; // damages last byte - which is ok as we own this buffer
     unsigned long cntr = atoi((char *)buff);
-    Log.printf("TagDB identifier: %08x: %s (previous: %08x)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", identifier);
-    
+    free(buff);
+
+    Log.printf("TagDB identifier: %08x: %s%c(previous: %08x)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", (identifier == cntr) ? 0 : 32, identifier);
+ 
     last_update = millis();
     
     return (cntr != identifier) ? NEEDS_UPDATE : NO_UPDATE_NEEDED;
@@ -182,6 +184,7 @@ void ApprovalAPI::updateTagDB() {
         Log.printf("Failed to load bintags from <%s>\n", url);
         return;
     };
+    // Note: import will claim the buffer and manage it.
     if (import(buff,len)) {
         writeCache();
     } else {

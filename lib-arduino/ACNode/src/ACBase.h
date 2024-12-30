@@ -12,10 +12,10 @@ typedef unsigned long beat_t;
 extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI timing issues.
 extern beat_t beat_absdelta(beat_t a, beat_t b);
 
-#define MAX_TOKEN_LEN (128)
-#define MAX_MSG        (384)
-#define MAX_HOST       48
-#define MAX_NAME       16
+#define MAX_TOKEN_LEN  (128)
+#define MAX_MSG        (2000)
+#define MAX_HOST       (48)
+#define MAX_NAME       (16)
 #define MAX_TOPIC      ((MAX_NAME +1) * 3  + 1)
 
 #define FILE2FIRMWARE(x) (rindex((x),'/') ? rindex((x),'/')+1 : (x))

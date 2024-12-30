@@ -325,7 +325,9 @@ void ACNodeBase::report(JsonObject & out) {
     out[ "deny" ] = _deny;
     out[ "requests" ] = _reqs;    
     out[ "mqtt_reconnects" ] = _mqtt_reconnects;
-    
+   
+    out[ "compiled" ] = __DATE__ " " __TIME__;
+ 
     out["loop_rate"] = loopRate;
 #ifdef ESP32
     out["coreTemp"]  = coreTemp();

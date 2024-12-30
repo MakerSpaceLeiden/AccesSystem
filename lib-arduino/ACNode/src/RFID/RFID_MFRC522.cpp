@@ -1,7 +1,7 @@
 #include <RFID/RFID_MFRC522.h>
 #include <MFRC522.h>
 
-// #define RFID_CHECK_INTERVAL (60 * 1000)
+#define RFID_CHECK_INTERVAL (60 * 1000)
 // #define RFID_RESET_INTERVAL (3600 * 1000)
 
 // if we are in IRQ mode; and we've seen no card; then just
@@ -60,6 +60,8 @@ void RFID_MFRC522::activateScanning() {
 
 void RFID_MFRC522::begin() {
     reset();
+
+    Log.printf("MFRC522: Firmware %s\n",firmwareVersionString().c_str());
     
     if (_irqpin != 255) {
         /* Set1 | RxIrq (table 30, page 40) -- IRQ on read completed */
@@ -144,15 +146,40 @@ void RFID_MFRC522::loop() {
         if (version < 0x80 && version > 0x100) {
             Log.printf("Alert - RFID reader gave an odd response (%x) - resetting\n", version);
             reset();
+	    rfid_vfail++;
         }
         else {
             if (!_mfrc522->PCD_PerformSelfTest()) {
                 Log.printf("Alert - RFID reader failed the self test - resetting\n", version);
             };
             reset();
+	    rfid_tfail++;
         };
         return;
     };
+    rfid_tests++;
 #endif
     return;
 }
+
+void RFID_MFRC522::report(JsonObject& report) {
+	report["mfrc522_failed_tests"] = rfid_tests;
+	report["mfrc522_failed_version_tests"] = rfid_vfail;
+	report["mfrc522_failed_self_tests"] = rfid_tfail;
+};
+
+String RFID_MFRC522::firmwareVersionString() {
+        char * str;
+	unsigned char version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
+        switch(version) {
+		case 0x00: str="00-i2c-error"; break;
+		case 0xFF: str="FF-i2c-error"; break;
+                case 0x90: str="0.0"; break;
+                case 0x91: str="1.0"; break;
+                case 0x92: str="v2.0"; break;
+                case 0x12: str="=counterfeit-chip"; break;
+                case 0x88: str="clone"; break;
+                default:   str="=unknown"; break;
+        };
+        return String("MFRC522/") + String(str) + String(" (0x") + String(version,HEX) + String(")");
+};

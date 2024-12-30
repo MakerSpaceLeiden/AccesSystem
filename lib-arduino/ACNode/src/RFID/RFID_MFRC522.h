@@ -42,9 +42,13 @@ class RFID_MFRC522 : public RFID {
     RFID_MFRC522(TwoWire *i2cBus, const byte i2caddr, const byte rstpin = RFID_RESET_PIN, const byte irqpin = RFID_IRQ_PIN);
     ~RFID_MFRC522();
 
+    String firmwareVersionString();
+
     void begin();
     void loop();
     void reset();
+
+ void report(JsonObject& report);
 
   private:
     MFRC522_SPI * _spiDevice;
@@ -53,6 +57,6 @@ class RFID_MFRC522 : public RFID {
     uint8_t _irqpin = 255, _rstpin = 255;
     void activateScanning();
     void clearInt();
-    unsigned long _lastI2Ccheck  = 0, _lastReset = 0, _lastActivate = 0;
+    unsigned long _lastI2Ccheck  = 0, _lastReset = 0, _lastActivate = 0, rfid_tfail = 0, rfid_vfail = 0, rfid_tests = 0;
 };
 #endif
