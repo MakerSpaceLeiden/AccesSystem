@@ -3,6 +3,7 @@
 #include "Display/Display.h"
 
 #include "ACBase.h"
+#include "RFID.h"
 #include "ACBaseNode.h"
 
 
@@ -55,4 +56,11 @@ class LogQrDeck : public Deck {
 public:
     LogQrDeck(ACNodeBase * node) : Deck(node) {};
     virtual void render_pane(bool refresh);
+};
+class RfidDeck : public Deck {
+public:
+    RfidDeck(ACNodeBase * node, RFID * r) : Deck(node),_reader(r) {};
+    virtual void render_pane(bool refresh);
+private:
+    RFID * _reader = NULL;
 };
