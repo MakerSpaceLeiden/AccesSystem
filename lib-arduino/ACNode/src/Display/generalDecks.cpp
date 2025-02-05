@@ -28,12 +28,17 @@ void InfoDeck::render_pane(bool refresh) {
 void SNTPDeck::render_pane(bool refresh) {
     time_t now = time(NULL);
     struct tm * t = localtime(&now);
-    char ds[10], ts[10];
+    char ds[12], ts[12];
     strftime(ds,sizeof(ds),"%Y-%m-%d",t);
     strftime(ts,sizeof(ts),"%H:%M:%S",t);
 
-    _display->print_centred("SNTP");
+
+    _display->print_centred("NTP");
     _display->printf("Date :%s\n",ds);
+
+    // Wipe time - so the seconds do not over-draw.
+    //
+    _display->fillRect(0,16,_display->SCREEN_WIDTH,8,SH110X_BLACK);
     _display->printf("Time :%s\n",ts);
     
 #if 0 // ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 0, 0)
