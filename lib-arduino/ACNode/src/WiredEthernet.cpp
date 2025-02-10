@@ -18,39 +18,45 @@ bool eth_connected () {
     return _connected;
 }
 
+static WiFiEvent_t cur;
+static bool ev = false;
+
 void WiFiEvent(WiFiEvent_t event)
 {
-    switch (event) {
+    cur = event; 
+    ev = true;
+};
+
+void WiFiEventLoop() {
+    if (!ev)
+         return;
+    ev = false;
+
+    switch (cur) {
         case EV(WIFI_READY):
-            Debug.println("Wifi Ready");
+            Debug.println("WiFi Ready");
             break;
         case EV(WIFI_STA_START):
         case EV(ETH_START):
-            Log.println("Wifi/ETH Started");
+            Debug.println("WiFi/ETH Started");
             ETH.setHostname(_acnodebase->moi);
             break;
         case EV(WIFI_STA_CONNECTED):
         case EV(ETH_CONNECTED):
-            Log.println("Wifi/ETH Connected");
+            Debug.println("WiFi/ETH Connected");
             break;
         case EV(WIFI_STA_GOT_IP):
-            Log.print("Wifi MAC: ");
-            Log.print(WiFi.macAddress());
-            Log.print(", IPv4: ");
-            Log.println(WiFi.localIP());
+            Log.printf("WiFi MAC: %s, IPv4: %s\n", 
+            	WiFi.macAddress().c_str(),
+	        WiFi.localIP().toString().c_str());
             _connected = true;
             break;
         case EV(ETH_GOT_IP):
-            Log.print("ETH MAC: ");
-            Log.print(ETH.macAddress());
-            Log.print(", IPv4: ");
-            Log.print(ETH.localIP());
-            if (ETH.fullDuplex()) {
-                Log.print(", FULL_DUPLEX");
-            }
-            Log.print(", ");
-            Log.print(ETH.linkSpeed());
-            Log.println("Mbps");
+            Log.printf("ETH MAC: %s, IPv4: %s%s, %d Mbps\n",
+            	ETH.macAddress().c_str(),
+		ETH.localIP().toString().c_str(),
+                ETH.fullDuplex() ? ", FULL_DUPLEX" : "",
+            	ETH.linkSpeed());
             _connected = true;
             break;
         case EV(WIFI_STA_DISCONNECTED):
@@ -60,11 +66,11 @@ void WiFiEvent(WiFiEvent_t event)
             break;
         case EV(WIFI_STA_STOP):
         case EV(ETH_STOP):
-            Log.println("Wifi/ETH Stopped");
+            Debug.println("Wifi/ETH Stopped");
             _connected = false;
             break;
         default:
-            Log.printf("Wifi/ETH unexpected event %d (ignored)\n", event);
+            Debug.printf("Wifi/ETH unexpected event %d (ignored)\n", cur);
             break;
     }
 }

@@ -24,6 +24,7 @@
  
  */
 #include <BlackNodev111.h>
+#include <REST/PaymentAPI.h>
 
 #include "use_counters.h" // i2c pressure sensor
 #include "XGZP6897D-i2c.h" // i2c pressure sensor
@@ -93,6 +94,8 @@ XGZP6897D *pressureSensor;
 #define KpressureSensor (8) // 1MPa sensor
 #define PRESSURE_VALVE_CLOSED_LIMIT (15*1000 /* Pascal */) // below this pressure valve is assumed closed.
 #define HYSTERESIS (1+0.10) // 10% hysteresis either way -- to prevent flapping.
+
+#include "gaspayment.h"
 
 class MachineDeck : public Deck {
 public:
@@ -173,6 +176,9 @@ public:
     };
 };
 ReplaceBottleDeck replaceBottleDeck(&node);
+
+
+
 
 void setup() {
     Serial.begin(115200);
@@ -339,7 +345,8 @@ void setup() {
         }
         else if (node.machinestate == SWAPPING_BOTTLE) {
             replaceBottleDeck.display();
-        };
+        }
+        
     });
     
     node.onApproval([](const char *machine) {
@@ -429,15 +436,18 @@ void setup() {
         return false;
     },FALLING);
     
-    node.begin();
     welding_init();
+    payment_init();
+    
+    node.begin();
 
     Log.printf("Starting loop(): %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
 }
 
 void loop() {
     node.loop();
-
+    payment_loop();
+    
     bool r = (node.machinestate == UNLOCKED) || (node.machinestate == POWERED) || (node.machinestate == WELDING);
     node.setMonitoredOutput(POWER_GPIO, r); // needs to be high to engage the relay
     
@@ -577,8 +587,9 @@ void loop() {
             lst = millis();
         }
     } else if (node.machinestate == UNLOCKED) {
-        String left = node.machinestate.timeLeftInThisState();
-        node.updateDisplayStateMsg("Auto off in " + left, 2);
+        if (node.machinestate.secondsLeftInThisState() < 60) {
+            String left = node.machinestate.timeLeftInThisState();
+            node.updateDisplayStateMsg("Auto off in " + left, 2);
+        };
     };
-
 }

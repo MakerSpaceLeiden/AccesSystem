@@ -116,7 +116,8 @@ class ACNodeBase : public ACBase {
 public:
     ACNodeBase(const char * machine, const char * ssid, const char * ssid_passwd);
     ACNodeBase(const char * machine = NULL, bool wired = true);
-    
+    ~ACNodeBase() { Serial.println(_client.connected()); Serial.println("****************** eh *"); };
+
     virtual const char * name() { return "ACNodeBase"; }
     
     void set_report_period(const unsigned long period) { _report_period = period; };
@@ -192,8 +193,10 @@ public:
     }
 
     void report(JsonObject & report);
-    
-    PubSubClient _client;
+   
+    // Exposed for the SIG protocol.
+    // 
+    PubSubClient _client = PubSubClient(_espClient);
     char mqtt_topic_prefix[MAX_NAME];
     
     const char * _ssid;
@@ -207,7 +210,6 @@ public:
 
 protected:
     const char * state2str(int state);
-    
     void reconnectMQTT();
     void mqttLoop();
     
@@ -238,10 +240,10 @@ protected:
 private:
     unsigned int log_destinations = LOG_DEST_DEFAULT;
     bool _debug_alive, _debug;
-    MqttStream * mqttlogStream;
+    std::shared_ptr<LOGBase> wh, th;
+//    MqttStream * mqttlogStream;
 
     WiFiClient _espClient;
-    
     void checkClearEEPromAndCacheButtonPressed(uint8_t button);
 };
 

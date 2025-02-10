@@ -1,7 +1,7 @@
 /*
       Copyright 2015-2018 Dirk-Willem van Gulik <dirkx@webweaving.org>
                           Stichting Makerspace Leiden, the Netherlands.
-
+0i  
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -59,7 +59,7 @@ void setup() {
 
   digitalWrite(SOLENOID_GPIO, LOW);
   pinMode(SOLENOID_GPIO, OUTPUT);
-  digitalWrite(SOLENOID_GPIO, LOW);
+  node.setMonitoredOutput(SOLENOID_GPIO, LOW);
 
   // Add the states needed for this node.
   //
@@ -74,6 +74,7 @@ void setup() {
     node.machinestate = BUZZING;
     opening_door_count++;
   });
+  
   node.onDenied([](const char *machine) {
     node.buzzerErr();
     door_denied_count++;
@@ -92,7 +93,9 @@ void setup() {
   });
 
   node.begin();
-  Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+  const char * p = __FILE__;
+  const char * q = rindex(p,'/');
+  Log.printf("Booted: %s " __DATE__ " " __TIME__, q ? q+1 : p);
 }
 
 void loop() {
@@ -102,7 +105,8 @@ void loop() {
   // of the lock on when we are in buzzing mode. Buzzing mode has a
   // timeout of BUZZ_TIME - after which we return back to WAITINGFORCARD.
   //
-  digitalWrite(SOLENOID_GPIO, (node.machinestate.state() == BUZZING));
+  node.setMonitoredOutput(SOLENOID_GPIO, (node.machinestate.state() == BUZZING));
+
   //
   // And also buzz during this time
   //

@@ -62,6 +62,8 @@ public:
     // const char * stationname() { return _stationName.c_str(); }
     void setTerminalname(const char *name) { _terminalName = name;  };
 
+    bool isPaired() { return paired; };
+
 private:
     THandlerFunction_NotifyPair _pair_cb;
     THandlerFunction_NotifyPaired _paired_cb;

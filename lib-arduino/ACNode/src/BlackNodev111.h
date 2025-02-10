@@ -1,10 +1,13 @@
 #pragma once
 
+#ifndef YES_BUTTON
+#define YES_BUTTON (BUTT2)
+#endif
+
 #include "WhiteNodev108.h"
 #include "LEDAW.h"
 #include "Display/DeckController.h"
 
-#define YES_BUTTON (BUTT2)
 
 class BlackNodev111 : public WhiteNodev108 {
 private:
@@ -28,7 +31,7 @@ public:
     void CONSTS() {
         errorLed = new LEDAW(LED_INDICATOR);
 
-        super::CONSTS();
+        // super::CONSTS();
         
         // Rewired to their own pins (mostly shared with strapping
         // pins as it known that the A4988 has no pull up/downs on
@@ -51,11 +54,11 @@ public:
         OPTO3 = PIN_HPIO_AW9523 | (0+1); // P0_0
         
         // Extra LEDs on the front, introduced in v1.11
-        LEDA = PIN_HPIO_AW9523 | (8+0); // P1_0
-        LEDB = PIN_HPIO_AW9523 | (8+1); // P1_1
-        LEDC = PIN_HPIO_AW9523 | (8+2); // P1_2
+        LEDA = PIN_HPIO_AW9523 | (8+0); // P1_0 -- checked on blue board
+        LEDB = PIN_HPIO_AW9523 | (8+2); // P1_2 -- checked on blue board
+        LEDC = PIN_HPIO_AW9523 | (8+1); // P1_1 -- checked on blue board
         LEDD = PIN_HPIO_AW9523 | (8+3); // P1_3
-        LEDE = PIN_HPIO_AW9523 | (0+0); // P0_0
+        LEDE = PIN_HPIO_AW9523 | (0+0); // P0_0 -- checked on black & blue board
         
         // Extra connector intruduced with v1.11
         IOA = PIN_HPIO_AW9523 | (0+5); // P0_5
@@ -64,7 +67,7 @@ public:
         IOD = PIN_HPIO_AW9523 | (8+4); // P1_4
         IOE = PIN_HPIO_AW9523 | (8+5); // P1_5
         
-        BUTT2 = -1; // Labeled MENU on the PCB -- not yet tested.
+        BUTT2 = 0; // Labeled MENU on the PCB -- not yet tested.
         static iostate_t s[] = {
             { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
             { BUTT1, "NO/back", 1, INPUT_PULLUP },

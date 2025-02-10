@@ -47,7 +47,7 @@ void LED::set(led_state_t state) {
      return;
   _lastState = state;
   if(_pin == -1) {
-      Serial.printf("LED - change to state %d\n", state);
+      // Serial.printf("LED - change to state %d\n", state);
       return;
   }
   switch(state) {

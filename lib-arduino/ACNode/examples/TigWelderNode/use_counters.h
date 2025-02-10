@@ -1,18 +1,29 @@
+// NOTE: not a real .h file - but Arduino style `ino' hack.
+//
+
 // We keep a record in NVRAM (EEPROM) of how long we've been
 // welding (and in the future, perhaps when a bottle was last
 // changed).
 //
 #include "EEPROM.h"
 
-#define WRE_IDENT "WR03"
+#define WRE_IDENT "WR04"
 #define WRE_VERSION (*(unsigned long *)WRE_IDENT)
 EEPROMClass welding_stats(WRE_IDENT);
 
 typedef struct welding_rec {
     unsigned long version;
     unsigned long welding_timer;
+
+    // Track bottle swaps
     unsigned long bottle_date;
     char changed_by[20];
+    
+    // Billing related
+    unsigned long welding_timer_start_last_session;
+    float price_per_minute;
+    char last_claim[49]; // Generally 48 in length; and a string.
+    float amount_claimed;
 } welding_rec_t;
 welding_rec_t wr;
 

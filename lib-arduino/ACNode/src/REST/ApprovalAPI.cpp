@@ -161,7 +161,7 @@ ApprovalAPI::update_t ApprovalAPI::needsUpdate() {
     if (n < 0)
         return FAIL;
 
-    buff[n] = 0; // damages last byte - which is ok as we own this buffer
+    buff[n-1] = 0; // damages last byte (CR/LF or comments) - which is ok as we own this buffer
     unsigned long cntr = atoi((char *)buff);
     free(buff);
 
@@ -245,7 +245,6 @@ void ApprovalAPI::report(JsonObject& report) {
     report["bintag_id"] = identifier;
     report["bintag_ntags"] = ntags;
     char buff[32] = "never";
-    
     
     if (datadate) {
         strncpy(buff, ctime((const time_t *) &datadate),32);
@@ -413,14 +412,16 @@ void ApprovalDeck::render_pane(bool refresh) {
     _display->printf("ID   :%08x\n",_approvalAPI->identifier);
     
     struct tm * t = gmtime((const time_t *)&(_approvalAPI->datadate));
-    char ds[10], ts[10];
+    char ds[12], ts[12];
     strftime(ds,sizeof(ds),"%Y-%m-%d",t);
     strftime(ts,sizeof(ts),"%H:%M:%S",t);
     _display->printf("Dated:%s\n",ds);
     _display->printf("      %sZ\n",ts);
-    _display->printf("Age  :%s\n\n",since(_approvalAPI->datadate));
-    _display->printf("Check:%s ago\n", _approvalAPI->last_update ?
-                     since((millis() - _approvalAPI->last_update)/1000) : "never");
+    _display->printf("Age  :%s\n",since(_approvalAPI->datadate));
+    _display->printf("Check:%s %s\n", _approvalAPI->last_update ?
+                     since((millis() - _approvalAPI->last_update)/1000) : "never",
+		     _approvalAPI->last_update ? "ago" : "");
+    _display->printCmdBar("UPDATE","NEXT");
 };
 
 

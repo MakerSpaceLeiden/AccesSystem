@@ -1,3 +1,6 @@
+// NOTE: not a real .h file - but Arduino style `ino' hack.
+//
+
 // Copyright (c) 2024, Dirk-Willem van Gulik, All Rights Reserved.
 //                     Under the Apache Software License version version 2.0
 //

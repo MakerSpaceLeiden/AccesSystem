@@ -52,33 +52,9 @@ void Display::updateDisplay(const char * title, String left, String right, bool 
             nY = getCursorY() + 2;
         };
         
-        // Fix the sizing in the buttons height wise on
-        // an all caps string. So left and right stay
-        // on the same baseline.
-        setFont(FONT_SMALL);
-        getBBX("XXXXXXX",W,H);
 
-        if (left.length() || right.length()) {
-            const uint16_t WBOX = 128/2 - 4;
-            setTextColor(SH110X_BLACK);
-            {
-                drawFastHLine(0,SCREEN_HEIGHT-H-5,SCREEN_WIDTH,SH110X_WHITE);
-                drawFastHLine(0,SCREEN_HEIGHT-1,SCREEN_WIDTH,SH110X_WHITE);
-            };
-            if (left.length()) {
-                fillRect(0, SCREEN_HEIGHT-H-3, WBOX, H+1, SH110X_WHITE);
-                getBBX(left,w,h);
-                setCursor((WBOX-w)/2,SCREEN_HEIGHT-H-2);
-                println(left);
-            };
-            
-            if (right.length()) {
-                fillRect(SCREEN_WIDTH-WBOX,  SCREEN_HEIGHT-H-3, WBOX, H+1, SH110X_WHITE);
-                getBBX(right,w,h);
-                setCursor(SCREEN_WIDTH-WBOX+(WBOX-w)/2,SCREEN_HEIGHT-h-2);
-                println(right);
-            };
-        };
+        if (left.length() || right.length()) 
+	    printCmdBar(left, right);
 
         // Make normal continued print easier by putting the
         // cursor in a sane location.
@@ -90,6 +66,35 @@ void Display::updateDisplay(const char * title, String left, String right, bool 
     };
     display();
 };
+
+void Display::printCmdBar(String left, String right) {
+    const uint16_t WBOX = 128/2 - 4;
+    setTextColor(SH110X_BLACK);
+
+    // Fix the sizing in the buttons height wise on
+    // an all caps string. So left and right stay
+    // on the same baseline.
+    setFont(FONT_SMALL);
+    getBBX("XXXXXXX",W,H);
+
+    drawFastHLine(0,SCREEN_HEIGHT-H-5,SCREEN_WIDTH,SH110X_WHITE);
+    drawFastHLine(0,SCREEN_HEIGHT-1,SCREEN_WIDTH,SH110X_WHITE);
+
+    if (left.length()) {
+          fillRect(0, SCREEN_HEIGHT-H-3, WBOX, H+1, SH110X_WHITE);
+          getBBX(left,w,h);
+          setCursor((WBOX-w)/2,SCREEN_HEIGHT-H-2);
+          println(left);
+    };
+            
+    if (right.length()) {
+          fillRect(SCREEN_WIDTH-WBOX,  SCREEN_HEIGHT-H-3, WBOX, H+1, SH110X_WHITE);
+          getBBX(right,w,h);
+          setCursor(SCREEN_WIDTH-WBOX+(WBOX-w)/2,SCREEN_HEIGHT-h-2);
+          println(right);
+    };
+    setTextColor(SH110X_WHITE);
+}
 
 void Display::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {
     int y = SCREEN_HEIGHT-16;
@@ -148,9 +153,10 @@ void Display::print_centered_QR(char * titleOrNull, char * url) {
         .display_func = ([](esp_qrcode_handle_t qrcode)->void{
             int s = esp_qrcode_get_size(qrcode);
             int p = 1;
-            while ((s*(p+1) <= _d->SCREEN_WIDTH) && (s*(p+1) <= (_d->SCREEN_HEIGHT))) p++;
+            while ((s*(p+1) <= _d->SCREEN_WIDTH) && 
+                   (s*(p+1) <= _d->SCREEN_HEIGHT)
+            ) p++;
             int ox = (_d->SCREEN_WIDTH - p*s)/2;
-            
             // For height - two options
             //
             // 1) We cannot pass anything to this lambda; as it maps to C, rather than c++.
@@ -158,7 +164,7 @@ void Display::print_centered_QR(char * titleOrNull, char * url) {
             //
             // int oy = _d->getCursorY() ? (_d->SCREEN_HEIGHT - p*s -1) : (_d->SCREEN_HEIGHT - p*s)/2;
             
-            // 2) Always low - because of beze
+            // 2) Always low - because of bezel
             //
             int oy = _d->SCREEN_HEIGHT - p*s -1;
             for (int y = 0; y < s; y++)
@@ -168,8 +174,8 @@ void Display::print_centered_QR(char * titleOrNull, char * url) {
                     else
                         _d->fillRect(ox+p*x,oy+p*y,p,p,esp_qrcode_get_module(qrcode, x, y) ? SH110X_WHITE : SH110X_BLACK);
         }),
-            .max_qrcode_version = 40,
-            .qrcode_ecc_level = 1,
+            .max_qrcode_version = 10,
+            .qrcode_ecc_level = ESP_QRCODE_ECC_LOW
     };
     // Make sure above getCursorY() returns zero if there is no title.
     setCursor(0, 0);

@@ -1,8 +1,7 @@
 #pragma once
 
-#include "WiFiManager.h"
-
 #ifdef CONFIGAP
+#include "WiFiManager.h"
 extern char passwd[ 64 ];
 
 extern void debugListFS(const char * path);

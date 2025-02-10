@@ -3,6 +3,7 @@
 #include <EEPROM.h>
 #include <ArduinoJSON.h>
 #include <esp_debug_helpers.h>
+#include "util/part.h"
 
 #ifdef ESP32
 #include <WiFi.h>
@@ -10,10 +11,8 @@
 #endif
 
 #include <TelnetSerialStream.h>
-TelnetSerialStream telnetSerialStream = TelnetSerialStream();
-
 #include <WebSerialStream.h>
-WebSerialStream  webSerialStream = WebSerialStream();
+// WebSerialStream  webSerialStream = WebSerialStream();
 
 #include <MqttlogStream.h>
 
@@ -31,7 +30,7 @@ float loopRate = 0;
 // sort of treat this class as a singleton. And
 // contain this leakage to just a few functions.
 //
-ACNodeBase *_acnodebase;
+ACNodeBase *_acnodebase = NULL;
 
 void ACNodeBase::set_mqtt_host(const char *p) {
     strncpy(mqtt_server,p, sizeof(mqtt_server));
@@ -46,17 +45,23 @@ void ACNodeBase::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
 void ACNodeBase::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
 void ACNodeBase::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
 
+static char mqtt_moi[20];
+
 void ACNodeBase::CONSTS() {
+    if (_acnodebase) {
+	Serial.printf("Unexpected rentry %p == %p\n",_acnodebase,this);
+	return;
+    };
+	
+    _acnodebase = this;
+
     Serial.begin(115200);
     while(!Serial) { delay(10); };
+
     Serial.printf("\n\n" __DATE__ " - " __TIME__ "\nACNode %p started\n", this);
-    
-    _acnodebase = this;
 };
 
 void ACNodeBase::pop() {
-    Serial.println("ACNodeBase::pop");
-    
     strncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
     mqtt_port = MQTT_DEFAULT_PORT;
     _report_period = REPORT_PERIOD;
@@ -64,19 +69,25 @@ void ACNodeBase::pop() {
     moi[0] = 0;
     if (machine == NULL || machine[0] == 0)
         strncpy(machine, String("test-" + chipId() ).c_str(), sizeof(machine));
-    
+    if (moi == NULL || moi[0] == 0)
+        strncpy(moi,machine,sizeof(moi));
+   
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
     strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
     
-    Log.setIdentifier(moi);
-    Debug.setIdentifier(moi);
-    
-    const std::shared_ptr<LOGBase> & wh = std::make_shared<WebSerialStream>(webSerialStream);
+    Log.setTimestamp(true); 
+    Log.setIdentifier("LOG");
+
+    Debug.setTimestamp(true); 
+    Debug.setIdentifier("DBG");
+
+    wh = std::make_shared<WebSerialStream>();
     Log.addPrintStream(wh);
     Debug.addPrintStream(wh);
 
-    const std::shared_ptr<LOGBase> & th = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+    //const std::shared_ptr<LOGBase> & th = std::make_shared<TelnetSerialStream>(telnetSerialStream);
+    th = std::make_shared<TelnetSerialStream>(String(moi));
     Debug.addPrintStream(th);
     Log.addPrintStream(th);
 
@@ -86,9 +97,8 @@ void ACNodeBase::pop() {
 #ifdef SYSLOG_PORT
   syslogStream.setPort(SYSLOG_PORT);
 #endif
-    Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
 #endif
-    Serial.println("ACNodeBase::pop done");
 };
 
 IPAddress ACNodeBase::localIP() {
@@ -137,19 +147,19 @@ _ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false)
 }
 
 String ACNodeBase::chipId() {
+    char buff[48];
 #ifdef ESP32
     uint64_t chipid = ESP.getEfuseMac();
     // We can't do 64 bit straight to string.
     uint32_t low = chipid & 0xFFFFFFFF;
     uint32_t high = chipid >> 32;
-    char buff[16+1];
-    snprintf(buff,sizeof(buff),"%08ul%08ul", high, low);
+    snprintf(buff,sizeof(buff),"%08x%08x", high, low);
+    return String(buff+4);
 #else
     uint32_t chipid = ESP.getChipId();
-    char buff[8+1];
-    snprintf(buff,sizeof(buff),"%08ul",chipid);
+    snprintf(buff,sizeof(buff),"%08x",chipid);
+    return String(buff);
 #endif
-    return String(chipid);
 };
 
 
@@ -193,6 +203,7 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
     }
 
     Log.printf("Host details %s (%s)\n", moi, localIP().toString().c_str());
+    partition_info(Log); 
 }
 
 void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button)
@@ -211,7 +222,7 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
         debugFlash();
 #endif
     checkClearEEPromAndCacheButtonPressed(clear_button);
-    
+   
 #ifdef ESP32
     // if (_wired)
     if (true)
@@ -243,9 +254,13 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
             Log.printf("Starting up wifi (hardcoded SSID <%s>)\n", _ssid);
             WiFi.begin(_ssid, _ssid_passwd);
         } else {
+#ifdef CONFIGAP
             Log.println("Staring wifi auto connect.");
             WiFiManager wifiManager;
             wifiManager.autoConnect();
+#else
+            Log.println("**** WARNING - No Wifi Details/no network");
+#endif
         };
     
     const int del = 3; // seconds.
@@ -266,18 +281,28 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     Log.println("MDNS Responder started");
     MDNS.begin(moi);
 
-    _espClient = WiFiClient();
-    _client = PubSubClient(_espClient);
     _client.setServer(mqtt_server, mqtt_port);
+
+    char topic[256];
+    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
+
+    size_t max = MAX_MSG;
+    if (TLog::MAX_LOG_LINE > max)
+       max = TLog::MAX_LOG_LINE;
+    max += 5 + strlen(topic) + 10;
+
+    if (_client.getBufferSize() < max) {
+	Debug.printf("MQTT: Need to increase MQTT buffer form %lu to %lu\n", _client.getBufferSize(), max);
+        if (!_client.setBufferSize(max)) {
+            Log.println("WARNING - buffer size could not be increased to a large enough value. All things may go wrong.");
+	};
+    };
 
     // It is safe to start logging early - as these won't emit anyting until
     // the network is known to be up.
     //
-    char topic[256];
-    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
-
-    mqttlogStream = new MqttStream(&_client, topic);    
-    const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(*mqttlogStream);
+//    mqttlogStream = new MqttStream(&_client, topic);    
+    const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(_client, topic);
     Log.addPrintStream(mh);
 
     if (moi == NULL || *moi == 0)
@@ -286,20 +311,16 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     if (mqtt_port ==0)
         mqtt_port = MQTT_DEFAULT_PORT;
 
-    _client.setServer(mqtt_server, mqtt_port);
-    Log.println("PubSubClient initialized");
-
-    if (isConnected()) {
-        reconnectMQTT();
-        mqttLoop();
-    };
+    snprintf(mqtt_moi,sizeof(mqtt_moi), "%06x%s", esp_random(),moi);
+    Log.printf("MQTT: initialized mqtt://%s@%s:%d/%s\n", mqtt_moi, mqtt_server, mqtt_port, mqtt_topic_prefix);
 
 #ifdef CONFIGAP
     configBegin();
 #endif
     
     Log.begin();
-    Debug.begin();
+    Debug.begin(); 
+
 }
 
 
@@ -389,9 +410,6 @@ void ACNodeBase::loop() {
         lastconnectedstate = connectedstate;
     };
     
-    if(isConnected())
-        mqttLoop();
-    
     // Note that this will also run the security and ohter handlers; see
     // addSecurityHandler().
     //
@@ -425,10 +443,13 @@ void ACNodeBase::loop() {
         (*it)->loop();
     }
 #endif
+    WiFiEventLoop();
 
     Log.loop();
     Debug.loop();
 
+    if(isConnected()) 
+        mqttLoop();
 }
 
 void ACNodeBase::delayedReboot() {
@@ -503,49 +524,48 @@ const char * ACNodeBase::state2str(int state) {
 #endif
 }
 
-
-void ACNodeBase::reconnectMQTT() {
-    if (!isConnected())
-        return;
-    
-    if (_client.getBufferSize() < MAX_MSG)
-        if (!_client.setBufferSize(MAX_MSG))
-            Log.println("WARNING - buffer size could not be increased to a large enough value. All things may go wrong.");
-    
-    Log.printf("Connecting <%s> to %s:%d (Current MQTT State : %s)\n",
-               moi, mqtt_server, mqtt_port,
-               state2str(_client.state()));
-    
-    if (!_client.connect(moi)) {
-        Log.print("Reconnect failed : ");
-        Log.println(state2str(_client.state()));
-        return;
-    }
-    Debug.println("(re)connected ");
-    
-    _mqtt_reconnects ++;
-    _client.loop();
-}
-
-
 bool ACNodeBase::isUp() {
     return _client.connected();
 }
 
 void ACNodeBase::mqttLoop() {
-    static unsigned long last_mqtt_connect_try = 0;
+
     _client.loop();
 
     if (!isConnected())
         return;
+
+    static bool l = _client.connected();
+    bool n = _client.connected();
+
+    if (l != n) 
+	Log.printf("MQTT connection change; now %s\n", n ? "up" : "DOWN");
+    l = n;
     
-    if (!isUp()) {
-        // report transient error ? Which ? And how often ?
-        if (millis() - last_mqtt_connect_try > 10000 || last_mqtt_connect_try == 0) {
-            Log.printf("Reconnect as MQTT is no longer up\n");
-            reconnectMQTT();
-            last_mqtt_connect_try = millis();
-        }
-        return;
-    };
+    if (n)
+	return;
+
+    reconnectMQTT();
 }
+
+void ACNodeBase::reconnectMQTT() {
+    static unsigned long last_mqtt_connect_try = 0;
+     if (millis() - last_mqtt_connect_try < 10*1000 || last_mqtt_connect_try)
+	return;
+
+    last_mqtt_connect_try = millis();
+    _mqtt_reconnects ++;
+
+    Log.printf("MQTT Connecting <%s> to %s:%d (%s)\n",
+               moi, mqtt_server, mqtt_port,
+               state2str(_client.state()));
+    
+    if (!_client.connect(mqtt_moi)) {
+        Log.print("MQTT Reconnect failed : ");
+        Log.println(state2str(_client.state()));
+        return;
+    }
+
+    Log.printf("MQTT (re)connected to mqtt://%s@%s:%d : %s, %s\n", mqtt_moi, mqtt_server, mqtt_port, 
+	_client.connected() ? "ok" : "FAIL", state2str(_client.state()));
+};

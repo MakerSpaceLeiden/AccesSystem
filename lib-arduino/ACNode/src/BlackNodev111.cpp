@@ -4,17 +4,19 @@
 #include "util/cufflink_heartbeat.h"
 
 BlackNodev111::BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto)
-: WhiteNodev108(machine, ssid, ssid_passwd, proto)  { CONSTS(); pop(); Serial.println("constructor done"); };
+: WhiteNodev108(machine, ssid, ssid_passwd, proto)  { 
+	CONSTS(); pop(); 
+};
 
 BlackNodev111::BlackNodev111(const char * machine, bool wired, acnode_proto_t proto )
-: WhiteNodev108(machine,wired,proto) { CONSTS(); pop(); Serial.println("constructor done"); };
+: WhiteNodev108(machine,wired,proto) { 
+	CONSTS(); pop(); 
+};
 
 void BlackNodev111::pop() {
 };
 
 void BlackNodev111::begin() {
-    Serial.println("BlackNodev111::begin()\n");
-
     // Starting with v1.11 - non core I/O is provided by an i2c IO/Expander.
     //
     ExpandedGPIO::getInstance().addAW9523();
@@ -47,7 +49,9 @@ void BlackNodev111::begin() {
     xpinMode(OPTO2, INPUT);
     xpinMode(OPTO3, INPUT);
 
+    xpinMode(YES_BUTTON, INPUT_PULLUP);
     yesButton = new IODebounce(YES_BUTTON);
+
     yesButton->setCallback([&](const int newState) {
         Debug.printf("YES button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
 
@@ -67,10 +71,7 @@ void BlackNodev111::begin() {
         
     });
     addHandler(yesButton);
-
-    Serial.println("BlackNodev111::begin() done - onto super\n");
     super::begin();
-    Serial.println("BlackNodev111::begin() - super done\n");
 }
 
 void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
@@ -107,10 +108,23 @@ void BlackNodev111::loop() {
     super::loop();
     xanalogWrite(LEDE,hearthbeat());
 
-    static unsigned last = millis();
+    static unsigned long last = 0;
     if (millis() - last < 10*1000)
         return;
-        
+    last = millis();
+
+    // Assume that LEDB can be used to be red if we are not paired/connected
+    // as a sort of a ready LED. As per above - only checked every 10 seconds.
+    //
+    xanalogWrite(LEDB,_restAPI->isPaired() ? 0: 255);
+
+    // No LAN/WiFi LED (Usually orange); which is not a 'red'
+    // as we can continue form the cache.
+    //
+    xanalogWrite(LEDD, isConnected() ? 0 : 255);
+    
+    Debug.printf("OUT1: %d,  OUT2: %d\n", getMonitoredOutput(OUT0), getMonitoredOutput(OUT1));    
+
     // Quite hardware specific; the relay can only be forced 'on' - either by a GPIO or
     // by a switch. It cannot be forced off. So we can only sensibly detect an 'illegal' on;
     // while it was expected to be off. Not sure if this reliable / does not cause glitches.
@@ -123,12 +137,11 @@ void BlackNodev111::loop() {
                            getMonitoredOutput(OUT0) ? "HIGH" : "LOW", expectOut1  ? "HIGH" : "LOW");
                 lst = millis();
             };
-            errorLed->set(LED::LED_FAST);
             xanalogWrite(LEDA,255);
         } else lst = 0;
     };
 
-#if 0
+
     // Not yet reliable on out2, out1 is fine. We need to change
     // this to a proper extra pin from the AW for both cases.
     if (expectOut2 == LOW) {
@@ -139,9 +152,7 @@ void BlackNodev111::loop() {
                            getMonitoredOutput(OUT1) ? "HIGH" : "LOW", expectOut2  ? "HIGH" : "LOW");
                 lst = millis();
             };
-            errorLed->set(LED::LED_FAST);
             xanalogWrite(LEDA,255);
         } else lst = 0;
     };
-#endif
 }

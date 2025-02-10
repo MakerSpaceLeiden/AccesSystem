@@ -17,7 +17,6 @@
 class Display : public Adafruit_SH1106G {
 private:
     typedef Adafruit_SH1106G super;
-    const unsigned short SCREEN_WIDTH, SCREEN_HEIGHT;
 public:
     Display(uint16_t w, uint16_t h, TwoWire *twi = &Wire,
                    int16_t rst_pin = -1, uint32_t preclk = 400000,
@@ -34,11 +33,14 @@ public:
     void updateDisplayProgressbar(unsigned int percentage, bool rebuildFull = false);
 
     void drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col);
+
     void print_centred(char * title, bool titlelines = true);
     void print_centered_QR(char * titleOrNull, char * url);
+    void printCmdBar(String left, String right);
     
     uint16_t widthOfString(String str);
 
+    const unsigned short SCREEN_WIDTH, SCREEN_HEIGHT;
 };
 
 

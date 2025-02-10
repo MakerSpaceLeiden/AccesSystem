@@ -6,7 +6,7 @@
 #define INET6_ADDRSTRLEN 48
 #endif
 
-#define QR_URL_REDIRECT_TEMPLATE "https://wiki.makerspaceleiden.nl/mediawiki/index.php/QR_%s"
+#define QR_URL_REDIRECT_TEMPLATE "https://wiki.makerspaceleiden.nl/mwi/QR_%s"
 
 void InfoDeck::render_pane(bool refresh) {
     if (!refresh) return;
@@ -70,6 +70,7 @@ void FirmwareDeck::render_pane(bool refresh) {
     _display->printf("Dev :%s\n", _acnode->name());
     _display->printf("Date:%s\n",__DATE__);
     _display->printf("Time:%s\n",__TIME__);
+    _display->printCmdBar("REBOOT","NEXT");
 };
 
 void MqttDeck::render_pane(bool refresh) {
@@ -94,7 +95,7 @@ void QrDeck::render_pane(bool refresh) {
     if (!refresh) return;
     char url[128];
     snprintf(url,sizeof(url),QR_URL_REDIRECT_TEMPLATE,_str);
-    _display->print_centered_QR("wiki", url);
+    _display->print_centered_QR(NULL, url);
 };
 
 void LogQrDeck::render_pane(bool refresh) {

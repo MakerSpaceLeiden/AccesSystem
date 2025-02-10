@@ -43,6 +43,7 @@ class RFID_MFRC522 : public RFID {
     ~RFID_MFRC522();
 
     String firmwareVersionString();
+    String stateString();
 
     void begin();
     void loop();

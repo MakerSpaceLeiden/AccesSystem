@@ -12,8 +12,14 @@
 
 // White / 1.08
 
+#ifndef MENU_BUTTON
 #define MENU_BUTTON (BUTT0)
+#endif
+
+#ifndef OFF_BUTTON
 #define OFF_BUTTON (BUTT1)
+#endif
+
 #define WHEN_PRESSED (ONLOW)  // pullup, active low buttons
 
 // Needed for the screen
@@ -62,7 +68,7 @@ public:
     void CONSTS() {
         Wire.setPins(I2C_SDA, I2C_SCL);
         
-        super::CONSTS();
+//        super::CONSTS();
                 
         LED_INDICATOR = 12;
         OUT0 = 16;
@@ -138,6 +144,7 @@ private:
     RFID_MFRC522 * _reader;
     DeckController *_deskCtrl;
     ApprovalDeck *approvalDeck;
+    FirmwareDeck *firmwareDeck;
 
     IODebounce *offButton, *menuButton;
     ButtonCallback _offCallBack, _menuCallBack = NULL;

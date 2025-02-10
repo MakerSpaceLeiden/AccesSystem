@@ -7,6 +7,8 @@
 #include <WiFi.h>
 extern bool eth_connected();
 extern void WiFiEvent(WiFiEvent_t event);
+extern void WiFiEventLoop();
+
 #endif
 
 #endif

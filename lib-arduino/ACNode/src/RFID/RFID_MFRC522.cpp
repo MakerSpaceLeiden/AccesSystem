@@ -1,7 +1,7 @@
 #include <RFID/RFID_MFRC522.h>
 #include <MFRC522.h>
 
-#define RFID_CHECK_INTERVAL (60 * 1000)
+// #define RFID_CHECK_INTERVAL (60 * 60 * 1000)
 // #define RFID_RESET_INTERVAL (3600 * 1000)
 
 // if we are in IRQ mode; and we've seen no card; then just
@@ -28,7 +28,7 @@ RFID_MFRC522::RFID_MFRC522(const byte sspin , const byte rstpin , const byte irq
     _irqpin = irqpin;
     _rstpin = rstpin;
     
-    Log.println("MFRC522: SPI wired.");
+    Debug.println("MFRC522: SPI wired.");
 }
 
 RFID_MFRC522::~RFID_MFRC522() {
@@ -44,7 +44,7 @@ RFID_MFRC522::RFID_MFRC522(TwoWire *i2cBus, const byte i2caddr, const byte rstpi
     _irqpin = irqpin;
     _rstpin = rstpin;
     
-    Log.println("MFRC522: I2C wired.");
+    Debug.println("MFRC522: I2C wired.");
 }
 
 void RFID_MFRC522::clearInt() {
@@ -61,7 +61,7 @@ void RFID_MFRC522::activateScanning() {
 void RFID_MFRC522::begin() {
     reset();
 
-    Log.printf("MFRC522: Firmware %s\n",firmwareVersionString().c_str());
+    Debug.printf("MFRC522: Firmware %s\n",firmwareVersionString().c_str());
     
     if (_irqpin != 255) {
         /* Set1 | RxIrq (table 30, page 40) -- IRQ on read completed */
@@ -71,23 +71,25 @@ void RFID_MFRC522::begin() {
         clearInt();
         activateScanning();
         cardScannedIrqSeen = false;
-        Log.printf("MFRC522: Now scanning in IRQ mode (pin %d)\n", _irqpin);
+        Debug.printf("MFRC522: Now scanning in IRQ mode (pin %d)\n", _irqpin);
     } else {
-        Log.println("MFRC522: Now scanning in Polling mode");
+       Debug.println("MFRC522: Now scanning in Polling mode");
     };
-    
+   
+#if 0 
     // Note: this seems to wedge certain cards.
     if (_debug)
         _mfrc522->PCD_DumpVersionToSerial();
+#endif
 }
 
 void RFID_MFRC522::reset() {
     if (_rstpin != 255) {
         xdigitalWrite(_rstpin,LOW);
-        Log.printf("MFRC522: Reset (HW) and (re)init (pin %d)\n", _rstpin);
+        Debug.printf("MFRC522: Reset (HW) and (re)init (pin %d)\n", _rstpin);
     } else {
         _mfrc522->PCD_Reset();
-        Log.println("MFRC522: Reset (Soft) and (re)init");
+        Debug.println("MFRC522: Reset (Soft) and (re)init");
     }
     delay(50); // minimal 35 mS
     _mfrc522->PCD_Init();     // Init MFRC522
@@ -132,7 +134,7 @@ void RFID_MFRC522::loop() {
     
 #ifdef RFID_RESET_INTERVAL
     if (millis() - _lastReset > RFID_RESET_INTERVAL) {
-        Log.printf("Courtesy reset of RFID\n", version);
+        Debug.printf("Courtesy reset of RFID\n", version);
         _lastReset = millis();
         reset();
         return;
@@ -150,22 +152,24 @@ void RFID_MFRC522::loop() {
         }
         else {
             if (!_mfrc522->PCD_PerformSelfTest()) {
-                Log.printf("Alert - RFID reader failed the self test - resetting\n", version);
+                Log.printf("Alert - RFID reader failed the self test - resetting\n");
+	    	rfid_tfail++;
+            } else {
+                Debug.printf("RFID reader passed selftest ok\n");
+    		rfid_tests++;
             };
             reset();
-	    rfid_tfail++;
         };
         return;
     };
-    rfid_tests++;
 #endif
     return;
 }
 
 void RFID_MFRC522::report(JsonObject& report) {
-	report["mfrc522_failed_tests"] = rfid_tests;
 	report["mfrc522_failed_version_tests"] = rfid_vfail;
 	report["mfrc522_failed_self_tests"] = rfid_tfail;
+	report["mfrc522_ok_self_tests"] = rfid_tests;
 };
 
 String RFID_MFRC522::firmwareVersionString() {
@@ -174,12 +178,18 @@ String RFID_MFRC522::firmwareVersionString() {
         switch(version) {
 		case 0x00: str="00-i2c-error"; break;
 		case 0xFF: str="FF-i2c-error"; break;
-                case 0x90: str="0.0"; break;
-                case 0x91: str="1.0"; break;
+                case 0x90: str="v0.0"; break;
+                case 0x91: str="v1.0"; break;
                 case 0x92: str="v2.0"; break;
-                case 0x12: str="=counterfeit-chip"; break;
-                case 0x88: str="clone"; break;
-                default:   str="=unknown"; break;
+                case 0x12: str="fake"; break;
+                case 0x88: str="clne"; break;
+                default:   str="unkn"; break;
         };
-        return String("MFRC522/") + String(str) + String(" (0x") + String(version,HEX) + String(")");
+        return String("") + String(str) + String(" (0x") + String(version,HEX) + String(")");
 };
+
+String RFID_MFRC522::stateString() { 
+	String res = _mfrc522->PCD_PerformSelfTest() ? "pass" : "FAIL";
+        begin();
+   	return res;
+}

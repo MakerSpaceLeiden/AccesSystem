@@ -1,5 +1,6 @@
 #include <ACBaseNode.h>
 #include <OTA.h>
+#include "util/part.h"
 
 OTA::OTA(const char * password) : _ota_password_hash(password) {};
 
@@ -185,9 +186,8 @@ void OTADeck::render_pane(bool refresh) {
         return;
     
     _display->print_centred("OTA");
-    _display->printf("Host:%s\n",ArduinoOTA.getHostname().c_str());
-    _display->printf("Port:%d\n",OTA_PORT);
-    if (ArduinoOTA.getPartitionLabel())
-        _display->printf("Slce:%s\n",ArduinoOTA.getPartitionLabel().c_str());
-    _display->printf("Pass:%s\n",_ota->_ota_password_hash ? "hash set" : "UNSET");
+    _display->printf("Host: %s\n",ArduinoOTA.getHostname().c_str());
+    _display->printf("Port: %d\n",OTA_PORT);
+    _display->printf("Slce: %s\n",currentPartition().c_str());
+    _display->printf("Pass: %s\n",_ota->_ota_password_hash ? "hash set" : "UNSET");
 };

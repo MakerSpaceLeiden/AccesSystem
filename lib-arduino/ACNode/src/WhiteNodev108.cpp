@@ -3,6 +3,9 @@
 #include <esp_sntp.h>
 #include <lwip/ip_addr.h>
 #include <esp_debug_helpers.h>
+#include <esp_task_wdt.h>
+#include <hal/wdt_hal.h>
+#include <hal/wdt_types.h>
 
 
 #include "Display/Deck.h"
@@ -63,7 +66,7 @@ void WhiteNodev108::pop() {
     
     xpinMode(OFF_BUTTON, INPUT_PULLUP);
     xpinMode(MENU_BUTTON, INPUT_PULLUP);
-    
+
     xpinMode(OPTO0, INPUT);
     xpinMode(OPTO1, INPUT);
     
@@ -102,7 +105,7 @@ void WhiteNodev108::buzzerErr() {
 
 void WhiteNodev108::begin() {
     errorLed->begin();
-    
+
     // All nodes have a build-in RFID reader; so fine to hardcode this.
     //
     _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
@@ -115,7 +118,7 @@ void WhiteNodev108::begin() {
     } else {
         Log.println("No LCD/OLED screen found");
     };
-    
+
     OTAWithDisplay * ota = new OTAWithDisplay(OTA_PASSWD_HASH, _display, moi);
     ota->setOTAOK([&](){
         return machinestate.safeForOTA();
@@ -133,7 +136,11 @@ void WhiteNodev108::begin() {
 
     _deskCtrl->addDeck( new LogQrDeck(this));
     _deskCtrl->addDeck( new SNTPDeck(this));
-    _deskCtrl->addDeck( new FirmwareDeck(this));
+
+    firmwareDeck =  new FirmwareDeck(this);
+    _deskCtrl->addDeck( firmwareDeck);
+
+    _deskCtrl->addDeck( new RfidDeck(this, _reader));
     _deskCtrl->addDeck( new OTADeck(this,ota));
     _deskCtrl->addDeck( new MqttDeck(this));
     _deskCtrl->addDeck( new RestDeck(this, _restAPI));
@@ -141,7 +148,6 @@ void WhiteNodev108::begin() {
     if (strstr(machine,"test"))
         _deskCtrl->addDeck(new ButtonsDeck(this, iostates));
    
-    Serial.println("Start ETH"); 
     if (_wired)
 #if ESP_ARDUINO_VERSION_MAJOR == 2
         ETH.begin(WN_ETH_PHY_ADDR, WN_ETH_PHY_POWER, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_TYPE, WN_ETH_CLK_MODE);
@@ -149,7 +155,6 @@ void WhiteNodev108::begin() {
 	// 3.x version - signature changes
 	ETH.begin(WN_ETH_PHY_TYPE, WN_ETH_PHY_ADDR, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_POWER, WN_ETH_CLK_MODE);
 #endif
-    Serial.println("Compelted ETH"); 
     
 #if 0
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(NTP_POOL);
@@ -182,10 +187,15 @@ void WhiteNodev108::begin() {
         } else
         if (machinestate == INFODISPLAY && newState == LOW) {
             if (currentDeck() == approvalDeck) {
-                Log.println("Forcing an immediate update");
+                Log.println("Forcing an immediate update on button press");
                 _approvalAPI->scheduleImmediateUpdate();
                 return;
             };
+            if (currentDeck() == firmwareDeck) {
+                Log.println("Forcing an immediate reboot on button press");
+		machinestate = MachineState::REBOOT;
+                return;
+	    };
             
             Debug.println("Exiting INFO by button press");
             machinestate = MachineState::WAITINGFORCARD;
@@ -194,7 +204,8 @@ void WhiteNodev108::begin() {
         };
     },  CHANGE);
     addHandler(offButton);
-    
+  
+    pinMode(14,INPUT_PULLUP);
     menuButton = new IODebounce(MENU_BUTTON);
     menuButton->setCallback([&](const int newState) {
         Debug.printf("MENU button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
@@ -229,7 +240,7 @@ void WhiteNodev108::begin() {
         };
     },  CHANGE);
     addHandler(menuButton);
-    
+   
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         Debug.printf("WhiteNodev108: Changing state (%d->%d): %s\n", last, current, machinestate.label());
 
@@ -299,7 +310,7 @@ void WhiteNodev108::begin() {
 
         if (_swipeCB)
             return _swipeCB(tag);
-        
+     
         return ACBase::CMD_DECLINE;
     });
     
@@ -382,7 +393,7 @@ void WhiteNodev108::report(JsonObject & report) {
     char buff[27];
     time_t t = time(NULL);
     strncpy(buff,ctime(&t),sizeof(buff));
-    buff[25]='\0'; // strip \n
+    buff[24]='\0'; // strip \n
     report["ntpdate"] = buff;
 
     super::report(report);

@@ -62,8 +62,11 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
             md = WAITING_FOR_NTP;
             break;
     }
-    if (p == NULL && *buffp)
+    if (p == NULL && *buffp) {
         free(*buffp);
+	*buffp = NULL;
+    };
+    Log.printf("Failed %s\n", url);
     return -1;
 }
 

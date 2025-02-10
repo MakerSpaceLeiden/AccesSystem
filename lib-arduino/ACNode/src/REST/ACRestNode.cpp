@@ -12,11 +12,11 @@ ACNodeRest::ACNodeRest(const char * machine, bool wired) : super(machine, wired)
 };
 
 void ACNodeRest::CONSTS() {
-    super::CONSTS();
+    // super::CONSTS();
 }
 
 void ACNodeRest::pop() {
-    super::pop();
+    // super::pop();
     _restAPI = new RestAPI();
     _approvalAPI = new ApprovalAPI(_restAPI, machine);
 
@@ -89,7 +89,7 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
         _lastApproved = e;
         
         if (_approved_callback) {
-            Serial.println("Calling appproval callback");
+            Debug.println("Calling appproval callback");
             _approved_callback(machine);
         };
         
