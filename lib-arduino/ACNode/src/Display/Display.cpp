@@ -117,8 +117,8 @@ void Display::updateDisplayStateMsg(String msg, int line) {
     y = 16+line*12;
     fillRect(0, y, SCREEN_WIDTH, 11, SH110X_BLACK);
     
-    int i = SCREEN_WIDTH - 6 * msg.length();
-    setCursor(i > 0 ? i/2 : 0, y);
+    int i = ( SCREEN_WIDTH - w) / 2;
+    setCursor(i > 0 ? i : 0, y);
     setTextColor(SH110X_WHITE);
     print(msg);
     

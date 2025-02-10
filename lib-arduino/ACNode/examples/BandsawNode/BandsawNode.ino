@@ -20,8 +20,9 @@
   QR code shown:
 
    https://wiki.makerspaceleiden.nl/mediawiki/index.php/QR_lintzaag
+
+   2025/02/10 - changes freom a 1.08 white not to a newer blue board
 */
-// #include <WhiteNodev108.h>
 #include <BlackNodev111.h>
 
 #ifndef MACHINE
@@ -49,14 +50,12 @@
 #endif
 const char ota_password_hash[] = OTA_PASSWD_HASH;
 
-
 BlackNodev111 node = BlackNodev111(MACHINE);
-// BlackNodev111 node = BlackNodev111(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 unsigned long bad_poweroff = 0, normal_poweroff = 0, normal_poweron = 0, idle_poweroff = 0;
 
-ButtonDebounce *interlockDetect, *motorCurrent, *onoffSwitchDetect;
-    
+IODebounce *interlockDetect, *motorCurrent;
+
 // Extra state - when the safety contactor has actually been unlocked
 // but the RED button has not been pressed yet.
 //
@@ -77,6 +76,14 @@ const unsigned int MAX_SECS_IDLE = 3600;
 //
 MachineState::machinestate_t SHUTTINGDOWN;
 
+#ifdef ONOFFSWITCH
+IODebounce *onoffSwitchDetect;
+
+// Extra state - in which the machine is off; but the user has switch the operating
+// switch to `on'.
+MachineState::machinestate_t UNSAFE;
+#endif
+
 static void tellOff(const char *msg) {
   node.updateDisplay(msg, "", "");
   Log.printf("Telling=off: %s\n", msg);
@@ -87,22 +94,25 @@ static void tellOff(const char *msg) {
 }
 
 class MachineDeck : public Deck {
-public:
+  public:
     MachineDeck(BlackNodev111 * node) : Deck(node) {};
     void render_pane(bool refresh) {
-        _display->clearDisplay();
-        _display->print_centred(MACHINE);
-        _display->printf("Operator OnOff Switch\n    %s\n", onoffSwitchDetect->state() ?
-                (interlockDetect->state() ? "unsafe(on)" : "on") : "off");
-                
-        _display->printf("Safety/Interlock\n    %s\n",
-                interlockDetect->state() == LOW ? "ok" : "broken");
-        
-        _display->printf("Motor Current/Voltage\n    I=%s V=%s(%s)\n",
-                motorCurrent->state() ? "yes" : "no",
-                node.getMonitoredOutput(RELAY_GPIO) ? "on": "off",
-                node.monitoredOutputIsOK(RELAY_GPIO)? "ok" : "FAIL"
-                );
+      _display->clearDisplay();
+      _display->print_centred(MACHINE);
+
+#ifdef ONOFFSWITCH
+      _display->printf("Operator OnOff Switch\n    %s\n", onoffSwitchDetect->state() ?
+                       (interlockDetect->state() ? "unsafe(on)" : "on") : "off");
+#endif
+
+      _display->printf("Safety/Interlock\n    %s\n",
+                       interlockDetect->state() == LOW ? "ok" : "broken");
+
+      _display->printf("Motor Current/Voltage\n    I=%s V=%s(%s)\n",
+                       motorCurrent->state() ? "yes" : "no",
+                       node.getMonitoredOutput(RELAY_GPIO) ? "on" : "off",
+                       node.monitoredOutputIsOK(RELAY_GPIO) ? "ok" : "FAIL"
+                      );
     }
 };
 
@@ -116,7 +126,7 @@ void setup() {
   expandedPinMode(RELAY_GPIO, OUTPUT);
   node.setMonitoredOutput(RELAY_GPIO, 0);
 
-  ACTIVATED =  node.machinestate.addState("Waiting for Safety", LED::LED_ON,
+  ACTIVATED =  node.machinestate.addState("Waiting 4 Safety", LED::LED_ON,
                                           MAX_SECS_WAIT_FOR_RED_BUTTON * 1000,  MachineState::WAITINGFORCARD, false);
   RUNNING = node.machinestate.addState("Saw Running", LED::LED_ON,
                                        MachineState::NEVER, MachineState::WAITINGFORCARD, false);
@@ -124,9 +134,9 @@ void setup() {
                   LED::LED_ON, 60 * 1000, MachineState::WAITINGFORCARD, false);
 
   expandedPinMode(INTERLOCK, INPUT);
-  interlockDetect = new ButtonDebounce(INTERLOCK);
+  interlockDetect = new IODebounce(INTERLOCK);
   interlockDetect->setDigitalReadFunction(&expandedDigitalRead);
-  
+
   interlockDetect->setCallback([](const int newState) {
     if ((node.machinestate == MachineState::CHECKINGCARD || node.machinestate == MachineState::WAITINGFORCARD) && newState == LOW) {
       Log.println("Alert: Power on the interlock observed while " MACHINE " should be locked.");
@@ -156,7 +166,7 @@ void setup() {
       Debug.printf("Interlock power now %s (State: %s)\n", newState ? "OFF" : "ON", node.machinestate.label());
   }, CHANGE);
 
-  motorCurrent = new ButtonDebounce(MOTOR_CURRENT);
+  motorCurrent = new IODebounce(MOTOR_CURRENT);
   motorCurrent->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
   motorCurrent->setCallback([](const int newState) {
     if (node.machinestate == POWERED && newState) {
@@ -171,18 +181,33 @@ void setup() {
     }
   }, CHANGE);
 
+#ifdef ONOFFSWITCH
   expandedPinMode(ONOFFSWITCH, INPUT);
-  onoffSwitchDetect = new ButtonDebounce(ONOFFSWITCH);
+  onoffSwitchDetect = new IODebounce(ONOFFSWITCH);
+  UNSAFE =  node.machinestate.addState("Blocked, switch=ON",
+                                       LED::LED_ON,
+                                       MachineState::NEVER, MachineState::NEVER, false);
+  onoffSwitchDetect->setCallback([](const int newState) {
+    if (node.machinestate == MachineState::WAITINGFORCARD && newState) {
+      Log.println("OnOff switch in the unsafe 'on' position; locking machine");
+      node.machinestate = UNSAFE;
+    };
+    if (node.machinestate == UNSAFE && !newState) {
+      Log.println("OnOff switch in the right, off, position again");
+      node.machinestate = MachineState::WAITINGFORCARD;
+    }
+  });
+#endif
 
   node.setOTAPasswordHash(ota_password_hash);
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
   node.setNodeDeck(new MachineDeck(&node));
-  
+
   node.onReport([](JsonObject & report) {
     char * p = __FILE__;
-    char * q = rindex(p,'/');
+    char * q = rindex(p, '/');
     if (q) p = q;
     report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
     report["bad_poweroff"] = bad_poweroff;
@@ -200,22 +225,25 @@ void setup() {
       node.updateDisplay("", "", true);
     };
     if (current == POWERED)
-      node.updateDisplayStateMsg("Off with RED on back", 2);
+      node.updateDisplayStateMsg("RED @back 4 off", 2);
   });
 
   node.onApproval([](const char *machine) {
-    Log.println("Action Approved.");
     // We allow 'taking over this machine while it is on' -- hence this check for
     // if it is powered; and in that case -also- accepting a new approval.
     //
     if ((node.machinestate != POWERED) &&
+        (node.machinestate != MachineState::WAITINGFORCARD) &&
         (node.machinestate != MachineState::CHECKINGCARD) &&
         (node.machinestate != ACTIVATED) &&
         (node.machinestate != SHUTTINGDOWN)
        ) {
+      Log.println("Unexpected state - Approved action ignored");
       node.buzzerErr();
       return;
     };
+
+    Log.println("Action Approved.");
     if (node.machinestate != POWERED)
       node.machinestate = ACTIVATED;
   });
@@ -233,7 +261,7 @@ void loop() {
       if (node.machinestate == SHUTTINGDOWN)
         node.updateDisplayStateMsg("in", 1);
       else
-        node.updateDisplayStateMsg("Press GREEN on back", 1);
+        node.updateDisplayStateMsg("Prss GREEN @ back", 1);
 
       node.updateDisplayStateMsg(node.machinestate.timeLeftInThisState(), 2);
     }
