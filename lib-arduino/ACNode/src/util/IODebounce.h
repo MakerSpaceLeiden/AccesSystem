@@ -10,6 +10,7 @@
 #include "Ticker.h"
 #include <functional>
 
+#include "ExpandedGPIO.h"
 #include "ACBase.h"
 
 class IODebounce : public ACBase {
@@ -23,6 +24,7 @@ class IODebounce : public ACBase {
 
     bool state();
     bool rawState();
+    unsigned short raw();
 
     typedef std::function<bool(const int)> digitalReadFunction;
     void setDigitalReadFunction(digitalReadFunction func) { _digitalRead = func; };
@@ -46,8 +48,8 @@ class IODebounce : public ACBase {
     unsigned long _lastChangeTime;
     bool _lastStateBtn, _prevStateBtn, _hasfired=false;
     ButtonCallback _callBack = NULL;
-    digitalReadFunction _digitalRead = &digitalRead;
-    analogReadFunction _analogRead = &analogRead;
+    digitalReadFunction _digitalRead = &expandedDigitalRead;
+    analogReadFunction _analogRead = &expandedAnalogRead;
     Ticker * _ticker;
 };
 #endif

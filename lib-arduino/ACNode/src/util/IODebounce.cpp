@@ -34,6 +34,12 @@ bool IODebounce::rawState() {
     return btnState;
 }
 
+unsigned short IODebounce::raw() {
+    if (_analogThreshold)
+        return this->_analogRead(_pin);
+    return this->_digitalRead(_pin);
+}; 
+
 bool IODebounce::state(){
     return _lastStateBtn;
 }

@@ -50,8 +50,8 @@ public:
         OPTO1 = PIN_HPIO_AW9523 | (0+3); // P0_3
         
         // Two extra opto couplers, introduced in v1.11
-        OPTO2 = PIN_HPIO_AW9523 | (0+2); // P0_2
-        OPTO3 = PIN_HPIO_AW9523 | (0+1); // P0_0
+        OPTO2 = PIN_HPIO_AW9523 | (0+1); // P0_1
+        OPTO3 = PIN_HPIO_AW9523 | (0+2); // P0_2
         
         // Extra LEDs on the front, introduced in v1.11
         LEDA = PIN_HPIO_AW9523 | (8+0); // P1_0 -- checked on blue board

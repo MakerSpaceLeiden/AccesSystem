@@ -43,7 +43,9 @@ void BlackNodev111::begin() {
     
     xpinMode(LEDE,AW9523_LED_MODE);
     xanalogWrite(LEDE,0);
-    
+   
+    Serial.printf("OPTO %x %x %x %x\n", OPTO0, OPTO1, OPTO2, OPTO3);
+ 
     xpinMode(OPTO0, INPUT);
     xpinMode(OPTO1, INPUT);
     xpinMode(OPTO2, INPUT);
@@ -122,6 +124,8 @@ void BlackNodev111::loop() {
     // as we can continue form the cache.
     //
     xanalogWrite(LEDD, isConnected() ? 0 : 255);
+
+    ExpandedGPIO::getInstance().debugdump();
     
     Debug.printf("OUT1: %d,  OUT2: %d\n", getMonitoredOutput(OUT0), getMonitoredOutput(OUT1));    
 

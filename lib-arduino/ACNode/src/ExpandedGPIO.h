@@ -45,6 +45,17 @@ public:
     int xdigitalRead(uint8_t pin);
     void xdigitalWrite(uint8_t pin, uint8_t val);
     void xanalogWrite(uint8_t pin, uint8_t val);
+ 
+    void debugdump() {
+    	if (mcp) {Serial.printf("MCP:"); for (int i = 0; i < 16; i++) { 
+		Serial.print(mcp->digitalRead(i));
+		    if (i % 4 == 3) Serial.print(".");
+  	}; Serial.println(); };
+    	if (awp) {Serial.printf("AWP:"); for (int i = 0; i < 16; i++) { 
+		Serial.print(awp->digitalRead(i));
+		    if (i % 4 == 3) Serial.print(".");
+  	}; Serial.println(); };
+};
 private:
     Adafruit_MCP23X17 * mcp = NULL;
     Adafruit_AW9523 * awp = NULL;
