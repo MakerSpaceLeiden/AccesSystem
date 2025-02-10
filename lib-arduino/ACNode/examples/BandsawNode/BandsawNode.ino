@@ -133,6 +133,27 @@ void setup() {
   SHUTTINGDOWN =  node.machinestate.addState("Locking machine",
                   LED::LED_ON, 60 * 1000, MachineState::WAITINGFORCARD, false);
 
+
+#ifdef ONOFFSWITCH
+  expandedPinMode(ONOFFSWITCH, INPUT);
+  onoffSwitchDetect = new IODebounce(ONOFFSWITCH);
+  onoffSwitchDetect->setDigitalReadFunction(&expandedDigitalRead);
+
+  UNSAFE =  node.machinestate.addState("Blocked, switch=ON",
+                                       LED::LED_ON,
+                                       MachineState::NEVER, MachineState::NEVER, false);
+  onoffSwitchDetect->setCallback([](const int newState) {
+    if (node.machinestate == MachineState::WAITINGFORCARD && newState) {
+      Log.println("OnOff switch in the unsafe 'on' position; locking machine");
+      node.machinestate = UNSAFE;
+    };
+    if (node.machinestate == UNSAFE && !newState) {
+      Log.println("OnOff switch in the right, off, position again");
+      node.machinestate = MachineState::WAITINGFORCARD;
+    }
+  });
+#endif
+
   expandedPinMode(INTERLOCK, INPUT);
   interlockDetect = new IODebounce(INTERLOCK);
   interlockDetect->setDigitalReadFunction(&expandedDigitalRead);
@@ -181,23 +202,6 @@ void setup() {
     }
   }, CHANGE);
 
-#ifdef ONOFFSWITCH
-  expandedPinMode(ONOFFSWITCH, INPUT);
-  onoffSwitchDetect = new IODebounce(ONOFFSWITCH);
-  UNSAFE =  node.machinestate.addState("Blocked, switch=ON",
-                                       LED::LED_ON,
-                                       MachineState::NEVER, MachineState::NEVER, false);
-  onoffSwitchDetect->setCallback([](const int newState) {
-    if (node.machinestate == MachineState::WAITINGFORCARD && newState) {
-      Log.println("OnOff switch in the unsafe 'on' position; locking machine");
-      node.machinestate = UNSAFE;
-    };
-    if (node.machinestate == UNSAFE && !newState) {
-      Log.println("OnOff switch in the right, off, position again");
-      node.machinestate = MachineState::WAITINGFORCARD;
-    }
-  });
-#endif
 
   node.setOTAPasswordHash(ota_password_hash);
   node.set_mqtt_prefix("ac");
@@ -276,4 +280,14 @@ void loop() {
 
   node.setMonitoredOutput(RELAY_GPIO,
                           ((node.machinestate == POWERED) || (node.machinestate == RUNNING) || (node.machinestate == ACTIVATED) || (node.machinestate == SHUTTINGDOWN)) ? HIGH : LOW);
+
+  static unsigned long lst = millis();
+  if (millis() - lst > 10 * 1000) {
+    lst = millis();
+    Log.printf("Opto2/onOffSwitch(0x%x): %4u(%s(%d)) Curr/motorCurrent(0x%x): %4u(%s(%d)) Opto1/Interlock(0x%x): %4u(%s(%d))\n",
+               ONOFFSWITCH, onoffSwitchDetect->raw(), onoffSwitchDetect->state() ? "On " : "Off", onoffSwitchDetect->rawState(),
+               MOTOR_CURRENT, motorCurrent->raw(), motorCurrent->state() ? "On " : "Off", motorCurrent->rawState(),
+               INTERLOCK, interlockDetect->raw(),  interlockDetect->state() ? "On " : "Off", interlockDetect->rawState()
+              );
+  }
 }
