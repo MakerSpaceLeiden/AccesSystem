@@ -70,6 +70,7 @@ void IODebounce::_ticker_update(){
 void IODebounce::loop() {
     if (!_hasfired)
         return;
+
     _hasfired = false;
 
     if (!this->_callBack)

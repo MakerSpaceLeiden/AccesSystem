@@ -30,7 +30,7 @@
 #endif
 
 #define INTERLOCK     (node.OPTO0) // Detect voltage on the interlock/safety contactor.
-#define ONOFFSWITCH   (node.OPTO1) // Detects voltage on the normally-closed circuit of the front switch.
+// #define ONOFFSWITCH   (node.OPTO1) // Detects voltage on the normally-closed circuit of the front switch.
 #define MOTOR_CURRENT (node.CURR0) // One of the 3-phase wires to the motor runs through this current coil.
 
 // The relay that sits in the safety interlock of
@@ -137,6 +137,7 @@ void setup() {
 #ifdef ONOFFSWITCH
   expandedPinMode(ONOFFSWITCH, INPUT);
   onoffSwitchDetect = new IODebounce(ONOFFSWITCH);
+  node.addHandler(onoffSwitchDetect);
 
   UNSAFE =  node.machinestate.addState("Blocked, switch=ON",
                                        LED::LED_ON,
@@ -155,6 +156,7 @@ void setup() {
 
   expandedPinMode(INTERLOCK, INPUT);
   interlockDetect = new IODebounce(INTERLOCK);
+  node.addHandler(interlockDetect);
 
   interlockDetect->setCallback([](const int newState) {
     if ((node.machinestate == MachineState::CHECKINGCARD || node.machinestate == MachineState::WAITINGFORCARD) && newState == LOW) {
@@ -186,7 +188,9 @@ void setup() {
   }, CHANGE);
 
   motorCurrent = new IODebounce(MOTOR_CURRENT);
-  motorCurrent->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
+  motorCurrent->setAnalogThreshold(30); 
+  node.addHandler(motorCurrent);
+
   motorCurrent->setCallback([](const int newState) {
     if (node.machinestate == POWERED && newState) {
       Debug.println("Detected current. Motor switched on");
@@ -282,10 +286,14 @@ void loop() {
   static unsigned long lst = millis();
   if (millis() - lst > 10 * 1000) {
     lst = millis();
-    Log.printf("Opto2/onOffSwitch(0x%x): %4u(%s(%d)) Curr/motorCurrent(0x%x): %4u(%s(%d)) Opto1/Interlock(0x%x): %4u(%s(%d))\n",
-               ONOFFSWITCH, onoffSwitchDetect->raw(), onoffSwitchDetect->state() ? "On " : "Off", onoffSwitchDetect->rawState(),
-               MOTOR_CURRENT, motorCurrent->raw(), motorCurrent->state() ? "On " : "Off", motorCurrent->rawState(),
-               INTERLOCK, interlockDetect->raw(),  interlockDetect->state() ? "On " : "Off", interlockDetect->rawState()
-              );
+#ifdef ONOFFSWITCH
+    Debug.printf("Opto2/onOffSwitch(0x%x): %4u(%s(%d))",
+                 ONOFFSWITCH, onoffSwitchDetect->raw(), onoffSwitchDetect->state() ? "On " : "Off", onoffSwitchDetect->rawState()
+                );
+#endif
+    Debug.printf("Curr/motorCurrent(0x%x): %4u(%s(%d)) Opto1/Interlock(0x%x): %4u(%s(%d))\n",
+                 MOTOR_CURRENT, motorCurrent->raw(), motorCurrent->state() ? "On " : "Off", motorCurrent->rawState(),
+                 INTERLOCK, interlockDetect->raw(),  interlockDetect->state() ? "On " : "Off", interlockDetect->rawState()
+                );
   }
 }
