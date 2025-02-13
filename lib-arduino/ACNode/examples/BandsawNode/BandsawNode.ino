@@ -137,7 +137,6 @@ void setup() {
 #ifdef ONOFFSWITCH
   expandedPinMode(ONOFFSWITCH, INPUT);
   onoffSwitchDetect = new IODebounce(ONOFFSWITCH);
-  onoffSwitchDetect->setDigitalReadFunction(&expandedDigitalRead);
 
   UNSAFE =  node.machinestate.addState("Blocked, switch=ON",
                                        LED::LED_ON,
@@ -156,7 +155,6 @@ void setup() {
 
   expandedPinMode(INTERLOCK, INPUT);
   interlockDetect = new IODebounce(INTERLOCK);
-  interlockDetect->setDigitalReadFunction(&expandedDigitalRead);
 
   interlockDetect->setCallback([](const int newState) {
     if ((node.machinestate == MachineState::CHECKINGCARD || node.machinestate == MachineState::WAITINGFORCARD) && newState == LOW) {

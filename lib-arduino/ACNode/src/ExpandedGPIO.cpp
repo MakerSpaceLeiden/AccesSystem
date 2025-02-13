@@ -9,6 +9,7 @@ void expandedPinMode(uint8_t pin, uint8_t mode) { __exp.xpinMode(pin, mode); };
 int  expandedDigitalRead(uint8_t pin) { return __exp.xdigitalRead(pin); };
 void expandedDigitalWrite(uint8_t pin, uint8_t val) { __exp.xdigitalWrite(pin, val); };
 void expandedAnalogWrite(uint8_t pin, uint8_t val) { __exp.xanalogWrite(pin, val); };
+unsigned int expandedAnalogRead(uint8_t pin) { return __exp.xanalogRead(pin); };
 
 static int wp = 0;
 static const int MAXREPORT=500;
@@ -61,15 +62,29 @@ int ExpandedGPIO::xdigitalRead(uint8_t pin) {
     
     if (((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) && mcp)
         return mcp->digitalRead(pin & ~PIN_GPIO_MASK) ? HIGH : LOW;
-    else
-        if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp)
+    
+    if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp)
             return awp->digitalRead(pin & ~PIN_GPIO_MASK) ? HIGH : LOW;
     
     if (0) if (wp++<MAXREPORT)
         Log.printf("No expanded digitalRead() for pin 0x%x, ignored.\n", pin);
+
     return -1;
 }
 
+unsigned int ExpandedGPIO::xanalogRead(uint8_t pin) {
+    if ((pin & PIN_GPIO_MASK) == PIN_HPIO_PLAIN) 
+	return analogRead(pin);
+    if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) 
+	return -1;
+    if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp)
+	return -1;
+
+    if (0) if (wp++<MAXREPORT)
+        Log.printf("No expanded analogRead() for pin 0x%x, ignored.\n", pin);
+
+    return -1;
+}
 
 void ExpandedGPIO::xdigitalWrite(uint8_t pin, uint8_t val) {
 #if 0

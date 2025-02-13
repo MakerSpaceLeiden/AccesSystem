@@ -21,6 +21,7 @@ extern void expandedPinMode(uint8_t pin, uint8_t mode);
 extern int  expandedDigitalRead(uint8_t pin);
 extern void expandedDigitalWrite(uint8_t pin, uint8_t val);
 extern void expandedAnalogWrite(uint8_t pin, uint8_t val);
+extern unsigned int expandedAnalogRead(uint8_t pin);
 
 class ExpandedGPIO {
 public:
@@ -42,7 +43,10 @@ public:
     // void addH2812(unsigned int i2caddr, TwoWire * wire = &Wire);
     
     void xpinMode(uint8_t pin, uint8_t mode);
+
     int xdigitalRead(uint8_t pin);
+    unsigned int xanalogRead(uint8_t pin);
+
     void xdigitalWrite(uint8_t pin, uint8_t val);
     void xanalogWrite(uint8_t pin, uint8_t val);
  
