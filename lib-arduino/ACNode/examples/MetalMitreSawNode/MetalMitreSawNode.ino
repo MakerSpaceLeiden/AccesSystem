@@ -18,6 +18,7 @@
    Compile settings:  EPS32 Dev Module
 */
 #include <WhiteNodev108.h>
+#include <ButtonDebounce.h>
 
 #ifndef MACHINE
 #define MACHINE "metalmitresaw"
@@ -36,20 +37,20 @@
 
 const unsigned long COOLANT_NAG_TIMEOUT = 60;  // Start nagging after running for over a minute with no coolant.
 
-#define SAFETY (OPTO1)
-#define PUMP (OPTO0)
-#define RELAY_GPIO (OUT0)
-#define MOTOR_CURRENT (CURR0)
-
 // This node is currently not wired; instead it uses an AC/DC convertor
 // and is wired into the same 3P+N+E power as the saw itself.
 //
 WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
+
+#define SAFETY                  (node.OPTO1)
+#define PUMP                    (node.OPTO0)
+#define RELAY_GPIO              (node.OUT0)
+#define MOTOR_CURRENT           (node.CURR0)
+
 ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
 
-// Extra 
-state above 'POWERED' - when the saw is spinning (detected via the motorCurrent) as
+// Extra state above 'POWERED' - when the saw is spinning (detected via the motorCurrent) as
 // opposed to the safety circuitry being powered (i.e. relay has closed, so the interlock
 // circuit with the eStop allows the main contactor to be on.
 //
@@ -78,7 +79,7 @@ void setup() {
   pumpDetect->setCallback([](const int newState) {
     // remove coolant nag from screen, if any.
     if (node.machinestate == RUNNING && !newState)
-      node.updateDisplay(node.machine,node.machinestate.label(), "", true);
+      node.updateDisplay(node.machine,node.machinestate.label(), true);
 
     Log.printf("Coolant pump now %s\n", newState ? "OFF" : "ON");
   },

@@ -10,6 +10,7 @@
 #include "Display/Display.h"
 #include "Display/DeckController.h"
 
+#include <ButtonDebounce.h>
 // White / 1.08
 
 #ifndef MENU_BUTTON
@@ -146,9 +147,9 @@ private:
     ApprovalDeck *approvalDeck;
     FirmwareDeck *firmwareDeck;
 
-    IODebounce *offButton, *menuButton;
     ButtonCallback _offCallBack, _menuCallBack = NULL;
     int _offCallBackMode, _menuCallBackMode;
+    IODebounce *offButton, *menuButton;
     
     MachineState::THandlerFunction_OnChangeCB _onChangeCB;
     MachineState::machinestate_t _onChangeState;
