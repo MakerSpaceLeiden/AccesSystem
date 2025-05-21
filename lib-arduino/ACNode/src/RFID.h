@@ -4,15 +4,21 @@
 #include <stddef.h>
 #include <functional>
 
-#include <ACNode-private.h>
+#include <ACBaseNode.h>
 #include <ACBase.h>
 #include <Wire.h>
 
 // global variable for IRQ handler.
 extern volatile bool cardScannedIrqSeen;
 
+#define RFID_MAX_TAG_LEN 12
+
 class RFID : public ACBase {
   public:
+    virtual const char * name() { return "RFID"; };
+    virtual String firmwareVersionString() { return "unknown"; };
+    virtual String stateString() { return "state?"; };
+    
     void processAndRateLimitCard(unsigned char * buff, size_t len);
     void registerCallback(unsigned char irqpin);
 
@@ -20,8 +26,8 @@ class RFID : public ACBase {
 
     typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
 
-    RFID& onSwipe(THandlerFunction_SwipeCB fn) 
-	{ _swipe_cb = fn; return *this; };
+    RFID& onSwipe(THandlerFunction_SwipeCB fn) { _swipe_cb = fn; return *this; };
+
 
     bool alive() { return true; };
   protected:

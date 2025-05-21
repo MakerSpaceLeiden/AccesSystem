@@ -18,9 +18,10 @@
 // Convinience functions that rely on a auto created
 // singleton.
 extern void expandedPinMode(uint8_t pin, uint8_t mode);
-extern int  expandedDigitaRead(uint8_t pin);
+extern int  expandedDigitalRead(uint8_t pin);
 extern void expandedDigitalWrite(uint8_t pin, uint8_t val);
 extern void expandedAnalogWrite(uint8_t pin, uint8_t val);
+extern unsigned int expandedAnalogRead(uint8_t pin);
 
 class ExpandedGPIO {
 public:
@@ -42,9 +43,23 @@ public:
     // void addH2812(unsigned int i2caddr, TwoWire * wire = &Wire);
     
     void xpinMode(uint8_t pin, uint8_t mode);
+
     int xdigitalRead(uint8_t pin);
+    unsigned int xanalogRead(uint8_t pin);
+
     void xdigitalWrite(uint8_t pin, uint8_t val);
     void xanalogWrite(uint8_t pin, uint8_t val);
+ 
+    void debugdump() {
+    	if (mcp) {Serial.printf("MCP:"); for (int i = 0; i < 16; i++) { 
+		Serial.print(mcp->digitalRead(i));
+		    if (i % 4 == 3) Serial.print(".");
+  	}; Serial.println(); };
+    	if (awp) {Serial.printf("AWP:"); for (int i = 0; i < 16; i++) { 
+		Serial.print(awp->digitalRead(i));
+		    if (i % 4 == 3) Serial.print(".");
+  	}; Serial.println(); };
+};
 private:
     Adafruit_MCP23X17 * mcp = NULL;
     Adafruit_AW9523 * awp = NULL;

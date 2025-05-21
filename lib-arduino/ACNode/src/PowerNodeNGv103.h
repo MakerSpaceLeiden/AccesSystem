@@ -1,9 +1,9 @@
+#include "SIG/ACNode.h"
+
 #ifndef _H_POWERNODENG103
 #define _H_POWERNODENG103
 
-#include "ACNode.h"
-#include <RFID.h>
-#include <RFID_PN532_EX.h>
+#include <RFID/RFID_PN532_EX.h>
 #include <Wire.h>
 #include <ExpandedGPIO.h>
 
@@ -48,6 +48,7 @@
 #ifndef MCP_I2C_ADDR
 #define MCP_I2C_ADDR (0x20)
 #endif
+
 
 class PowerNodeNGv103 : public ACNode {
     public:

@@ -57,7 +57,7 @@ MachineState::machinestate_t RUNNING;
 unsigned long bad_poweroff = 0;
 
 static void tellOff(char *msg) {
-  node.updateDisplay(msg,"","");
+  node.updateDisplay(node.machine,msg,"","");
   for (int i = 0; i < 9; i++) {
     node.buzzerErr();
     delay(300);
@@ -142,7 +142,7 @@ void setup() {
 
   node.setOnChangeCallback(MachineState::ALL_STATES, [](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     if (current == RUNNING) {
-      node.updateDisplay(node.machinestate.label(), "", true);
+      node.updateDisplay(node.machine,node.machinestate.label(), "", true);
     }
   });
 

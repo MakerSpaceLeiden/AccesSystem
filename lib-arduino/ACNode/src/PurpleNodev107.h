@@ -1,9 +1,11 @@
+#include "SIG/ACNode.h"
+
 #ifndef _H_PURPLE107
 #define _H_PURPLE107
 
 // https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1
 //
-#include <RFID_MFRC522.h>
+#include <RFID/RFID_MFRC522.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SH110X.h>

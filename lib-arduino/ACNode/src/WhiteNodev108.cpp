@@ -1,8 +1,15 @@
 #include "WhiteNodev108.h"
-#include "msl-logo.h"
+
 #include <esp_sntp.h>
 #include <lwip/ip_addr.h>
-#include <qrcode.h> // Part of the ESP32 package
+#include <esp_debug_helpers.h>
+#include <esp_task_wdt.h>
+#include <hal/wdt_hal.h>
+#include <hal/wdt_types.h>
+
+
+#include "Display/Deck.h"
+#include "OTA.h"
 
 #ifndef INET6_ADDRSTRLEN
 #define INET6_ADDRSTRLEN (48)
@@ -29,197 +36,221 @@
 // Extra, hardware specific states
 MachineState::machinestate_t FAULTED, SCREENSAVER, INFODISPLAY, POWERED;
 
-Adafruit_SH1106G * _display = NULL;
-
-static uint8_t hearthbeat()
-{
-    // Source and credits: https://github.com/adafruit/Adafruit_iCufflinks/tree/master -
-    // Copy of the first generating on/off button of apple macs.
-    //
-    static const uint8_t cufflink_beat[] = {
-        1, 1, 2, 3, 5, 8, 11, 15, 20, 25, 30, 36, 43, 49, 56, 64, 72, 80, 88, 97, 105,
-        114, 123, 132, 141, 150, 158, 167, 175, 183, 191, 199, 206, 212, 219, 225, 230,
-        235, 240, 244, 247, 250, 252, 253, 254, 255, 254, 253, 252, 250, 247, 244, 240,
-        235, 230, 225, 219, 212, 206, 199, 191, 183, 175, 167, 158, 150, 141, 132, 123,
-        114, 105, 97, 88, 80, 72, 64, 56, 49, 43, 36, 30, 25, 20, 15, 11, 8, 5, 3, 2, 1,
-        0
-    };
-    // intentionally using the beat rather than time - so we can visually see slowdown.
-    static uint8_t i = 0;
-    if (cufflink_beat[++i] == 0) i = 0;
-    
-    return cufflink_beat[i]/2;
-};
+Display * _display = NULL;
 
 WhiteNodev108::WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto) :
-ACNode(machine,ssid,ssid_passwd,proto)
+super(machine,ssid,ssid_passwd)
 {
     CONSTS();
     pop();
 };
 
 WhiteNodev108::WhiteNodev108(const char * machine, bool wired, acnode_proto_t proto) :
-ACNode(machine,wired,proto)
+super(machine,wired)
 {
     CONSTS();
     pop();
 };
 
 void WhiteNodev108::pop() {
-    Serial.begin(115200);
-    
-    errorLed = new LED(LED_INDICATOR);
-    
     // Non standard pins for i2c.
     Wire.begin(I2C_SDA, I2C_SCL);
     
-    xdigitalWrite(BUZZER, LOW);
+    buzzer(false);;
     xpinMode(BUZZER, OUTPUT);
-    
-    // All nodes have a build-in RFID reader; so fine to hardcode this.
-    //
-    _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
-    addHandler(_reader);
     
     FAULTED =     machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER, MachineState::NEVER);
     SCREENSAVER = machinestate.addState("Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER, MachineState::WAITINGFORCARD);
     INFODISPLAY = machinestate.addState("User browsing info pages", LED::LED_OFF, 20 * 1000, MachineState::WAITINGFORCARD);
     POWERED =     machinestate.addState("Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);
     
-    machinestate.setState(MachineState::BOOTING);
-    addHandler(&machinestate);
-    
     xpinMode(OFF_BUTTON, INPUT_PULLUP);
     xpinMode(MENU_BUTTON, INPUT_PULLUP);
-    
+
     xpinMode(OPTO0, INPUT);
     xpinMode(OPTO1, INPUT);
     
-    _pageState = PAGE_LAST; // basically the logo
-    
-    Serial.println("WhiteNodev11 popped");
+    if (!errorLed)
+        errorLed = new LED(LED_INDICATOR);
+
+    _deskCtrl = new DeckController();
+    addHandler(_deskCtrl);
 };
 
+// bracketing with a timer to keep some cadence. We should
+// moved to timer/interrupt async queue.
+//
+#define BUZZ_MIN_INTERVAL (50)
+
 void WhiteNodev108::buzzer(bool onOff) {
+    while(onOff && ((millis() - _last_buzz) < BUZZ_MIN_INTERVAL)) { delay(1); };
     xdigitalWrite(BUZZER, onOff ? HIGH : LOW);
+    if (!onOff)
+        _last_buzz = millis();
 }
 
 // Todo - move to a timer, etc. Or re-use the LED infra.
 //
 void WhiteNodev108::buzzerOk() {
-    xdigitalWrite(BUZZER, HIGH);
-    delay(50);
-    xdigitalWrite(BUZZER, LOW);
+    buzzer(true);
+    delay(BUZZ_MIN_INTERVAL);
+    buzzer(false);
 };
 
 void WhiteNodev108::buzzerErr() {
-    xdigitalWrite(BUZZER, HIGH);
-    delay(50);
-    xdigitalWrite(BUZZER, LOW);
-    delay(250);
-    xdigitalWrite(BUZZER, HIGH);
-    delay(50);
-    xdigitalWrite(BUZZER, LOW);
+    buzzerOk();
+    delay(BUZZ_MIN_INTERVAL*5);
+    buzzerOk();
 };
 
-void WhiteNodev108::setOTAPasswordHash(const char * md5) {
-    ArduinoOTA.setPasswordHash(md5);
-}
-
 void WhiteNodev108::begin() {
-    Serial.println("WhiteNodev108 begin");
-    
-    if (!_display && (_display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
-        _display->setRotation(2); // for purple/white boards - OLED is upside down.
-        _display->begin(SCREEN_Address, true);
-        _display->clearDisplay();
-        _display->drawBitmap(
-                             (SCREEN_WIDTH-msl_logo_width)/2,
-                             (SCREEN_HEIGHT-msl_logo_height)/2,
-                             msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
-        _display->display();
-        _hasScreen = true;
+    errorLed->begin();
+
+    // All nodes have a build-in RFID reader; so fine to hardcode this.
+    //
+    _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
+    addHandler(_reader);
+
+    if (!_display)
+	_display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
+    if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"")) {
         Log.println("LCD/OLED screen found and initialized.");
-    } else {
-        Log.println("No LCD/OLED screen found");
-        _hasScreen = false;
-    };
+	_display->setRotation(2);
+   };
+
+    OTAWithDisplay * ota = new OTAWithDisplay(OTA_PASSWD_HASH, _display, moi);
+    ota->setOTAOK([&](){
+        return machinestate.safeForOTA();
+    });
+    ota->setPreOTASecretWiper([](){
+        Log.println("*** NOT IMPLEMENTED ***");
+    });
+    addHandler(ota);
+
+    _deskCtrl->addDeck( new QrDeck(this, machine));
+    _deskCtrl->addDeck( new InfoDeck(this));
+
+    approvalDeck = new ApprovalDeck(this, _approvalAPI);
+    _deskCtrl->addDeck( approvalDeck );
+
+    _deskCtrl->addDeck( new LogQrDeck(this));
+    _deskCtrl->addDeck( new SNTPDeck(this));
+
+    firmwareDeck =  new FirmwareDeck(this);
+    _deskCtrl->addDeck( firmwareDeck);
+
+    _deskCtrl->addDeck( new RfidDeck(this, _reader));
+    _deskCtrl->addDeck( new OTADeck(this,ota));
+    _deskCtrl->addDeck( new MqttDeck(this));
+    _deskCtrl->addDeck( new RestDeck(this, _restAPI));
     
+    if (strstr(machine,"test"))
+        _deskCtrl->addDeck(new ButtonsDeck(this, iostates));
+   
     if (_wired)
+#if ESP_ARDUINO_VERSION_MAJOR == 2
         ETH.begin(WN_ETH_PHY_ADDR, WN_ETH_PHY_POWER, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_TYPE, WN_ETH_CLK_MODE);
+#else
+	// 3.x version - signature changes
+	ETH.begin(WN_ETH_PHY_TYPE, WN_ETH_PHY_ADDR, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_POWER, WN_ETH_CLK_MODE);
+#endif
     
 #if 0
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(NTP_POOL);
     esp_netif_sntp_init(&config);
+#if 0 // ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 0, 0)
+    esp_sntp_servermode_dhcp(true);
+#endif
 #else
     configTime(0, 0, NTP_POOL);
     setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
     tzset();
 #endif
-    esp_sntp_servermode_dhcp(true);
     
-    ACNode::begin(BOARD_NG);
-    
-    offButton = new ButtonDebounce(OFF_BUTTON);
+    offButton = new IODebounce(OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
         Debug.printf("OFF button %s\n",newState ? "released" : "pressed");
-        if (machinestate == SCREENSAVER) {
-            machinestate = MachineState::WAITINGFORCARD;
-            return;
-        };
-        if (machinestate == INFODISPLAY && newState == LOW) {
-            Debug.println("Exiting INFO by button press");
-            machinestate = MachineState::WAITINGFORCARD;
-            return;
-        };
+
         if (_offCallBack &&
             (_offCallBackMode == CHANGE ||
              (newState && (_offCallBackMode == ONHIGH || _offCallBackMode == RISING)) ||
              (!newState &&(_offCallBackMode == ONLOW || _offCallBackMode == FALLING))
              ))
-            _offCallBack(newState);
-        else
-            Debug.println("Left button activity ignored.");
-    },  CHANGE);
-    
-    menuButton = new ButtonDebounce(MENU_BUTTON);
-    menuButton->setCallback([&](const int newState) {
-        Debug.printf("MENU button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
+            if (_offCallBack(newState))
+                return;
 
         if (machinestate == SCREENSAVER) {
             machinestate = MachineState::WAITINGFORCARD;
+            Debug.println("Switching off the screensaver");
             return;
-        };
-        if (machinestate == MachineState::WAITINGFORCARD && newState == LOW) {
-            Debug.println("Menu press on INFO\n");
-            machinestate = INFODISPLAY;
-            return;
-        };
+        } else
         if (machinestate == INFODISPLAY && newState == LOW) {
-            if (_pageState+1 == PAGE_LAST) {
-                machinestate = MachineState::WAITINGFORCARD;
-                Debug.printf("At last page.\n");
-            } else {
-                updateInfoDisplay((page_t)((int)_pageState+1));
-                Debug.printf("Goto next page (%d)\n", _pageState);
+            if (currentDeck() == approvalDeck) {
+                Log.println("Forcing an immediate update on button press");
+                _approvalAPI->scheduleImmediateUpdate();
+                return;
             };
+            if (currentDeck() == firmwareDeck) {
+                Log.println("Forcing an immediate reboot on button press");
+		machinestate = MachineState::REBOOT;
+                return;
+	    };
+            
+            Debug.println("Exiting INFO by button press");
+            machinestate = MachineState::WAITINGFORCARD;
+            _deskCtrl->close();
             return;
         };
+    },  CHANGE);
+    addHandler(offButton);
+  
+    pinMode(14,INPUT_PULLUP);
+    menuButton = new IODebounce(MENU_BUTTON);
+    menuButton->setCallback([&](const int newState) {
+        Debug.printf("MENU button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
         if (_menuCallBack &&
             (_menuCallBackMode == CHANGE ||
              (newState && (_menuCallBackMode == ONHIGH || _menuCallBackMode == RISING)) ||
              (!newState &&(_menuCallBackMode == ONLOW || _menuCallBackMode == FALLING))
              ))
-            _menuCallBack(newState);
-        else
-            Debug.println("MENU button activity ignored.");
+            if (_menuCallBack(newState))
+                return;
+
+        if (machinestate == SCREENSAVER) {
+            machinestate = MachineState::WAITINGFORCARD;
+            Debug.println("Switching off the screensaver");
+            return;
+        };
+        if (machinestate.safeForOTA() /*  MachineState::WAITINGFORCARD */ && newState == LOW && machinestate != INFODISPLAY) {
+            Debug.println("Menu press on INFO");
+            machinestate = INFODISPLAY;
+            return;
+        };
+        if (machinestate == INFODISPLAY && newState == LOW) {
+            if (!_deskCtrl->next()) {
+                _deskCtrl->close();
+                machinestate = MachineState::WAITINGFORCARD;
+                Debug.println("At last page");
+            } else {
+                machinestate.resetTimeout();
+                Debug.println("Next page");
+            }
+            return;
+        };
     },  CHANGE);
-    
+    addHandler(menuButton);
+   
     machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-        Debug.printf("Changing state (%d->%d): %s\n", last, current, machinestate.label());
+        Debug.printf("WhiteNodev108: Changing state (%d->%d): %s\n", last, current, machinestate.label());
+
         errorLed->set(machinestate.ledState());
-        
-        setDisplayScreensaver(current == SCREENSAVER);
+
+        if (last == INFODISPLAY)
+            _deskCtrl->close();
+            
+        _display->clearDisplay();
+        _display->setDisplayScreensaver(current == SCREENSAVER);
+
         if (current == FAULTED) {
             updateDisplay("", "", true);
             Debug.println("Machine poweron disabled - machine on/off switch in the 'on' position.");
@@ -228,20 +259,30 @@ void WhiteNodev108::begin() {
             updateDisplay("", "MORE", true);
             if (last == MachineState::CHECKINGCARD)
                 buzzerErr();
-        } else if (current == MachineState::CHECKINGCARD)
+        } else if (current == MachineState::CHECKINGCARD) {
             updateDisplay("", "", true);
-        else if (current == INFODISPLAY) {
-            updateInfoDisplay();
+        } else if (current == INFODISPLAY) {
+            _deskCtrl->first();
             return;
-        }
-        else if (_onChangeCB && (current == _onChangeState || _onChangeState ==MachineState::ALL_STATES))
-            _onChangeCB(last, current);
+        } else if (current == MachineState::REJECTED) {
+            _display->updateDisplayStateMsg(_lasterrmsg,1);
+            buzzerErr();
+        };
         
-        updateDisplayStateMsg(machinestate.label());
+        if (current != INFODISPLAY)
+            updateDisplayStateMsg(machinestate.label());
+
+        if (_onChangeCB && (current == _onChangeState || _onChangeState ==MachineState::ALL_STATES))
+            _onChangeCB(last, current);
     });
     
     if (_reader) _reader->onSwipe([&](const char *tag) -> ACBase::cmd_result_t {
         buzzerOk();
+        
+        ACBase::cmd_result_t ret;
+        if ((ret=_restAPI->handleTagSwipe(tag)) != ACBase::CMD_DECLINE)
+            return ret;
+        
         if (machinestate < MachineState::WAITINGFORCARD) {
             Log.printf("Ignoring swipe; as the node is not yet ready for it\n");
             return ACBase::CMD_CLAIMED;
@@ -254,15 +295,26 @@ void WhiteNodev108::begin() {
             machinestate.setState(MachineState::WAITINGFORCARD);
             Debug.println("Aborting INFO screen to handle swipe");
         };
-        machinestate = MachineState::CHECKINGCARD;
+        
+        // Only go through the checking card rigamarole if we
+        // are in a normal check. For the specials, such aws
+        // when adding instructions or confirming maintenance,
+        // we stay in the actual state.
+        //
+        if (machinestate == MachineState::WAITINGFORCARD) {
+            machinestate = MachineState::CHECKINGCARD;
+            updateDisplay("", "", true);
+            updateDisplayStateMsg(machinestate.label());
+        };
+
         if (_swipeCB)
             return _swipeCB(tag);
-        
+     
         return ACBase::CMD_DECLINE;
     });
     
     onConnect([&]() {
-        machinestate = MachineState::WAITINGFORCARD;
+        machinestate = PAIRING;
     });
     onDisconnect([&]() {
         machinestate = MachineState::NOCONN;
@@ -272,389 +324,78 @@ void WhiteNodev108::begin() {
         machinestate = MachineState::TRANSIENTERROR;
     });
     
-    onDenied([&](const char *machine) {
-        if (machinestate == SCREENSAVER) {
-            machinestate = MachineState::WAITINGFORCARD;
-            return;
-        };
+    onDenied([&](const char *reason) {
+        _lasterrmsg = reason;
         machinestate = MachineState::REJECTED;
-        buzzerErr();
     });
     
     updateDisplay("","MORE", true);
-    
-    ArduinoOTA.setHostname((_acnode->moi && _acnode->moi[0]) ? _acnode->moi : "unset-acnode");
-    
-    ArduinoOTA.onStart([&]() {
-        if ((machinestate.state() != MachineState::WAITINGFORCARD) && (machinestate.state() != SCREENSAVER)) {
-            Log.printf("CRITICAL: Rejected OTA updated as machine is currently in use (state %d:%s)\n",
-                       machinestate.state(), machinestate.label());
-            
-            // Until our pull requests makes it through - there appears to be no reliable
-            // way to abort an OTA upload forcefully. An .end() gets reset by the next
-            // valid UDP packet arriving. So in onProgress we keep messing with the state
-            // until it positively errors out.
-            _otaOK = false;
-            for(int i = 0; i < 100; i++) { ArduinoOTA.end(); delay(20); };
-            return;
-        };
-        
-        updateDisplay("","",true);
-        updateDisplayStateMsg("updating firmware",0);
-        updateDisplayProgressbar(0,true);
-        setDisplayScreensaver(false);
-        
-        if (strstr(_acnode->moi,"test"))
-            Log.println("OTA process started (Not wiping private keys in test ode).");
-        else {
-            Log.println("OTA process started -- wiping private keys.");
-            wipe_eeprom();
-            Log.println("Keys wiped. Do not forget to reset the TOFU on the server.");
-        };
-        Serial.print("Progress: 0%");
-        // Log.stop();
-        // Debug.stop();
-    });
-    ArduinoOTA.onEnd([&]() {
-        if (_otaOK) {
-            updateDisplayStateMsg("ok, rebooting",1);
-            updateDisplayProgressbar(100);
-            Serial.println("..100% Done");
-            Log.println("OTA process completed, rebooting");
-        } else {
-            Log.println("Ignoring an OTA end (as we are trying to reject the OTA");
-        };
-        _otaOK = true;
-    });
-    ArduinoOTA.onProgress([&](unsigned int progress, unsigned int total) {
-        if (!_otaOK) {
-            Log.println("Ignoring OTA update; trying to block it.");
-            for(int i = 0; i < 100; i++) { ArduinoOTA.end(); delay(20); };
-            return;
-        };
-        static int lp = 0;
-        int p = (int)(30. * progress / total + 0.5);
-        if (p != lp) {
-            lp = p;
-            int perc = (progress / (total / 100));
-            Serial.printf("..%u%%", perc);
-            updateDisplayProgressbar(perc);
-        };
-    });
-    ArduinoOTA.onError([&](ota_error_t error) {
-        String cause = String(error);
-        
-        if (error == OTA_AUTH_ERROR) cause = "OTA: Auth failed";
-        else if (error == OTA_BEGIN_ERROR) cause = "OTA: Begin failed";
-        else if (error == OTA_CONNECT_ERROR) cause = "OTA: Connect failed";
-        else if (error == OTA_RECEIVE_ERROR) cause = "OTA: Receive failed";
-        else if (error == OTA_END_ERROR) cause = "OTA: End failed";
-        
-        Log.println("OTA Failed: " + cause);
-        
-        // If we did not reject the upload; then do not
-        // change state; to prevent us messing with the
-        // current machine state or the display.
-        //
-        if (_otaOK) {
-            machinestate = MachineState::TRANSIENTERROR;
-            updateDisplay("","",true);
-            updateDisplayStateMsg("update failed",0);
-            updateDisplayStateMsg(cause,1);
-            updateDisplayProgressbar(0, true);
-        };
-        
-        _otaOK = true;
-        ArduinoOTA.begin();
-    });
-    
-    ArduinoOTA.begin();
-    Debug.println("OTA Enabled");
-    _otaOK = true;
+    super::begin(BOARD_NG);
 }
 
-void WhiteNodev108::setDisplayScreensaver(bool on) {
-    if (!_hasScreen) return;
-    _display->oled_command(on ? SH110X_DISPLAYOFF : SH110X_DISPLAYON);
-}
-
-void WhiteNodev108::updateDisplay( String left, String right, bool rebuildFull) {
-    if (!_hasScreen) return;
-    if (rebuildFull || _pageState != PAGE_NORMAL) {
-        _display->clearDisplay();
-        _display->setTextSize(1);
-        _display->setTextColor(SH110X_WHITE);
-        int i = SCREEN_WIDTH - 6 * strlen(machine);
-        _display->setCursor(i>0 ? i/2 : 0, 0);
-        _display->println(machine);
-        _display->setFont(NULL); // Fairly large 5x7 font
-        
-        if (left.length() || right.length()) {
-            _display->setTextColor(SH110X_BLACK);
-            _display->drawFastHLine(0,SCREEN_HEIGHT-8*3-1,SCREEN_WIDTH,SH110X_WHITE);
-            _display->drawFastHLine(0,SCREEN_HEIGHT-8*2+3,SCREEN_WIDTH,SH110X_WHITE);
-        };
-        
-        if (left.length()) {
-            _display->fillRect(0, SCREEN_HEIGHT-8*3+1, 60, 9, SH110X_WHITE);
-            _display->setCursor(1,SCREEN_HEIGHT-8*3+2);
-            _display->println(left);
-        };
-        
-        if (right.length()) {
-            _display->fillRect(SCREEN_WIDTH-60,  SCREEN_HEIGHT-8*3+1, 60, 9, SH110X_WHITE);
-            _display->setCursor(SCREEN_WIDTH-right.length()*6,SCREEN_HEIGHT-8*3+2);
-            _display->println(right);
-        };
-        _pageState = PAGE_NORMAL;
-    };
-    _display->display();
+void WhiteNodev108::updateDisplay(String left, String right, bool rebuildFull) {
+    // Debug.printf("WhiteNodev108::updateDisplay %d\n", rebuildFull);
+    _display->updateDisplay(machine,left,right,rebuildFull);
 };
 
-void WhiteNodev108::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull) {
-    if (!_hasScreen) return;
-    
-    int y = SCREEN_HEIGHT-16;
-    int l = (SCREEN_WIDTH-4)*percentage / 100.;
-    
-    if (rebuildFull){
-        _display->fillRect(0, y, SCREEN_WIDTH, 20, SH110X_BLACK);
-        _display->drawRect(0, y, SCREEN_WIDTH, 12, SH110X_WHITE);
-    };
-    
-    _display->fillRect(0+2, y+2, l, 12-4, SH110X_WHITE);
-    _display->display();
-}
-
-void WhiteNodev108::updateDisplayStateMsg(String msg, int line) {
-    if (!_hasScreen) return;
-    int y = 16+line*12;
-    _display->fillRect(0, y, SCREEN_WIDTH, 12, SH110X_BLACK);
-    int i = SCREEN_WIDTH - 6 * msg.length();
-    _display->setCursor(i > 0 ? i/2 : 0, y);
-    _display->setTextColor(SH110X_WHITE);
-    _display->print(msg);
-    
-    _display->display();
-}
-
-static void _display_centred_title(char * title) {
-    int l = (21-strlen(title)-4) /2;
-    _display->print(" ");
-    for(int i = 0; i < l; i++)
-        _display->print("-");
-    _display->print(" ");
-    _display->print(title);
-    _display->print(" ");
-    for(int i = 0; i < l; i++)
-        _display->print("-");
-    _display->print("\n");
-};
-
-static void _display_QR(char * title, char * url) {
-    esp_qrcode_config_t qrc = {
-        .display_func = ([](esp_qrcode_handle_t qrcode){
-            int s = esp_qrcode_get_size(qrcode);
-            int p = 1;
-            while ((s*(p+1) <= SCREEN_WIDTH) && (s*(p+1) <= (SCREEN_HEIGHT))) p++;
-            int ox = (SCREEN_WIDTH - p*s)/2;
-            // We cannot pass anything to this lambda; as it maps to C, rather than c++.
-            // So we use the state of the cursor to dected an empty title.
-            //
-            int oy = _display->getCursorY() ? (SCREEN_HEIGHT - p*s -1) : (SCREEN_HEIGHT - p*s)/2;
-            for (int y = 0; y < s; y++)
-                for (int x = 0; x < s; x++)
-                    if (p == 1)
-                        _display->drawPixel(ox+p*x,oy+p*y, esp_qrcode_get_module(qrcode, x, y) ? SH110X_WHITE : SH110X_BLACK);
-                    else
-                        _display->fillRect(ox+p*x,oy+p*y,p,p,esp_qrcode_get_module(qrcode, x, y) ? SH110X_WHITE : SH110X_BLACK);
-        }),
-            .max_qrcode_version = 40,
-            .qrcode_ecc_level = 1,
-    };
-    // Make sure above getCursorY() returns zero if there is no title.
-    _display->setCursor(0, 0);
-    if (title)
-        _display_centred_title(title);
-    esp_qrcode_generate(&qrc,url);
-    Log.printf("Showing QR with text: <%s>\n", url);
-}
-
-void WhiteNodev108::updateInfoDisplay(page_t page) {
-    if (!_hasScreen)
-        return;
-    if (_pageState != page || page == PAGE_SNTP) {
-        _display->clearDisplay();
-        _display->setTextSize(1);
-        _display->setTextColor(SH110X_WHITE);
-        _display->setCursor(0, 0);
-    };
-    _display->setFont(NULL); // Fairly large 5x7 font
-    switch(page) {
-        case PAGE_INFO:
-            _display->println("   -- INFO --");
-            _display->printf("Node :%s\n",moi);
-            _display->printf("IPv4 :%s\n", String(localIP().toString()).c_str());
-            _display->printf("Via  :%s\n", _wired ? "LAN" : "WiFi");
-#ifdef SYSLOG_HOST
-            _display->printf("Syslg:%s\n", SYSLOG_HOST);
-#else
-            _display->printf("Syslg:OFF\n");
-#endif
-            _display->printf("Up   :%s\n",uptime().c_str());
-            _display->printf("CPU  :%.1f%cC\n", coreTemp(),ADAFRUIT_GFX_DEGREE_SYMBOL);
-            _display->printf("Heap :%.1fkB\n", ESP.getFreeHeap() / 1024.);
-            break;
-        case PAGE_SNTP:
-        {
-            time_t now = time(NULL);
-            struct tm * t = localtime(&now);
-            char ds[10], ts[10];
-            strftime(ds,sizeof(ds),"%Y-%m-%d",t);
-            strftime(ts,sizeof(ts),"%H:%M:%S",t);
-            sntp_sync_status_t  s = sntp_get_sync_status();
-            _display->println("   -- SNTP --");
-            _display->printf("Date :%s\n",ds);
-            _display->printf("Time :%s\n",ts);
-            _display->printf("sNTP :%s\n",esp_sntp_enabled() ?
-                             (s == SNTP_SYNC_STATUS_IN_PROGRESS ? "adjusting" :
-                              (s == SNTP_SYNC_STATUS_COMPLETED ? "OK" : "Pending")
-                              ) : "OFF");
-            for(int i = 0, j = 0; i < SNTP_MAX_SERVERS&& j < 5; i++) {
-                char buff[INET6_ADDRSTRLEN];
-                const char * s = esp_sntp_getservername(i);
-                if (!s) {
-                    ip_addr_t const *ip = esp_sntp_getserver(i);
-                    if (ipaddr_ntoa_r(ip, buff, INET6_ADDRSTRLEN) != NULL && !(ip_addr_isany(ip)))
-                        s = buff;
-                };
-                if (s) {
-                    _display->printf("     :%s\n",s);
-                    j++;
-                };
-            };
-        };
-            break;
-        case PAGE_FW:
-            _display->println(" -- Firmware --");
-            _display->printf("Dev :%s\n", name());
-            _display->printf("Date:%s\n",__DATE__);
-            _display->printf("Time:%s\n",__TIME__);
-            break;
-        case PAGE_MQTT: {
-            _display->println("    -- MQTT --");
-            char buff[16],*p = mqtt_server,*q=(char*)"Host";
-            while(*p) {
-                char * s = index(p,'.');
-                int l = 12;
-                if (s && s - p < l && strlen(p) > l) l = s - p+1;
-                strncpy(buff,p,l);
-                buff[l] = '\0';
-                p+=strlen(buff);
-                _display->printf("%s :%s\n",q,buff);
-                q = (char *)"    ";
-            };
-            _display->printf("Port :%u\n",mqtt_port);
-            _display->printf("Topic:%s/%s\n",mqtt_topic_prefix,logpath);
-            _display->printf(" /%s/#\n",moi);
-        }
-            break;
-        case PAGE_QR: {
-            char url[128];
-            snprintf(url,sizeof(url),QR_URL_REDIRECT_TEMPLATE,moi);
-            _display_QR(NULL, url);
-        };
-            break;
-        case PAGE_LOG_QR: {
-            char url[32];
-            snprintf(url,sizeof(url),"http://%s/",String(localIP().toString()).c_str());
-            _display_QR((char *)"view log", url);
-        };
-            break;
-        case PAGE_BUTT:
-            if (_pageState != page) {
-                _display->println("    -- INPUTS --");
-            };
-            
-            for (int i = 0;; i++) {
-                iostate_t * s = &iostates[i];
-                if (!s->label)
-                    break;
-                
-                int x =  2 + (i / 4)   * SCREEN_WIDTH / 2;
-                int y = 12 + (i % 4) * 11;
-                
-                // first time round - print the text and UI; after that
-                // just deal with the updates.
-                if (_pageState != page) {
-                    _display->drawRect(x, y, 10, 10, SH110X_WHITE);
-                    _display->setCursor(x + 12 , y + 1);
-                    _display->print(s->label);
-                };
-                
-                // upate the on/off dot in the middle always.
-                s->lst = !xdigitalRead(s->pin); // they are all pullup style
-                _display->fillRect(x + 2, y + 2, 10 - 4, 10 - 4, s->lst ? SH110X_WHITE : SH110X_BLACK);
-            }
-            break;
-        case PAGE_LED:
-            _display->println("-- LED showtime --");
-            // this will go wrong - LEDs will stay on XXX
-        {
-            bool onOff = (millis()>>10) & 1;
-            for(const uint8_t * p = leds(); *p != 255; p++)
-                xdigitalWrite(*p, onOff);
-        }
-            break;
-        case PAGE_LAST:
-        default:
-            _display->println("Bug - page not defined");
-            break;
-    };
-    _display->display();
-    _pageState = page;
+void WhiteNodev108::updateDisplayStateMsg(String msg,int line) {
+    // Debug.printf("Updating display: %d:%s\n",line,msg.c_str());
+    _display->updateDisplayStateMsg(msg, line);
 }
 
 void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB swipeCB) {
     _swipeCB = swipeCB;
 };
 
-void WhiteNodev108::loop() {
-    ACNode::loop();
-    ArduinoOTA.handle();
-    
-    // Some pages are dynamic; and need to be updated
-    // constantly.
-    //
-    if (_pageState == PAGE_BUTT || _pageState == PAGE_LED)
-        updateInfoDisplay(_pageState);
-    
-    if (_pageState == PAGE_SNTP)
-        updateInfoDisplay(PAGE_SNTP);
-    
+void WhiteNodev108::loop() {    
     if (machinestate == POWERED) {
-        String left = machinestate.timeLeftInThisState();
         // Show the countdown to poweroff; only when the machine
-        // has been idle for a singificant bit of time.
+        // has been idle for a singificant bit of time and in the
+        // last 30 seconds (the latter when the TO is short for
+        // testing purposes).
         //
-        if (left.length() && machinestate.secondsInThisState() > SHOW_COUNTDOWN_TIME_AFTER)
-            updateDisplayStateMsg("Auto off: " + left, 1);
+        if (
+            (machinestate.secondsLeftInThisState() < 45) ||
+            (machinestate.secondsInThisState() > SHOW_COUNTDOWN_TIME_AFTER)
+            )
+            updateDisplayStateMsg("Auto off in " + machinestate.timeLeftInThisState(), 2);
+        
+        static unsigned long lst = 0;
+        if (machinestate.secondsLeftInThisState() < 30 && millis() - lst > 1000) {
+            lst = millis();
+            if (machinestate.secondsLeftInThisState() < 2) {
+                buzzer(true); delay(1000); buzzer(false);
+            } else {
+                buzzerOk();
+            };
+        };
     };
     
     if ((machinestate == MachineState::WAITINGFORCARD) && (machinestate.secondsInThisState() > SCREENSAVER_DELAY)) {
         Debug.println("Enabling screensaver");
         machinestate.setState(SCREENSAVER);
     };
+    
+    super::loop();
 }
 
 void WhiteNodev108::report(JsonObject & report) {
     report["manual_poweroff"] = manual_poweroff;
     report["idle_poweroff"] = idle_poweroff;
     report["errors"] = errors;
-    
     report["ota"] = true;
-    
-    ACNode::report(report);
+
+    report["ntp"] = (bool) esp_sntp_enabled();
+    report["ntppool"] = "" NTP_POOL "";
+    report["ntpstatus"] = sntp_get_sync_status();
+
+    char buff[27];
+    time_t t = time(NULL);
+    strncpy(buff,ctime(&t),sizeof(buff));
+    buff[24]='\0'; // strip \n
+    report["ntpdate"] = buff;
+
+    super::report(report);
 }
 
 void WhiteNodev108::setOffCallback(ButtonCallback callback,int mode) {
@@ -672,105 +413,43 @@ void WhiteNodev108::setOnChangeCallback(MachineState::machinestate_t state, Mach
     _onChangeCB =onChangeCB;
 }
 
-BlackNodev111::BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto)
-: WhiteNodev108(machine, ssid, ssid_passwd, proto)  { CONSTS(); pop(); };
-
-BlackNodev111::BlackNodev111(const char * machine, bool wired, acnode_proto_t proto )
-: WhiteNodev108(machine,wired,proto) { CONSTS(); pop(); };
-
-void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
-    if (num == OUT0)
-        expectOut1 = val ? HIGH : LOW;
-    if (num == OUT1)
-        expectOut2 = val ? HIGH : LOW;
-    xdigitalWrite(num,val);
+void WhiteNodev108::setNodeDeck(Deck * deck) {
+    // Node specific decks, if they exists; are always the first one
+    // you see when pressing info/more.
+    //
+    _deskCtrl->addDeckAsFirst(deck);
 }
 
-void BlackNodev111::pop() {};
-
-void BlackNodev111::begin() {
-    Serial.println("BlackNodev11 begin.");
-    
-    // Starting with v1.11 - non core I/O is provided by an i2c IO/Expander.
-    //
-    ExpandedGPIO::getInstance().addAW9523();
-    
-    // Reduce the current to a sensible level (Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5)
-    //
-    Wire.beginTransmission(0x58);
-    Wire.write(0x11);
-    Wire.write(3);
-    Wire.endTransmission();
-    
-    xpinMode(LEDA,AW9523_LED_MODE);
-    xanalogWrite(LEDA,0);
-    
-    xpinMode(LEDB,AW9523_LED_MODE);
-    xanalogWrite(LEDB,0);
-    
-    xpinMode(LEDC,AW9523_LED_MODE);
-    xanalogWrite(LEDC,0);
-    
-    xpinMode(LEDD,AW9523_LED_MODE);
-    xanalogWrite(LEDD,0);
-    
-    xpinMode(LEDE,AW9523_LED_MODE);
-    xanalogWrite(LEDE,0);
-    
-    // Reduce the current to a sensible level (Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5)
-    Wire.beginTransmission(0x58);
-    Wire.write(0x11);
-    Wire.write(3);
-    Wire.endTransmission();
-    
-    xpinMode(OPTO0, INPUT);
-    xpinMode(OPTO1, INPUT);
-    xpinMode(OPTO2, INPUT);
-    xpinMode(OPTO3, INPUT);
-    
-    Serial.println("BlackNodev11 began");
-    
-    WhiteNodev108::begin();
+void WhiteNodev108::addDeck(Deck * deck) {
+    _deskCtrl->addDeck(deck);
 }
 
+void ButtonsDeck::render_pane(bool refresh) {
+    if (refresh)
+        _display->print_centred("I/O");
+    
+    if (!iostates)
+        return;
 
+    for (int i = 0;; i++) {
+        iostate_t * s = &iostates[i];
+        if (!s->label)
+            break;
+        
+        int x =  2 + (i / 4)   * SCREEN_WIDTH / 2;
+        int y = 12 + (i % 4) * 11;
+        
+        // first time round - print the text and UI; after that
+        // just deal with the updates.
+        if (refresh) {
+            _display->drawRect(x, y, 10, 10, SH110X_WHITE);
+            _display->setCursor(x + 12 , y + 1);
+            _display->print(s->label);
+        };
+        
+        // upate the on/off dot in the middle always.
+        s->lst = !(_acnode->xdigitalRead(s->pin)); // they are all pullup style
+        _display->fillRect(x + 2, y + 2, 10 - 4, 10 - 4, s->lst ? SH110X_WHITE : SH110X_BLACK);
+    }
+};
 
-void BlackNodev111::loop() {
-    xanalogWrite(LEDE,hearthbeat());
-    
-    WhiteNodev108::loop();
-    
-    // Quite hardware specific; the relay can only be forced 'on' - either by a GPIO or
-    // by a switch. It cannot be forced off. So we can only sensibly detect an 'illegal' on;
-    // while it was expected to be off.
-    //
-    if (expectOut1 == LOW) {
-        static unsigned long lst = 0;
-        xpinMode(OUT0,INPUT);
-        if ( xdigitalRead(OUT0) != expectOut1) {
-            if (lst == 0 || millis() - lst > 5 * 60 * 1000) {
-                Log.printf("Warning - Output 1 measured as %s at hardware level; it should be %s.\n",
-                           xdigitalRead(OUT0) ? "HIGH" : "LOW", expectOut1  ? "HIGH" : "LOW");
-                lst = millis();
-            };
-            errorLed->set(LED::LED_FAST);
-            xanalogWrite(LEDA,255);
-        } else lst = 0;
-        xpinMode(OUT0,OUTPUT);
-    };
-    
-    if (expectOut2 == LOW) {
-        static unsigned long lst = 0;
-        xpinMode(OUT1,INPUT);
-        if (digitalRead(OUT1) != expectOut2) {
-            if (lst == 0 || millis() - lst > 5 * 60 * 1000) {
-                Log.printf("Warning - Output 2 measured as %s at hardware level; it should be %s.\n",
-                           xdigitalRead(OUT1) ? "HIGH" : "LOW", expectOut2  ? "HIGH" : "LOW");
-                lst = millis();
-            };
-            errorLed->set(LED::LED_FAST);
-            xanalogWrite(LEDA,255);
-        } else lst = 0;
-        xpinMode(OUT1,OUTPUT);
-    };
-}

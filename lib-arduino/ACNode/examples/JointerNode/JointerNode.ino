@@ -42,9 +42,6 @@
 CurrentTransformer currentSensor = CurrentTransformer(CURRENT_GPIO);
 OptoDebounce opto(OPTO1);
 
-#include <ACNode.h>
-#include <RFID.h>   // SPI version
-
 ACNode node = ACNode(MACHINE, WIFI_MAKERSPACE_NETWORK, WIFI_MAKERSPACE_PASSWD); // wireless, fixed wifi network.
 RFID reader = RFID();
 

@@ -12,15 +12,14 @@ public:
    // Not really public - but needed in the ticker callbacks.
    void _on();
    void _off();
-   void _set(bool on);
+   virtual void _set(bool on);
    void _update();
    void begin();
 
-private:
+protected:
    unsigned int _pin,_tock;
    const bool _inverted;
    Ticker _ticker;
    led_state_t _lastState;
 };
-
 
