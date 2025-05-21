@@ -1,4 +1,5 @@
 #include <ACBaseNode.h>
+#include <lwip/netdb.h>
 
 #ifdef ESP32
 #include <ETH.h>
@@ -52,11 +53,19 @@ void WiFiEventLoop() {
             _connected = true;
             break;
         case EV(ETH_GOT_IP):
-            Log.printf("ETH MAC: %s, IPv4: %s%s, %d Mbps\n",
+            Log.printf("ETH MAC: %s, IPv4: %s%s, %d Mbps ",
             	ETH.macAddress().c_str(),
 		ETH.localIP().toString().c_str(),
                 ETH.fullDuplex() ? ", FULL_DUPLEX" : "",
             	ETH.linkSpeed());
+            Log.printf(" GW: %s DNS: ",
+            	ETH.gatewayIP().toString().c_str());
+	    for(int i = 0; i < 16; i++) {
+		IPAddress ip = ETH.dnsIP(i);
+		if (ip != IPAddress(INADDR_ANY))
+		      Log.printf("%s ",ip.toString().c_str());
+	    };
+	    Log.println("");
             _connected = true;
             break;
         case EV(WIFI_STA_DISCONNECTED):
