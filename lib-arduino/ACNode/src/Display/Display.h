@@ -24,7 +24,7 @@ public:
                    : Adafruit_SH1106G(w,h,twi,rst_pin,preclk,postclk),
                        SCREEN_WIDTH(w), SCREEN_HEIGHT(h) {};
                    
-    void begin(uint8_t SCREEN_Address, bool reset = true, const char * bootmsg = NULL);
+    bool begin(uint8_t SCREEN_Address, bool reset = true, const char * bootmsg = NULL);
 
     void setDisplayScreensaver(bool on);
     

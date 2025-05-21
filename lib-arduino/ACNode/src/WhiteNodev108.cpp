@@ -111,13 +111,12 @@ void WhiteNodev108::begin() {
     _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
     addHandler(_reader);
 
-    if (!_display && (_display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET))) {
-        _display->setRotation(2); // for purple/white boards - OLED is upside down.
-        _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"");
+    if (!_display)
+	_display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
+    if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"")) {
         Log.println("LCD/OLED screen found and initialized.");
-    } else {
-        Log.println("No LCD/OLED screen found");
-    };
+	_display->setRotation(2);
+   };
 
     OTAWithDisplay * ota = new OTAWithDisplay(OTA_PASSWD_HASH, _display, moi);
     ota->setOTAOK([&](){

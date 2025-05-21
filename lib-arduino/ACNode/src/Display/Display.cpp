@@ -4,13 +4,20 @@
 #include "Display/Display.h"
 #include "Display/msl-logo.h"
 
-void Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
-    if (!super::begin(SCREEN_Address,reset)) {
+bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
+#if 0
+    bool r = super::begin(SCREEN_Address,reset);
+    if (!r) {
         Log.println("Could not initialize the LCD/OLED screen.");
-        return;
+        return false;
     }
+#else
+    bool r = true;
+    super::begin(SCREEN_Address,reset);
+#endif
     // Should we capture that the screen actually works; and make
     // the methods condition on a 'workie' variable ?
+    //
     clearDisplay();
     drawCentredBitmap(msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
     if (bootmsg) {
@@ -20,7 +27,10 @@ void Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
         setTextColor(SH110X_WHITE);
         print_centred((char*)bootmsg, false);
     };
+    oled_command(SH110X_DISPLAYON);
     display();
+
+    return r;
 }
 
 void Display::drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col) {
