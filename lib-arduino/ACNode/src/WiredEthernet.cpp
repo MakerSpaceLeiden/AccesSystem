@@ -57,6 +57,12 @@ void WiFiEventLoop() {
 		ETH.localIP().toString().c_str(),
                 ETH.fullDuplex() ? ", FULL_DUPLEX" : "",
             	ETH.linkSpeed());
+            Log.printf("\tGW: %s\n\tDNS %s,%s,%s\n",
+                ETH.gatewayIP().toString().c_str(),
+                ETH.dnsIP(0).toString().c_str(),
+                ETH.dnsIP(1).toString().c_str(),
+                ETH.dnsIP(2).toString().c_str(),
+	    );
             _connected = true;
             break;
         case EV(WIFI_STA_DISCONNECTED):

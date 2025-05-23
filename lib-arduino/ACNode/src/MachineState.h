@@ -112,7 +112,8 @@ public:
     
 #if 0
     bool operator <(machinestate_t s) { return s > machinestate; };
-    bool operator ==(machinestate_t s) { return s == machinestate; };
+    bool operator ==(void s) { return (machinestate_t)s == machinestate; };
+    // bool operator ==(machinestate_t s) { return s == machinestate; };
     // bool operator ==(unsigned char s) { return (machinestate_t)s == machinestate; };
     bool operator !=(machinestate_t s) { return s != machinestate; };
     bool operator >(machinestate_t s) { return s < machinestate; };
