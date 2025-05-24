@@ -118,7 +118,7 @@ public:
     void onSwipe(RFID::THandlerFunction_SwipeCB fn);
         
     void updateDisplay(String left, String right, bool rebuildFull = false);
-    void updateDisplayStateMsg(String msg,int line = 0);
+    void updateDisplayStateMsg(String msg,int line = 1);
     
     void setOffCallback(ButtonCallback callback,int mode = CHANGE);
     void setMenuCallback(ButtonCallback callback,int mode = CHANGE);

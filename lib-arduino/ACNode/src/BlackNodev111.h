@@ -29,7 +29,6 @@ public:
     static const uint8_t AW_INT = 36; // Was opto 2
     
     void CONSTS() {
-        errorLed = new LEDAW(LED_INDICATOR);
 
         // super::CONSTS();
         
@@ -68,6 +67,7 @@ public:
         IOE = PIN_HPIO_AW9523 | (8+5); // P1_5
         
         BUTT2 = 0; // Labeled MENU on the PCB -- not yet tested.
+
         static iostate_t s[] = {
             { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
             { BUTT1, "NO/back", 1, INPUT_PULLUP },
@@ -81,6 +81,8 @@ public:
         };
         iostates = s;
 
+	Debug.printf("Wiring errorLed AW %x %d\n", LED_INDICATOR, LED_INDICATOR);
+        errorLed = new LEDAW(LED_INDICATOR);
     };
     void begin();
     void pop();
@@ -97,7 +99,6 @@ public:
     // Newer nodes have an extra button.
     //
     void setYesCallback(ButtonCallback callback,int mode = CHANGE);
-    LEDAW * errorLed = NULL;
 private:
     int8_t expectOut1 = -1;
     int8_t expectOut2 = -1;

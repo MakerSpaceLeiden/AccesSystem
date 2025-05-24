@@ -56,9 +56,8 @@ public:
     // Claim up to a certain amount. If not settled - it will either be auto
     // settled or left to a human administrator (of settleAfterOrNone == 0).
     //
-    // Warning - user is to free claim post use !
 #define DO_NOT_AUTO_SETTLE (0)
-    char * claim(const char * againstUserID,
+    String claim(const char * againstUserID,
                  double amount,
                  const char * description,
                  unsigned long settleSecondsAfterOrNot = DO_NOT_AUTO_SETTLE);
@@ -77,6 +76,6 @@ private:
     THandlerFunction_NotifyReady _ready_cb;
     bool _ready;
     
-    char * _raw_claim(const char * url, std::vector<String> args);
+    String _raw_claim(const char * url, std::vector<String> args);
 };
 #endif
