@@ -284,7 +284,7 @@ void setup() {
             // Debug.println("Done welding.");
             unsigned long wt = millis() - lst;
             wr.welding_timer += (wt+500UL)/1000UL;
-            node.machinestate = POWERED;
+            node.machinestate = powerDetect->state() ? CHECK_VALVE_CLOSED : POWERED;
         }
     }, CHANGE);
     node.addHandler(weldingDetect);

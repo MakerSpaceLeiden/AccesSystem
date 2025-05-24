@@ -241,8 +241,8 @@ void WhiteNodev108::begin() {
         };
     },  CHANGE);
     addHandler(menuButton);
-   
-    machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    //machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         Debug.printf("WhiteNodev108: Changing state (%d->%d): %s\n", last, current, machinestate.label());
 
         errorLed->set(machinestate.ledState());

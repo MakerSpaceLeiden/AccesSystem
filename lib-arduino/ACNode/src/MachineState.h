@@ -74,10 +74,11 @@ private:
         unsigned long autoReportCycle;
         bool safeForOTA; // Can we safely allow a resetting Over the Air update (OTA) ?
         
-        THandlerFunction_OnLoopCB onLoopCB;
-        THandlerFunction_OnChangeCB onChangeCB;
-        THandlerFunction_OnTimeoutCB onTimeoutCB;
+        std::list<THandlerFunction_OnLoopCB> onLoopCBs;
+        std::list<THandlerFunction_OnChangeCB> onChangeCBs;
+        std::list<THandlerFunction_OnTimeoutCB> onTimeoutCBs;
         
+
         // Bookkeeping
         time_t timeInState;
         unsigned long stateCnt;
@@ -118,11 +119,11 @@ public:
     bool operator !=(machinestate_t s) { return s != machinestate; };
     bool operator >(machinestate_t s) { return s < machinestate; };
 #endif
-    void setOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
+    void addOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
     
-    void setOnChangeCallback(machinestate_t state, THandlerFunction_OnChangeCB onChangeCB);
+    void addOnChangeCallback(machinestate_t state, THandlerFunction_OnChangeCB onChangeCB);
     
-    void setOnTimeoutCallback(machinestate_t state, THandlerFunction_OnTimeoutCB onTimeoutCB);
+    void addOnTimeoutCallback(machinestate_t state, THandlerFunction_OnTimeoutCB onTimeoutCB);
     
     machinestate_t addState(state_t aState);
     
@@ -153,9 +154,10 @@ public:
                      machinestate_t newstate = WAITINGFORCARD,
                      unsigned long timeoutTransitions = NEVER,
                      unsigned long autoReportCycle = NEVER,
-                     THandlerFunction_OnLoopCB onLoopCB = NULL,
-                     THandlerFunction_OnChangeCB onChangeCB = NULL,
-                     THandlerFunction_OnTimeoutCB onTimeoutCB = NULL);
+                     std::list<THandlerFunction_OnLoopCB> onLoopCBs = {},
+                     std::list<THandlerFunction_OnChangeCB> onChangeCBs = {},
+                     std::list<THandlerFunction_OnTimeoutCB> onTimeoutCB = {}
+                     );
     
     // ACBase - standard handlers.
     //
