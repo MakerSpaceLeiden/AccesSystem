@@ -134,9 +134,7 @@ public:
     char moi[MAX_NAME];
     char mqtt_server[MAX_HOST];
     char machine[MAX_NAME];
-    char master[MAX_NAME];
     char logpath[MAX_NAME];
-
     IPAddress localIP();
     String getHostname();
     String macAddressString();
@@ -199,36 +197,21 @@ public:
     PubSubClient _client = PubSubClient(_espClient);
     char mqtt_topic_prefix[MAX_NAME];
     
-    const char * _ssid;
-    const char * _ssid_passwd;
-    bool _wired;
-    acnode_proto_t _proto;
-    
-    virtual void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true) {
-        Log.println("*** NOT IMPLEMENTED ***");
-    }
-
-protected:
-    const char * state2str(int state);
-    void reconnectMQTT();
-    void mqttLoop();
-    
-    void pop();
-    void CONSTS();
-    unsigned long _report_period;
-    // stat counters
-    unsigned long _approve=0, _deny=0, _reqs=0, _mqtt_reconnects=0, _start_beat=0;
-    
-    void _complete_begin(uint8_t clear_button = -1);
-    void _begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
-    
-    THandlerFunction_Command _command_callback;
-    beat_t _lastSwipe;
+private:
+    unsigned int log_destinations = LOG_DEST_DEFAULT;
+    bool _debug_alive, _debug;
     THandlerFunction_Error _error_callback;
     THandlerFunction_Connect _connect_callback;
     THandlerFunction_Disconnect _disconnect_callback;
     THandlerFunction_SimpleCallback _approved_callback, _denied_callback;
     THandlerFunction_Report _report_callback;
+    
+    beat_t _lastSwipe;
+    WiFiClient _espClient;
+    
+    void checkClearEEPromAndCacheButtonPressed(uint8_t button);
+    
+    const char * state2str(int state);
     
     // We register a bunch of handlers - rather than calling them
     // directly with a flag trigger -- as this allows the linker
@@ -237,14 +220,67 @@ protected:
     //
     std::list<ACBase *> _handlers;
     
+protected:
+    void pop();
+    void CONSTS();
+    const char * _ssid;
+    const char * _ssid_passwd;
+    unsigned long _report_period;
+    bool _wired;
+    acnode_proto_t _proto;
+    char _lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
+    // stat counters
+    unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
+    
+    void _complete_begin(uint8_t clear_button = -1);
+    void _begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
+};
+
+class ACNode : public ACNodeBase {
+public:
+    ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
+    ACNode(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
+
+#ifdef HAS_SIG2
+    void add_trusted_node(const char *node);
+#endif
+
+    void addSecurityHandler(ACSecurityHandler *handler);
+   
+    char * cloak(char *tag);
+    void send_helo(char * tokenOrNull = NULL);
+
+    unsigned long uptimeInSeconds() { return _start_beat ?  beatCounter - _start_beat : 0; };
+
+    // Public - so it can be called from our fake
+    // singleton. Once that it solved it should really
+    // become private again.
+    //
+    void send(const char * payload) { send(NULL, payload, false); };
+    void send(const char * topic, const char * payload, bool raw = false);
+
+    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
+
+    // This function should be private - but we're calling
+    // it from a C callback in the mqtt subsystem.
+    //
+    void process(const char * topic, const char * payload);
+
+    char master[MAX_NAME];
+    char mqtt_topic_prefix[MAX_NAME];
+
 private:
     unsigned int log_destinations = LOG_DEST_DEFAULT;
     bool _debug_alive, _debug;
     std::shared_ptr<LOGBase> wh, th;
 //    MqttStream * mqttlogStream;
 
-    WiFiClient _espClient;
-    void checkClearEEPromAndCacheButtonPressed(uint8_t button);
+protected:
+    acnode_proto_t _proto;
+    PubSubClient _client;
+    void configureMQTT();
+    void reconnectMQTT();
+    void mqttLoop();
 };
 
 String since(unsigned long up);
@@ -256,4 +292,3 @@ String since(unsigned long up);
 //
 extern ACNodeBase *_acnodebase;
 #endif
-
