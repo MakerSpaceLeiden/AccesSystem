@@ -65,10 +65,11 @@ MachineState::machinestate_t START_OPENING_DOOR, OPENING_DOOR, OPEN_DOOR, START_
 // motor is not held by a stop current/short-circuit).
 //
 long DOOR_CLOSED = 0;
-long DOOR_OPEN = 1100;
+long DOOR_OPEN = 600;
 
-#define DOOR_SENSE_OPEN (node.IOE)
-#define DOOR_SENSE_CLOSED (node.IOD)
+// #define DOOR_SENSE_OPEN (node.IOE)
+// #define DOOR_SENSE_CLOSED (node.IOD)
+// #define DOOR_SENSOR(x) ((expandedDigitalRead((x)) == LOW) ? true : false)
 
 // How long to keep the door open
 #define DOOR_OPEN_DELAY (10 * 1000)
@@ -183,7 +184,6 @@ void setup() {
   expandedPinMode(DOOR_SENSE_CLOSED, INPUT_PULLUP);
 #endif
 
-
   // Change to something like debug or test
   // if you want to send all output to a different
   // set of MQTT channels.
@@ -227,14 +227,21 @@ void loop() {
   stepper.run();
 
 #if 0
-  {
     static unsigned long lst = 0;
     if (millis() - lst > 1000) {
       lst = millis();
-      Debug.printf("Open: %d, Close %d\n",
-                   expandedDigitalRead(DOOR_SENSE_OPEN),  expandedDigitalRead(DOOR_SENSE_CLOSED));
-    }
-  }
+      Debug.printf("Open: %d, Close %d - %d/%d\n",
+                   DOOR_SENSOR(DOOR_SENSE_OPEN),  DOOR_SENSOR(DOOR_SENSE_CLOSED),
+                   expandedDigitalRead(DOOR_SENSE_OPEN), expandedDigitalRead(DOOR_SENSE_CLOSED)
+                   );
+      Debug.printf("A: %x=%d, B: %x=%d, C: %x=%d, D: %x=%d, E: %x=%d\n",
+                   node.IOA,expandedDigitalRead(node.IOA),
+                   node.IOB,expandedDigitalRead(node.IOB),
+                   node.IOC,expandedDigitalRead(node.IOC),
+                   node.IOD,expandedDigitalRead(node.IOD),
+                   node.IOE,expandedDigitalRead(node.IOE)
+      );
+   };
 #endif
 
   if (node.machinestate == START_OPENING_DOOR) {
@@ -244,11 +251,11 @@ void loop() {
     node.machinestate = OPENING_DOOR;
   } else if (node.machinestate == OPENING_DOOR) {
 #ifdef DOOR_SENSE_OPEN
-    if (stepper.currentPosition() >= DOOR_OPEN && expandedDigitalRead(DOOR_SENSE_OPEN) == LOW) {
+    if (stepper.currentPosition() >= DOOR_OPEN && !DOOR_SENSOR(DOOR_SENSE_OPEN)) {
       DOOR_OPEN += 10;
       stepper.moveTo(DOOR_OPEN);
     };
-    if (expandedDigitalRead(DOOR_SENSE_OPEN)) {
+    if (DOOR_SENSOR(DOOR_SENSE_OPEN)) {
       stepper.stop();
       DOOR_OPEN = stepper.currentPosition();
       Log.printf("Adjust open to %ld\n", DOOR_OPEN);
@@ -268,16 +275,16 @@ void loop() {
     node.machinestate = CLOSING_DOOR;
   } else if (node.machinestate == CLOSING_DOOR) {
 #ifdef DOOR_SENSE_CLOSED
-    if (stepper.currentPosition() <= DOOR_CLOSED && expandedDigitalRead(DOOR_SENSE_CLOSED) == LOW) {
+    if (stepper.currentPosition() <= DOOR_CLOSED && !DOOR_SENSOR(DOOR_SENSE_CLOSED)) {
       DOOR_CLOSED -= 10;
       stepper.moveTo(DOOR_CLOSED);
     };
-    if (expandedDigitalRead(DOOR_SENSE_CLOSED)) {
+    if (DOOR_SENSOR(DOOR_SENSE_CLOSED)) {
       stepper.stop();
       DOOR_CLOSED = stepper.currentPosition();
       Log.printf("Adjust close to %ld\n", DOOR_CLOSED);
     };
-#else
+#else 
     // no sensors - so wait until we hit the end position
     // by stepper count
 #endif

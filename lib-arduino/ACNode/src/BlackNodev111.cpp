@@ -125,7 +125,7 @@ void BlackNodev111::loop() {
     //
     xanalogWrite(LEDD, isConnected() ? 0 : 255);
 
-    ExpandedGPIO::getInstance().debugdump();
+    // ExpandedGPIO::getInstance().debugdump();
     
     Debug.printf("OUT1: %d,  OUT2: %d\n", getMonitoredOutput(OUT0), getMonitoredOutput(OUT1));    
 

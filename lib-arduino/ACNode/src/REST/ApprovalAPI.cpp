@@ -157,19 +157,24 @@ ApprovalAPI::update_t ApprovalAPI::needsUpdate() {
     unsigned char * buff = NULL;
     char url[] = ACL_URL PATH_GETCOUNTER;
     size_t len = 1024;
+    update_t ret = FAIL;
+    unsigned long cntr;
+
     int n = _restAPI->get(url,&len,&buff);
-    if (n < 0)
-        return FAIL;
+    if (n < 0) 
+	goto exit;
 
     buff[n-1] = 0; // damages last byte (CR/LF or comments) - which is ok as we own this buffer
-    unsigned long cntr = atoi((char *)buff);
-    free(buff);
+    cntr = atoi((char *)buff);
 
     Log.printf("TagDB identifier: %08x: %s%c(previous: %08x)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", (identifier == cntr) ? 0 : 32, identifier);
  
     last_update = millis();
     
-    return (cntr != identifier) ? NEEDS_UPDATE : NO_UPDATE_NEEDED;
+    ret = (cntr != identifier) ? NEEDS_UPDATE : NO_UPDATE_NEEDED;
+exit:
+    if (buff) free(buff);
+    return ret;
 }
 
 void ApprovalAPI::updateTagDB() {
@@ -182,15 +187,18 @@ void ApprovalAPI::updateTagDB() {
     int n = _restAPI->get(url,&len,&buff);
     if (n <= 0) {
         Log.printf("Failed to load bintags from <%s>\n", url);
-        return;
+        goto exit;
     };
+
     // Note: import will claim the buffer and manage it.
     if (import(buff,len)) {
         writeCache();
-    } else {
-        Log.println("Failed to load.");
-        free((void*)buff);
+	return;
     };
+
+    Log.println("Failed to import bintags");
+exit:
+    if (buff) free((void*)buff);
     return;
 }
 

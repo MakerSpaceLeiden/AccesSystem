@@ -221,6 +221,7 @@ void RestAPI::loop()
             freezeout = (freezeout + 250) *2;
             paired = false;
             Log.println("Unpairing and re-starting registration");
+            wipekeys();
             md = WAITING_FOR_NTP;
             break;
         case ERR_RETRYABLE:

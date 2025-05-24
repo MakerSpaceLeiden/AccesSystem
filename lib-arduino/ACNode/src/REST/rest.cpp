@@ -107,14 +107,6 @@ rest_ret_t setupAuth(const char * terminalName) {
         
         wipekeys();
         
-        if (!keystore.begin(KS_NAME, false)) {
-            Log.println("Keystore open failed");
-            return ERR_FATAL;
-        };
-        
-        keystore.putUShort(KS_KEY_VERSION, KS_VERSION);
-        keystore.end();
-        
         if (geneckey(&key)) {
             Log.println("Generation error. Aborting");
             return ERR_RETRYABLE;
@@ -150,6 +142,12 @@ void wipekeys() {
     Log.println("Wiping keystore");
     nvs_flash_erase(); // erase the NVS partition and...
     nvs_flash_init(); // initialize the NVS partition.
+
+    // Best effort popuplate.
+    Preferences keystore;
+    keystore.begin(KS_NAME, false);
+    keystore.putUShort(KS_KEY_VERSION, KS_VERSION);
+    keystore.end();
 }
 
 rest_ret_t fetchCA(const char * terminalName) {
@@ -233,6 +231,11 @@ rest_ret_t registerDevice(const char * terminalName) {
     httpCode =  https.GET();
     
     peer = client.getPeerCertificate();
+    if (!peer || peer->raw.len <= 0) {
+        Log.println("No peer certificate, Aborting");
+        ret = ERR_REPAIR;
+        goto exit;
+    };
     mbedtls_sha256_ret(peer->raw.p, peer->raw.len, sha256, 0);
     if (memcmp(sha256, sha256_server, 32)) {
         Log.println("Server changed mid registration. Aborting");
@@ -252,7 +255,15 @@ rest_ret_t registerDevice(const char * terminalName) {
     }
     else if (httpCode == HTTP_CODE_NOT_FOUND) {
         Log.printf("Register device failed (not found - is a terminal with the name <%s> configured in the CRM).\n", terminalName);
-        // https.getString().c_str());
+        ret = ERR_FATAL;
+        goto exit;
+    } 
+    else if (httpCode == HTTP_CODE_FOUND) {
+	char tmp[65];
+        sha256toHEX(sha256_client, tmp);
+	fingerprint_from_pem(client_cert_as_pem, sha256_client);
+        Log.printf("Register device failed (there is already terminal with the name <%s> and this fingerprint paired in the CRM).\n", 
+		terminalName, sha256toHEX(sha256_client, tmp));
         ret = ERR_FATAL;
         goto exit;
     } 
@@ -393,7 +404,7 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
         }
         
         if (keystore.getUShort(KS_KEY_VERSION, 0) != KS_VERSION) {
-            Log.println("**** NVS not working 2 *****");
+            Log.println("**** NVS not initialized *****");
             ret = ERR_FATAL;
             keystore.end();
             goto exit;

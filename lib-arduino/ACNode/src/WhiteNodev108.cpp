@@ -70,9 +70,6 @@ void WhiteNodev108::pop() {
     xpinMode(OPTO0, INPUT);
     xpinMode(OPTO1, INPUT);
     
-    if (!errorLed)
-        errorLed = new LED(LED_INDICATOR);
-
     _deskCtrl = new DeckController();
     addHandler(_deskCtrl);
 };
@@ -104,6 +101,11 @@ void WhiteNodev108::buzzerErr() {
 };
 
 void WhiteNodev108::begin() {
+    if (!errorLed) {
+	Debug.printf("Led indicator wired to %x %d\n", LED_INDICATOR, LED_INDICATOR);
+        errorLed = new LED(LED_INDICATOR);
+    };
+
     errorLed->begin();
 
     // All nodes have a build-in RFID reader; so fine to hardcode this.
@@ -239,8 +241,8 @@ void WhiteNodev108::begin() {
         };
     },  CHANGE);
     addHandler(menuButton);
-   
-    machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    //machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         Debug.printf("WhiteNodev108: Changing state (%d->%d): %s\n", last, current, machinestate.label());
 
         errorLed->set(machinestate.ledState());
