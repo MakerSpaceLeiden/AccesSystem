@@ -241,8 +241,7 @@ void loop() {
                    node.IOD,expandedDigitalRead(node.IOD),
                    node.IOE,expandedDigitalRead(node.IOE)
       );
-    }
-  }
+   };
 #endif
 
   if (node.machinestate == START_OPENING_DOOR) {

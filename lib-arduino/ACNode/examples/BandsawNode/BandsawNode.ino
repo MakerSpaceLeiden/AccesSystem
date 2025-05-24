@@ -40,7 +40,7 @@
 // Generate with 'echo -n Password | openssl md5 or
 // use https://www.md5hashgenerator.com/. No \0,
 // cariage return or linefeed  at the end of the
-// password; just the characters of the password
+// password; just the characters of the passwordz
 // itself.
 //
 // #define OTA_PASSWD_HASH  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
@@ -54,7 +54,7 @@ BlackNodev111 node = BlackNodev111(MACHINE);
 
 unsigned long bad_poweroff = 0, normal_poweroff = 0, normal_poweron = 0, idle_poweroff = 0;
 
-IODebounce *interlockDetect, *motorCurrent;
+IODebounce *interlockDetect, *motorCurrent, *onoffSwitchDetect;
 
 // Extra state - when the safety contactor has actually been unlocked
 // but the RED button has not been pressed yet.
@@ -118,7 +118,12 @@ class MachineDeck : public Deck {
 
 void setup() {
   Serial.begin(115200);
+<<<<<<< Updated upstream
   Log.printf("\nBooting(): %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
+=======
+  Serial.println("\n\n\n");
+  Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
+>>>>>>> Stashed changes
 
   // Init the hardware and get it into a safe state.
   // Init the hardware and get it into a safe state.
@@ -158,6 +163,11 @@ void setup() {
   interlockDetect = new IODebounce(INTERLOCK);
   node.addHandler(interlockDetect);
 
+<<<<<<< Updated upstream
+=======
+  pinMode(INTERLOCK, INPUT);
+  interlockDetect = new IODebounce(INTERLOCK);
+>>>>>>> Stashed changes
   interlockDetect->setCallback([](const int newState) {
     if ((node.machinestate == MachineState::CHECKINGCARD || node.machinestate == MachineState::WAITINGFORCARD) && newState == LOW) {
       Log.println("Alert: Power on the interlock observed while " MACHINE " should be locked.");
@@ -188,9 +198,13 @@ void setup() {
   }, CHANGE);
 
   motorCurrent = new IODebounce(MOTOR_CURRENT);
+<<<<<<< Updated upstream
   motorCurrent->setAnalogThreshold(30); 
   node.addHandler(motorCurrent);
 
+=======
+  motorCurrent->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
+>>>>>>> Stashed changes
   motorCurrent->setCallback([](const int newState) {
     if (node.machinestate == POWERED && newState) {
       Debug.println("Detected current. Motor switched on");
