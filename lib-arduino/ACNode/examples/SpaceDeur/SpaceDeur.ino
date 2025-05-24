@@ -14,7 +14,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-Main Settings for White boards and later (EPS32, POE)
+  Main Settings for White boards and later (EPS32, POE)
 
   Board:             "ESP32-WROOM-DA Module"
   Core Debug Level:  "None"
@@ -22,17 +22,17 @@ Main Settings for White boards and later (EPS32, POE)
   Partition Scheme:  "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)"
   Upload Speed:      "921600"
 
-As deployed May 2025:
+  As deployed May 2025:
   https://wiki.makerspaceleiden.nl/mediawiki/index.php/PowerNodeBlue-bringup
   https://wiki.makerspaceleiden.nl/mediawiki/index.php/Node_Spacedeur
 
-Mechanics
+  Mechanics
 
-1)  Stepper motor with a pully; rope to the door handle
-2)  https://wiki.makerspaceleiden.nl/mediawiki/index.php/Project_Grote_Schakelaar
+  1)  Stepper motor with a pully; rope to the door handle
+  2)  https://wiki.makerspaceleiden.nl/mediawiki/index.php/Project_Grote_Schakelaar
 
-Note: Espressif ESP32 3.2.0 seems to have an older version of MBED-TLS than
-      the 2.0.15 and later versions (with mbedtls_sha256_starts_ret not yet 
+  Note: Espressif ESP32 3.2.0 seems to have an older version of MBED-TLS than
+      the 2.0.15 and later versions (with mbedtls_sha256_starts_ret not yet
       replacing the legacy mbedtls_sha256_starts()).
 
 */
@@ -42,8 +42,8 @@ Note: Espressif ESP32 3.2.0 seems to have an older version of MBED-TLS than
 #define MACHINE "spacedeur"
 BlackNodev111 node = BlackNodev111(MACHINE);
 
-#ifdef OTA_PASSWD
-OTA ota = OTA(OTA_PASSWD);
+#ifdef OTA_PASSWD_HASH
+OTA ota = OTA(OTA_PASSWD_HASH);
 #else
 // Comment out this line if you are experimenting, etc.
 #error "You propablly do not want to deploy without OTA"
@@ -64,12 +64,14 @@ MachineState::machinestate_t START_OPENING_DOOR, OPENING_DOOR, OPEN_DOOR, START_
 // in doorhandle will generally unspool the rope if the
 // motor is not held by a stop current/short-circuit).
 //
-#define DOOR_CLOSED (0)
-#define DOOR_OPEN (1100)
+long DOOR_CLOSED = 0;
+long DOOR_OPEN = 1100;
+
+#define DOOR_SENSE_OPEN (node.IOE)
+#define DOOR_SENSE_CLOSED (node.IOD)
 
 // How long to keep the door open
 #define DOOR_OPEN_DELAY (10 * 1000)
-
 
 
 // See https://mailman.makerspaceleiden.nl/mailman/private/deelnemers/2019-February/019837.html
@@ -114,12 +116,12 @@ void grote_schakelaar_loop() {
 
 // Stepper motor-Pololu / A4988 - wiring
 //
-#define STEPPER_DIR (0)      // was 2
-#define STEPPER_ENABLE (12)  // was 4
-#define STEPPER_STEP (2)     // was 5
+#define STEPPER_DIR (0)     // was 2
+#define STEPPER_SLEEP (12)  // was 4
+#define STEPPER_STEP (2)    // was 5
 
-#define STEPPER_MAXSPEED (1850)
-#define STEPPER_ACCELL (850)
+#define STEPPER_MAXSPEED (7000) // was (1850)
+#define STEPPER_ACCELL (2500) // was (850)
 
 // Simple overlay of the AccelStepper that configures for the A4988
 // driver of a 4 wire stepper-including the additional enable wire.
@@ -127,26 +129,27 @@ void grote_schakelaar_loop() {
 // get a loud 'click' on startup.
 //
 class PololuStepper : public AccelStepper {
-public:
-  PololuStepper(uint8_t step_pin = 0xFF, uint8_t dir_pin = 0xFF, uint8_t enable_pin = 0xFF)
-    : AccelStepper(AccelStepper::DRIVER, step_pin, dir_pin) {
+  public:
+    PololuStepper(uint8_t step_pin = 0xFF, uint8_t dir_pin = 0xFF, uint8_t sleep_pin = 0xFF)
+      : AccelStepper(AccelStepper::DRIVER, step_pin, dir_pin) {
 
-    pinMode(STEPPER_ENABLE, OUTPUT);
-    digitalWrite(STEPPER_ENABLE, LOW);    // dis-able stepper first.
-    setPinsInverted(false, false, true);  // The enable pin is NOT inverted. Kind of unusual.
-    setEnablePin(enable_pin);
-    setMaxSpeed(STEPPER_MAXSPEED);
-    setAcceleration(STEPPER_ACCELL);
+      pinMode(STEPPER_SLEEP, OUTPUT);
+      digitalWrite(STEPPER_SLEEP, LOW);    // dis-able stepper first.
+      setPinsInverted(false, false, false);
+      setEnablePin(sleep_pin);
 
-    // power it down - to prevent the stepper motor from
-    // needlessly heating up (in the door closed position
-    // the motor does not need to actively 'brake').
-    //
-    disableOutputs();
-  }
+      setMaxSpeed(STEPPER_MAXSPEED);
+      setAcceleration(STEPPER_ACCELL);
+
+      // power it down - to prevent the stepper motor from
+      // needlessly heating up (in the door closed position
+      // the motor does not need to actively 'brake').
+      //
+      disableOutputs();
+    }
 };
 
-PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_ENABLE);
+PololuStepper stepper = PololuStepper(STEPPER_STEP, STEPPER_DIR, STEPPER_SLEEP);
 
 unsigned long laststatechange = 0, lastReport = 0;
 unsigned long opening_door_count = 0, door_denied_count = 0, opens = 0;
@@ -155,6 +158,10 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
+
+  // Disable - as we need this pin for the stepper motor.
+  //
+  node.BUTT2 = -1;
 
   setup_grote_schakelaar();
 
@@ -165,32 +172,36 @@ void setup() {
   // We set a timeout on each; but will change state quicker (see the switch() statment
   // in loop() below) when the right number of steps (DOOR_OPEN, DOOR_CLOSE) is reached.
   //
-  START_OPENING_DOOR = node.machinestate.addState("Start opening door", LED::LED_ON, MAXMOVE_DELAY, OPENING_DOOR);
-  OPENING_DOOR = node.machinestate.addState("Opening door", LED::LED_ON, MAXMOVE_DELAY, OPEN_DOOR);
-  OPEN_DOOR = node.machinestate.addState("Door held open", LED::LED_ON, DOOR_OPEN_DELAY, START_CLOSING_DOOR);
-  START_CLOSING_DOOR = node.machinestate.addState("Start closing door", LED::LED_ON, MAXMOVE_DELAY, CLOSING_DOOR);
   CLOSING_DOOR = node.machinestate.addState("Closing door", LED::LED_ON, MAXMOVE_DELAY, MachineState::WAITINGFORCARD);
+  START_CLOSING_DOOR = node.machinestate.addState("Start closing door", LED::LED_ON, MAXMOVE_DELAY, CLOSING_DOOR);
+  OPEN_DOOR = node.machinestate.addState("Door held open", LED::LED_ON, DOOR_OPEN_DELAY, START_CLOSING_DOOR);
+  OPENING_DOOR = node.machinestate.addState("Opening door", LED::LED_ON, MAXMOVE_DELAY, OPEN_DOOR);
+  START_OPENING_DOOR = node.machinestate.addState("Start opening door", LED::LED_ON, MAXMOVE_DELAY, OPENING_DOOR);
+
+#ifdef DOOR_SENSE_OPEN
+  expandedPinMode(DOOR_SENSE_OPEN, INPUT_PULLUP);
+  expandedPinMode(DOOR_SENSE_CLOSED, INPUT_PULLUP);
+#endif
+
 
   // Change to something like debug or test
   // if you want to send all output to a different
-  // set of MQTT channels. 
+  // set of MQTT channels.
   //
   // node.set_mqtt_prefix("test");
 
   node.onApproval([](const char* machine) {
-    Debug.println("Got approve");
     if (node.machinestate.state() < START_OPENING_DOOR) {
       node.machinestate = START_OPENING_DOOR;
-      opens++;
+      opens++; // i.e. only count if we actually opened the door.
     };
     opening_door_count++;
   });
   node.onDenied([](const char* machine) {
-    Debug.println("Got denied");
     door_denied_count++;
   });
 
-  node.onReport([](JsonObject& report) {
+  node.onReport([](JsonObject & report) {
     report["state"] = node.machinestate.label();
 
     report["opening_door_count"] = opening_door_count;
@@ -215,25 +226,63 @@ void loop() {
   grote_schakelaar_loop();
   stepper.run();
 
+#if 0
+  {
+    static unsigned long lst = 0;
+    if (millis() - lst > 1000) {
+      lst = millis();
+      Debug.printf("Open: %d, Close %d\n",
+                   expandedDigitalRead(DOOR_SENSE_OPEN),  expandedDigitalRead(DOOR_SENSE_CLOSED));
+    }
+  }
+#endif
+
   if (node.machinestate == START_OPENING_DOOR) {
     stepper.enableOutputs();
-    stepper.moveTo(DOOR_OPEN);  // specify end poistion.
+    stepper.moveTo(DOOR_OPEN);  // specify end position.
+    Log.printf("Move open to %ld\n", DOOR_OPEN);
     node.machinestate = OPENING_DOOR;
   } else if (node.machinestate == OPENING_DOOR) {
+#ifdef DOOR_SENSE_OPEN
+    if (stepper.currentPosition() >= DOOR_OPEN && expandedDigitalRead(DOOR_SENSE_OPEN) == LOW) {
+      DOOR_OPEN += 10;
+      stepper.moveTo(DOOR_OPEN);
+    };
+    if (expandedDigitalRead(DOOR_SENSE_OPEN)) {
+      stepper.stop();
+      DOOR_OPEN = stepper.currentPosition();
+      Log.printf("Adjust open to %ld\n", DOOR_OPEN);
+    };
+#else
     // no sensors - so wait until we hit the end position
     // by stepper count
-    if (stepper.currentPosition() == DOOR_OPEN) {
+#endif
+    if (stepper.currentPosition() >= DOOR_OPEN) {
       node.machinestate = OPEN_DOOR;
-      // we do not disable the current - as to get a `hold' action of the
-      // stepper against the tension of the spring in the door handle.
     };
+    // we do not disable the current - as to get a `hold' action of the
+    // stepper against the tension of the spring in the door handle.
   } else if (node.machinestate == START_CLOSING_DOOR) {
     stepper.moveTo(DOOR_CLOSED);
+    Log.printf("Move close to %ld\n", DOOR_CLOSED);
     node.machinestate = CLOSING_DOOR;
   } else if (node.machinestate == CLOSING_DOOR) {
+#ifdef DOOR_SENSE_CLOSED
+    if (stepper.currentPosition() <= DOOR_CLOSED && expandedDigitalRead(DOOR_SENSE_CLOSED) == LOW) {
+      DOOR_CLOSED -= 10;
+      stepper.moveTo(DOOR_CLOSED);
+    };
+    if (expandedDigitalRead(DOOR_SENSE_CLOSED)) {
+      stepper.stop();
+      DOOR_CLOSED = stepper.currentPosition();
+      Log.printf("Adjust close to %ld\n", DOOR_CLOSED);
+    };
+#else
     // no sensors - so wait until we hit the end position
     // by stepper count
-    if (stepper.currentPosition() == DOOR_CLOSED) {
+#endif
+
+    if (stepper.currentPosition() <= DOOR_CLOSED) {
       // We disable power as to not `hold' the stepper & get
       // the motor needlessly hot.
       //
