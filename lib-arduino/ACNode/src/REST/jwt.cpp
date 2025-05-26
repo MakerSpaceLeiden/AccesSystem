@@ -1,6 +1,7 @@
 #include "ACNode.h"
 
 #include "REST/jwt.h"
+#include "REST/selfsign.h"	// for SHA256 hex conversion routine
 
 #include <mbedtls/base64.h>
 #include <mbedtls/dhm.h>
@@ -19,6 +20,9 @@
 #include <mbedtls/x509_crt.h>
 
 #include "util/common-utils.h"
+#include "esp_random.h"
+
+
 
 #define MBOK(x) { \
     if ((ret = (x)) < 0) {\
@@ -91,6 +95,7 @@ bool extract_pubkey_from_cert(const char * cert, const char * public_key, size_t
 exit:
     return false;
 }
+
 char * shortkey(char * pem) {
     int s = 0;
     for(char *p = pem, *q = pem;*p;p++) {
@@ -102,7 +107,7 @@ char * shortkey(char * pem) {
 }
 
 
-String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem )
+String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  char * cert_as_pem, unsigned char * sha256 )
 {
     mbedtls_entropy_context entropy_ctx;
     mbedtls_ctr_drbg_context ctr_drbg;
@@ -111,19 +116,40 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem 
     unsigned char * buff, *ptr = buff;
     unsigned char hash[32];
     unsigned char *sig;
-    String * out = NULL;
+    String * out;
     JsonDocument hdr;
     String hdrSerialized, plSerialized;
     size_t nHdrSerialized, nPlSerialized;
     int ret;
+    unsigned long t;
 
     hdr["typ"] = "JWT";
     hdr["alg"] = "ES256";
-
-    char pubkey[ 2 * strlen(private_key_as_pem)];
+    
+   char pubkey[ 2 * strlen(private_key_as_pem)];
     if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey)))
-        hdr["kid"] = shortkey(pubkey);
+       	 	hdr["kid"] = shortkey(pubkey);
 
+    if(sha256) {
+    	unsigned char tmp[128];
+	MBOK(rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)sha256, 32));
+	hdr["x5t"] = String((char*)tmp,n);
+    };
+
+    // https://www.rfc-editor.org/rfc/rfc7515#section-4.1.6:wq
+    if (cert_as_pem) {
+	unsigned char * buff = (unsigned char *)strdup(cert_as_pem);
+	int l = pem2der(buff); // will fit; DER always shorter.
+	unsigned char tmp[ l * 2 ];
+	size_t n;
+
+    	rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)buff, l);
+	free(buff);
+	
+	// Order; from signing cert up to root.
+	JsonArray certs = hdr["x5c"].to<JsonArray>();
+	certs.add(String(tmp,n));
+    };
     nHdrSerialized = serializeJson(hdr, hdrSerialized);
     nPlSerialized = serializeJson(payload, plSerialized);
     
@@ -156,17 +182,18 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem 
     key_len = mbedtls_pk_get_len(&ctx);
     sig_len = key_len * 2 + 10;
     sig  = (unsigned char *) calloc(1, sig_len);
-    
+   
+    // Sign the hash 
     MBOK(mbedtls_pk_sign(&ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash),
                          sig, &sig_len, mbedtls_ctr_drbg_random, &ctr_drbg));
     sig_len = ecdsa_asn1_to_raw(sig, key_len, sig_len);
     
     *ptr++ = '.'; // Separator payload/signature
-    
+
     MBOK(rfc4648_base64_encode(ptr, len + buff - ptr, &n, sig, sig_len));
     ptr += n;
     
-    out =  new String((char*)buff);
+    out = new String((char*)buff);
     free(buff);
 
     mbedtls_pk_free(&ctx);

@@ -1,6 +1,8 @@
 #ifndef _H_RFID
 #define _H_RFID
 
+#define RFID_MAX_TAG_LEN (12)
+
 #include <stddef.h>
 #include <functional>
 
@@ -10,8 +12,6 @@
 
 // global variable for IRQ handler.
 extern volatile bool cardScannedIrqSeen;
-
-#define RFID_MAX_TAG_LEN 12
 
 class RFID : public ACBase {
   public:

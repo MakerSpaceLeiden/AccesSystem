@@ -116,7 +116,7 @@ class ACNodeBase : public ACBase {
 public:
     ACNodeBase(const char * machine, const char * ssid, const char * ssid_passwd);
     ACNodeBase(const char * machine = NULL, bool wired = true);
-    ~ACNodeBase() { Serial.println(_client.connected()); Serial.println("****************** eh *"); };
+    ~ACNodeBase() { Serial.println("DESTROY ACNodeBase should enver happen"); };
 
     virtual const char * name() { return "ACNodeBase"; }
     
@@ -187,42 +187,55 @@ public:
     // it from a C callback in the mqtt subsystem. And only
     // when we listen.
     virtual void process(const char * topic, const char * payload) {
-        Log.println("*** NOT IMPLEMENTED ***");
+        Log.printf("%s: Not IMPLEMENTED\n", __PRETTY_FUNCTION__);
     }
 
     void report(JsonObject & report);
    
-    // Exposed for the SIG protocol.
-    // 
     PubSubClient _client = PubSubClient(_espClient);
     char mqtt_topic_prefix[MAX_NAME];
+    char master[MAX_NAME];
+    void configureMQTT();
+    void reconnectMQTT();
+    void mqttLoop();
     
-private:
-    unsigned int log_destinations = LOG_DEST_DEFAULT;
-    bool _debug_alive, _debug;
+    virtual void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true) { 
+        Log.printf("%s: Not IMPLEMENTED\n", __PRETTY_FUNCTION__);
+    };
+    beat_t _lastSwipe;
+
+    bool wired() { return _wired; }
+
+    void pop();
+    void CONSTS();
+
     THandlerFunction_Error _error_callback;
     THandlerFunction_Connect _connect_callback;
+    THandlerFunction_Command _command_callback;
     THandlerFunction_Disconnect _disconnect_callback;
-    THandlerFunction_SimpleCallback _approved_callback, _denied_callback;
     THandlerFunction_Report _report_callback;
-    
-    beat_t _lastSwipe;
-    WiFiClient _espClient;
-    
-    void checkClearEEPromAndCacheButtonPressed(uint8_t button);
-    
-    const char * state2str(int state);
-    
+
     // We register a bunch of handlers - rather than calling them
     // directly with a flag trigger -- as this allows the linker
     // to not link in unused functionality. Thus making the firmware
     // small enough for the ESP and ENC+Arduino versions.
     //
     std::list<ACBase *> _handlers;
+
+private:
+    unsigned int log_destinations = LOG_DEST_DEFAULT;
+    bool _debug_alive, _debug;
+    
+    WiFiClient _espClient;
+    
+    void checkClearEEPromAndCacheButtonPressed(uint8_t button);
+    
+    const char * state2str(int state);
+    
     
 protected:
-    void pop();
-    void CONSTS();
+    THandlerFunction_SimpleCallback _approved_callback, _denied_callback;
+
     const char * _ssid;
     const char * _ssid_passwd;
     unsigned long _report_period;
@@ -259,15 +272,12 @@ public:
     void send(const char * payload) { send(NULL, payload, false); };
     void send(const char * topic, const char * payload, bool raw = false);
 
-    void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
 
     // This function should be private - but we're calling
     // it from a C callback in the mqtt subsystem.
     //
     void process(const char * topic, const char * payload);
 
-    char master[MAX_NAME];
-    char mqtt_topic_prefix[MAX_NAME];
 
 private:
     unsigned int log_destinations = LOG_DEST_DEFAULT;
@@ -277,10 +287,6 @@ private:
 
 protected:
     acnode_proto_t _proto;
-    PubSubClient _client;
-    void configureMQTT();
-    void reconnectMQTT();
-    void mqttLoop();
 };
 
 String since(unsigned long up);

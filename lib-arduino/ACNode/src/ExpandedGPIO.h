@@ -25,16 +25,10 @@ extern unsigned int expandedAnalogRead(uint8_t pin);
 
 class ExpandedGPIO {
 public:
-    static ExpandedGPIO& getInstance()
-    {
+    static ExpandedGPIO& getInstance() {
         static ExpandedGPIO instance;
         return instance;
-    }
-private:
-    ExpandedGPIO() {}
-    ExpandedGPIO(ExpandedGPIO const&);              
-    void operator=(ExpandedGPIO const&);
-public:
+   }
     //        ExpandedGPIO(ExpandedGPIO const&) = delete;
     //        void operator=(ExpandedGPIO const&) = delete;
     
@@ -59,8 +53,13 @@ public:
 		Serial.print(awp->digitalRead(i));
 		    if (i % 4 == 3) Serial.print(".");
   	}; Serial.println(); };
-};
+    };
 private:
+    ExpandedGPIO() {};
+    ~ExpandedGPIO() { Serial.println("DESTROY ExpandedGPIO should not happen"); };
+    ExpandedGPIO(ExpandedGPIO const&);              
+    void operator=(ExpandedGPIO const&);
+
     Adafruit_MCP23X17 * mcp = NULL;
     Adafruit_AW9523 * awp = NULL;
 };

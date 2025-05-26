@@ -17,10 +17,7 @@ void BlackNodev111::pop() {
 };
 
 void BlackNodev111::begin() {
-    // Starting with v1.11 - non core I/O is provided by an i2c IO/Expander.
-    //
     ExpandedGPIO::getInstance().addAW9523();
-    
     // Reduce the current to a sensible level.
     // Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5.
     //
@@ -43,36 +40,39 @@ void BlackNodev111::begin() {
     
     xpinMode(LEDE,AW9523_LED_MODE);
     xanalogWrite(LEDE,0);
-   
-    Serial.printf("OPTO %x %x %x %x\n", OPTO0, OPTO1, OPTO2, OPTO3);
  
     xpinMode(OPTO0, INPUT);
     xpinMode(OPTO1, INPUT);
     xpinMode(OPTO2, INPUT);
     xpinMode(OPTO3, INPUT);
 
-    xpinMode(YES_BUTTON, INPUT_PULLUP);
-    yesButton = new IODebounce(YES_BUTTON);
+    if (YES_BUTTON != -1) {
+	xpinMode(YES_BUTTON, INPUT_PULLUP);
+	yesButton = new IODebounce(YES_BUTTON);
 
-    yesButton->setCallback([&](const int newState) {
-        Debug.printf("YES button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
-
-        if (_yesCallBack &&
-            (_yesCallBackMode == CHANGE ||
-             (newState && (_yesCallBackMode == ONHIGH || _yesCallBackMode == RISING)) ||
-             (!newState &&(_yesCallBackMode == ONLOW || _yesCallBackMode == FALLING))
-             ))
-            if (_yesCallBack(newState))
-                return;
-
-        if( machinestate == SCREENSAVER) {
-            machinestate = MachineState::WAITINGFORCARD;
-            Debug.println("Switching off the screensaver");
-            return;
-        };
+        yesButton->setCallback([&](const int newState) {
+            Debug.printf("YES button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
+    
+            if (_yesCallBack &&
+                (_yesCallBackMode == CHANGE ||
+                 (newState && (_yesCallBackMode == ONHIGH || _yesCallBackMode == RISING)) ||
+                 (!newState &&(_yesCallBackMode == ONLOW || _yesCallBackMode == FALLING))
+                 ))
+                if (_yesCallBack(newState))
+                    return;
         
-    });
-    addHandler(yesButton);
+            if( machinestate == SCREENSAVER) {
+                machinestate = MachineState::WAITINGFORCARD;
+                Debug.println("Switching off the screensaver");
+                return;
+            };
+            
+        });
+        addHandler(yesButton);
+    };
+
+    if (!errorLed)
+	errorLed = new LEDAW(LED_INDICATOR);
     super::begin();
 }
 
@@ -124,10 +124,6 @@ void BlackNodev111::loop() {
     // as we can continue form the cache.
     //
     xanalogWrite(LEDD, isConnected() ? 0 : 255);
-
-    // ExpandedGPIO::getInstance().debugdump();
-    
-    Debug.printf("OUT1: %d,  OUT2: %d\n", getMonitoredOutput(OUT0), getMonitoredOutput(OUT1));    
 
     // Quite hardware specific; the relay can only be forced 'on' - either by a GPIO or
     // by a switch. It cannot be forced off. So we can only sensibly detect an 'illegal' on;

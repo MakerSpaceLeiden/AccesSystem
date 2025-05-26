@@ -135,7 +135,7 @@ rest_ret_t setupAuth(const char * terminalName) {
 }
 
 String * jwt_sign(JsonDocument payload) {
-    return generateSignedES256JWT(payload, client_key_as_pem);
+    return generateSignedES256JWT(payload, client_key_as_pem, client_cert_as_pem, sha256_client);
 }
 
 void wipekeys() {
@@ -471,8 +471,13 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     https.setTimeout(HTTP_TIMEOUT);
     https.setUserAgent(terminalName);
 
-    Debug.printf("URL: %s\n", url);
+    Debug.printf("URL(%s): %s\n", encodedpostargs.length() ? "POST" : "GET", url);
+
+    if (encodedpostargs.length())
+      https.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
     int httpCode = encodedpostargs.length() ? https.POST(encodedpostargs) : https.GET();
+
     if (httpCode < 0) {
         Log.printf("raw_rest - network issue: %s\n", h2s(httpCode));
         goto exit;

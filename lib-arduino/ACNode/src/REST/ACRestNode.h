@@ -21,7 +21,7 @@ public:
     void pop();
     
     void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
-    // void loop();
+    void loop();
 
     void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
     
@@ -39,5 +39,10 @@ protected:
     ApprovalAPI *_approvalAPI;
     ApprovalEntry * _lastApproved;
 private:
+   // Que of tags to inform the server about on a best effort basis.
+    const unsigned long TAG_SEND_INTERVAL = 5 * 1000; // at least 5 seconds in between tag sends.
+    std::list<String> _approvedTagsToSent;
+    unsigned long _lastApprovalTime;
+ 
 };
 #endif

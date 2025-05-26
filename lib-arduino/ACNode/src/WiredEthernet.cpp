@@ -60,10 +60,10 @@ void WiFiEventLoop() {
             	ETH.linkSpeed());
             Log.printf(" GW: %s DNS: ",
             	ETH.gatewayIP().toString().c_str());
-	    for(int i = 0; i < 16; i++) {
+	    for(int i = 0, j = 0; i < 16; i++) {
 		IPAddress ip = ETH.dnsIP(i);
 		if (ip != IPAddress(INADDR_ANY))
-		      Log.printf("%s ",ip.toString().c_str());
+		      Log.printf("%s%s",j++ ? "," : "",ip.toString().c_str());
 	    };
 	    Log.println("");
             _connected = true;

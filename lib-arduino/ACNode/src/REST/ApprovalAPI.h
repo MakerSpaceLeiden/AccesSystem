@@ -21,8 +21,8 @@ typedef unsigned char acl_t;
 #endif
 
 #define PATH_GETCOUNTER "/v1/getchangecounter"
-// #define PATH_GETTAGS    "/v1/gettags4machineBIN" // Version MSLv1 - with simplified information
-#define PATH_GETTAGS       "/v2/gettags4machineBIN" // Version MSLv2 - with full name and uid reference.
+#define PATH_GETTAGS    "/v2/gettags4machineBIN" // Version MSLv2 - with full name and uid reference.
+#define PATH_RECORDUSE  "/v2/recorduse"
 
 class ApprovalEntry {
 public:
@@ -71,7 +71,10 @@ public:
 
     void scheduleImmediateUpdate();
     void scheduleForcedReload();
-    
+    void scheduleCardused(String tag);
+   
+    void sendBestEffortTagApproved(String tag);
+ 
 private:
     RestAPI * _restAPI;
     const char * machine;
@@ -101,7 +104,7 @@ private:
     typedef enum update_res { NO_UPDATE_NEEDED, FAIL, NEEDS_UPDATE } update_t;
     update_t needsUpdate();
     void updateTagDB();
-    
+
     const char * TAGBINFILE = "/msl1.bin";
     void readCache();
     void writeCache();

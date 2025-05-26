@@ -4,21 +4,25 @@
 #include <ArduinoJSON.h>
 #include <esp_debug_helpers.h>
 #include "util/part.h"
+#include "esp_task_wdt.h"
+
 
 #ifdef ESP32
 #include <WiFi.h>
 #include <ETH.h>
 #endif
 
-#include <TelnetSerialStream.h>
 #include <WebSerialStream.h>
 // WebSerialStream  webSerialStream = WebSerialStream();
+
+#include <TelnetSerialStream.h>
+// TelnetSerialStream  telnetSerialStream = telnetSerialStream();
 
 #include <MqttlogStream.h>
 
 #ifdef SYSLOG_HOST
 #include <SyslogStream.h>
-SyslogStream syslogStream = SyslogStream();
+// SyslogStream syslogStream = SyslogStream();
 #endif
 
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
@@ -58,7 +62,7 @@ void ACNodeBase::CONSTS() {
     Serial.begin(115200);
     while(!Serial) { delay(10); };
 
-    Serial.printf("\n\n" __DATE__ " - " __TIME__ "\nACNode %p started\n", this);
+    Serial.printf("\n\nBoot started -- " __DATE__ " - " __TIME__ "\n", this);
 };
 
 void ACNodeBase::pop() {
@@ -82,22 +86,22 @@ void ACNodeBase::pop() {
     Debug.setTimestamp(true); 
     Debug.setIdentifier("DBG");
 
-    wh = std::make_shared<WebSerialStream>();
+    const std::shared_ptr<LOGBase> & wh = std::make_shared<TelnetSerialStream>();
     Log.addPrintStream(wh);
     Debug.addPrintStream(wh);
 
-    //const std::shared_ptr<LOGBase> & th = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-    th = std::make_shared<TelnetSerialStream>(String(moi));
+    const std::shared_ptr<LOGBase> & th = std::make_shared<WebSerialStream>();
     Debug.addPrintStream(th);
     Log.addPrintStream(th);
 
 #ifdef SYSLOG_HOST
-  syslogStream.setDestination(SYSLOG_HOST);
-  syslogStream.setRaw(true);
+    const std::shared_ptr<SyslogStream> & syslogStream = std::make_shared<SyslogStream>();
+    syslogStream->setDestination(SYSLOG_HOST);
+    syslogStream->setRaw(true);
 #ifdef SYSLOG_PORT
-  syslogStream.setPort(SYSLOG_PORT);
+    syslogStream->setPort(SYSLOG_PORT);
 #endif
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+    Log.addPrintStream(syslogStream);
 #endif
 };
 
@@ -323,6 +327,22 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
 
 }
 
+#define __(x) #x
+#define _(x) __(x) 
+const char _sdk[] = \
+       "Arduino/"  _(ESP_ARDUINO_VERSION_MAJOR) "." _(ESP_ARDUINO_VERSION_MINOR) "." _(ESP_ARDUINO_VERSION_PATCH) \
+       ", "
+       "IDF/" _(ESP_IDF_VERSION_MAJOR) "." _(ESP_IDF_VERSION_MINOR) "." _(ESP_IDF_VERSION_PATCH);
+
+const char * getHW(void) {
+    static char res[48];
+    if (!*res) {
+	snprintf(res, sizeof(res)-1,  "Arduino-" ARDUINO_BOARD "/%s.%u",
+    		ESP.getChipModel(), ESP.getChipRevision());
+	res[sizeof(res)] = 0;
+    };
+    return res;
+}
 
 void ACNodeBase::report(JsonObject & out) {
     out[ "node" ] = moi;
@@ -337,6 +357,8 @@ void ACNodeBase::report(JsonObject & out) {
     out[ "net" ] = _wired ? "UTP" : "WiFi";
     char macstr[30]; strncpy(macstr, macAddressString().c_str(),sizeof(macstr));
     out[ "mac" ] = macstr;
+    out[ "board" ] = getHW();
+    out[ "sdk" ] = _sdk;
     
     if (_start_beat == 0)
         if (time(NULL) > 1542275849)
@@ -423,7 +445,7 @@ void ACNodeBase::loop() {
     
     for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
         unsigned long s = micros();
-        (*it)->loop();
+	(*it)->loop();
         unsigned long delta = micros() - s;
         
         if ((*it)->micros_in_loop == 0)
@@ -439,9 +461,8 @@ void ACNodeBase::loop() {
         Debug.println("-----");
     };
 #else
-    for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
+    for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
         (*it)->loop();
-    }
 #endif
     WiFiEventLoop();
 
