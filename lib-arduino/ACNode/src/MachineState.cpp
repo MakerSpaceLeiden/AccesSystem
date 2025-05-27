@@ -86,7 +86,7 @@ MachineState::MachineState(LED * led) {
     for(int i = 0; i < 256; i++)
         _state2stateStruct[i] = NULL;
     
-    defState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD );
+    defState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD, true );
     defState(REBOOT, 	"Rebooting",            LED::LED_ERROR,   120 * 1000, REBOOT         );
     defState(BOOTING, 	"Booting",              LED::LED_ERROR,   120 * 1000, REBOOT         );
     defState(OUTOFORDER, 	"Out of order",         LED::LED_ERROR,   120 * 1000, REBOOT         );
