@@ -81,7 +81,7 @@ bool PaymentAPI::fetchPricelist() {
     return true;
 }
 
-char * PaymentAPI::claim(const char * againstUserID,
+String PaymentAPI::claim(const char * againstUserID,
                          double amount,
                          const char * description,
                          unsigned long settleSecondsAfterOrNot)
@@ -109,9 +109,8 @@ bool PaymentAPI::update(const char * claim,
         "description",String(description ? description : ""),
         "comment",String(comment ? comment : ""),
     };
-    char * buff =  _raw_claim(CLAIM_UPDATE_URL,args);
-    free(buff);
-    return buff != NULL;
+    String ret =  _raw_claim(CLAIM_UPDATE_URL,args);
+    return ret.length() > 0;
 }
 
 bool PaymentAPI::settle(const char * claim,
@@ -124,20 +123,21 @@ bool PaymentAPI::settle(const char * claim,
         "description",String(description ? description : ""),
         "comment",String(comment ? comment : ""),
     };
-    char * buff = _raw_claim(CLAIM_SETTLE_URL,args);
-    free(buff);
-    return buff != NULL;
+    String ret = _raw_claim(CLAIM_SETTLE_URL,args);
+    return ret.length() > 0;
 }
 
-char * PaymentAPI::_raw_claim(const char * url, std::vector<String> args) {
+String PaymentAPI::_raw_claim(const char * url, std::vector<String> args) {
     unsigned char  * buffp = NULL;
     size_t max_len = 64;
+    String ret;
     
     String payload = encodeargs(args,true /* strip empty strings */);
-    int ret = _restAPI->get(url,&max_len,&buffp,payload);
+    int r = _restAPI->get(url,&max_len,&buffp,payload);
     
-    if (ret <= 0)
-        return NULL;
-    
-    return (char*)buffp;
+    if ((r > 0) && buffp && max_len) {
+	ret = String((char*)buffp);
+	free(buffp);
+    };
+    return ret;
 }

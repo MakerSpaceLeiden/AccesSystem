@@ -15,6 +15,7 @@ private:
 public:
     BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
     BlackNodev111(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
+    BlackNodev111() { Serial.println("Destroy WhiteNode - should never happen"); };
 
     const char * name() { return "BlackNodev111"; }
     
@@ -29,8 +30,6 @@ public:
     static const uint8_t AW_INT = 36; // Was opto 2
     
     void CONSTS() {
-        errorLed = new LEDAW(LED_INDICATOR);
-
         // super::CONSTS();
         
         // Rewired to their own pins (mostly shared with strapping
@@ -68,6 +67,7 @@ public:
         IOE = PIN_HPIO_AW9523 | (8+5); // P1_5
         
         BUTT2 = 0; // Labeled MENU on the PCB -- not yet tested.
+
         static iostate_t s[] = {
             { BUTT0, "YES/nxt", 1, INPUT_PULLUP },
             { BUTT1, "NO/back", 1, INPUT_PULLUP },
@@ -80,7 +80,6 @@ public:
             { 255, NULL },
         };
         iostates = s;
-
     };
     void begin();
     void pop();
@@ -97,7 +96,6 @@ public:
     // Newer nodes have an extra button.
     //
     void setYesCallback(ButtonCallback callback,int mode = CHANGE);
-    LEDAW * errorLed = NULL;
 private:
     int8_t expectOut1 = -1;
     int8_t expectOut2 = -1;

@@ -120,7 +120,7 @@ void ApprovalAPI::loop() {
     //
     if (_restAPI->state() != RestAPI::FULLY_REGISTERED && _restAPI->state() != RestAPI::DONE)
         return;
-    
+   
     if (interval && last_update &&  millis() - last_update < interval)
         return;
     
@@ -153,23 +153,29 @@ void ApprovalAPI::loop() {
     last_update = millis();
 };
 
+
 ApprovalAPI::update_t ApprovalAPI::needsUpdate() {
     unsigned char * buff = NULL;
     char url[] = ACL_URL PATH_GETCOUNTER;
     size_t len = 1024;
+    update_t ret = FAIL;
+    unsigned long cntr;
+
     int n = _restAPI->get(url,&len,&buff);
-    if (n < 0)
-        return FAIL;
+    if (n < 0) 
+	goto exit;
 
     buff[n-1] = 0; // damages last byte (CR/LF or comments) - which is ok as we own this buffer
-    unsigned long cntr = atoi((char *)buff);
-    free(buff);
+    cntr = atoi((char *)buff);
 
     Log.printf("TagDB identifier: %08x: %s%c(previous: %08x)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", (identifier == cntr) ? 0 : 32, identifier);
  
     last_update = millis();
     
-    return (cntr != identifier) ? NEEDS_UPDATE : NO_UPDATE_NEEDED;
+    ret = (cntr != identifier) ? NEEDS_UPDATE : NO_UPDATE_NEEDED;
+exit:
+    if (buff) free(buff);
+    return ret;
 }
 
 void ApprovalAPI::updateTagDB() {
@@ -182,15 +188,18 @@ void ApprovalAPI::updateTagDB() {
     int n = _restAPI->get(url,&len,&buff);
     if (n <= 0) {
         Log.printf("Failed to load bintags from <%s>\n", url);
-        return;
+        goto exit;
     };
+
     // Note: import will claim the buffer and manage it.
     if (import(buff,len)) {
         writeCache();
-    } else {
-        Log.println("Failed to load.");
-        free((void*)buff);
+	return;
     };
+
+    Log.println("Failed to import bintags");
+exit:
+    if (buff) free((void*)buff);
     return;
 }
 
@@ -398,6 +407,21 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     };
 
     return new ApprovalEntry(uid, name, shortName, has, needs);
+}
+
+void ApprovalAPI::sendBestEffortTagApproved(String tag) {
+    unsigned char buff[32]; // experting (and ignoring) an simple OK/ERROR or unfound reply
+    unsigned char * p = buff;
+
+    char url[256], argtmp[64];
+    size_t len = sizeof(buff);
+
+    snprintf(url,sizeof(url), ACL_URL PATH_RECORDUSE "/%s", _argencode(argtmp,sizeof(argtmp),machine));
+    String postarg = "tag=" + tag;
+
+    int n = _restAPI->get(url,&len,&p,postarg);
+    Debug.printf("Reporting use: %s\n", n < 0 ? "ERR" : String(p,len));
+    return;
 }
 
 void ApprovalDeck::render_pane(bool refresh) {

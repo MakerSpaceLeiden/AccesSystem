@@ -110,7 +110,8 @@ public:
     
     WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_REST);
     WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_REST);
-    
+    ~WhiteNodev108() { Serial.println("Destroy WhiteNode - should never happen"); };
+
     void setOTAPasswordHash(const char * ota_md5) { _ota_md5 = ota_md5; };
     void begin();
     void loop();
@@ -118,7 +119,7 @@ public:
     void onSwipe(RFID::THandlerFunction_SwipeCB fn);
         
     void updateDisplay(String left, String right, bool rebuildFull = false);
-    void updateDisplayStateMsg(String msg,int line = 0);
+    void updateDisplayStateMsg(String msg,int line = 1);
     
     void setOffCallback(ButtonCallback callback,int mode = CHANGE);
     void setMenuCallback(ButtonCallback callback,int mode = CHANGE);

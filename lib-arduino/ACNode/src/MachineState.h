@@ -7,6 +7,36 @@
 #include <ACBase.h>
 #include <LED.h>
 
+
+class AMState;
+
+
+class AMState {
+public:
+    typedef uint8_t machinestate_t;
+
+    const char * label;                   /* name of this state */
+    LED::led_state_t ledState;            /* flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1. */
+    time_t maxTimeInMilliSeconds;         /* how long we can stay in this state before we timeout. */
+    machinestate_t failStateOnTimeout;    /* what state we transition to on timeout. */
+    unsigned long timeoutTransitions;
+    unsigned long autoReportCycle;
+    bool safeForOTA; // Can we safely allow a resetting Over the Air update (OTA) ?
+        
+    // Bookkeeping
+    time_t timeInState;
+    unsigned long stateCnt;
+
+    typedef std::function<void(machinestate_t currentState)> THandlerFunction_OnLoopCB;
+    typedef std::function<void(machinestate_t oldState, machinestate_t newState)> THandlerFunction_OnChangeCB; // in & out
+    typedef std::function<void(machinestate_t currentState)> THandlerFunction_OnTimeoutCB;
+
+    std::list<THandlerFunction_OnLoopCB> onLoopCBs;
+    std::list<THandlerFunction_OnChangeCB> onChangeCBs;
+    std::list<THandlerFunction_OnTimeoutCB> onTimeoutCBs;
+};
+
+
 class MachineState : public ACBase {
 public:
     static const time_t NEVER = 0;
@@ -57,40 +87,13 @@ public:
         // end
         ALL_STATES = 255
     } machinestates_t;
-    
     typedef uint8_t machinestate_t;
     
-    typedef std::function<void(machinestate_t currentState)> THandlerFunction_OnLoopCB;
-    typedef std::function<void(machinestate_t oldState, machinestate_t newState)> THandlerFunction_OnChangeCB; // in & out
-    typedef std::function<void(machinestate_t currentState)> THandlerFunction_OnTimeoutCB;
-    
 private:
-    typedef struct {
-        const char * label;                   /* name of this state */
-        LED::led_state_t ledState;            /* flashing pattern for the aartLED. Zie ook https://wiki.makerspaceleiden.nl/mediawiki/index.php/Powernode_1.1. */
-        time_t maxTimeInMilliSeconds;         /* how long we can stay in this state before we timeout. */
-        machinestate_t failStateOnTimeout;    /* what state we transition to on timeout. */
-        unsigned long timeoutTransitions;
-        unsigned long autoReportCycle;
-        bool safeForOTA; // Can we safely allow a resetting Over the Air update (OTA) ?
-        
-        THandlerFunction_OnLoopCB onLoopCB;
-        THandlerFunction_OnChangeCB onChangeCB;
-        THandlerFunction_OnTimeoutCB onTimeoutCB;
-        
-        // Bookkeeping
-        time_t timeInState;
-        unsigned long stateCnt;
-    } state_t;
-    state_t * _state2stateStruct[256];
+    AMState * _state2stateStruct[256];
     
     machinestate_t machinestate = OUTOFORDER, laststate = OUTOFORDER, newstate = BOOTING;
     unsigned long laststatechange, lastReport;
-    
-    state_t * _initState(uint8_t state, state_t dflt);
-    state_t * _initState(uint8_t state, state_t * dflt);
-    state_t * _initState(uint8_t state, const char * label, LED::led_state_t ledState,
-                         time_t timeout = NEVER, machinestate_t nextstate = NEVER);
     
     LED * _led = NULL;
     
@@ -99,6 +102,7 @@ public:
     const char * label(uint8_t label);
     LED::led_state_t ledState() { return _state2stateStruct[machinestate]->ledState; }
     MachineState(LED * led = NULL);
+    ~MachineState() { Serial.println("Destroy MachineState -- should never happen."); assert(false); };
     
     machinestate_t state();
     operator const char* () { return label(); };
@@ -109,7 +113,7 @@ public:
     void setState(machinestate_t s);
     
     bool safeForOTA();
-    
+
 #if 0
     bool operator <(machinestate_t s) { return s > machinestate; };
     bool operator ==(void s) { return (machinestate_t)s == machinestate; };
@@ -118,19 +122,18 @@ public:
     bool operator !=(machinestate_t s) { return s != machinestate; };
     bool operator >(machinestate_t s) { return s < machinestate; };
 #endif
-    void setOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
-    
-    void setOnChangeCallback(machinestate_t state, THandlerFunction_OnChangeCB onChangeCB);
-    
-    void setOnTimeoutCallback(machinestate_t state, THandlerFunction_OnTimeoutCB onTimeoutCB);
-    
-    machinestate_t addState(state_t aState);
-    
-    machinestate_t addState(const char * label, machinestate_t nextstate);
-    
-    machinestate_t addState(const char * label, time_t timeout, machinestate_t nextstate);
-    
-    machinestate_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA = true);
+    typedef std::function<void(machinestate_t currentState)> THandlerFunction_OnLoopCB;
+    typedef std::function<void(machinestate_t oldState, machinestate_t newState)> THandlerFunction_OnChangeCB; // in & out
+    typedef std::function<void(machinestate_t currentState)> THandlerFunction_OnTimeoutCB;
+    void addOnLoopCallback(machinestate_t state, THandlerFunction_OnLoopCB onLoopCB);
+    void addOnChangeCallback(machinestate_t state, THandlerFunction_OnChangeCB onChangeCB);
+    void addOnTimeoutCallback(machinestate_t state, THandlerFunction_OnTimeoutCB onTimeoutCB);
+   
+    machinestate_t defState(machinestate_t i, const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate = WAITINGFORCARD, bool isSafeForOTA = false);
+
+    machinestate_t addState(const char * label, machinestate_t nextstate = WAITINGFORCARD);
+    machinestate_t addState(const char * label, time_t timeout, machinestate_t nextstate = WAITINGFORCARD);
+    machinestate_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate = WAITINGFORCARD, bool isSafeForOTA = true);
     
     void setTimeoutState(machinestate_t s, machinestate_t next) {
         _state2stateStruct[s]->failStateOnTimeout = next;
@@ -146,20 +149,10 @@ public:
         laststatechange = millis();
     };
 
-    void defineState(machinestate_t state,
-                     const char * label,
-                     LED::led_state_t ledState = LED::LED_ERROR,
-                     time_t timeout = NEVER,
-                     machinestate_t newstate = WAITINGFORCARD,
-                     unsigned long timeoutTransitions = NEVER,
-                     unsigned long autoReportCycle = NEVER,
-                     THandlerFunction_OnLoopCB onLoopCB = NULL,
-                     THandlerFunction_OnChangeCB onChangeCB = NULL,
-                     THandlerFunction_OnTimeoutCB onTimeoutCB = NULL);
-    
     // ACBase - standard handlers.
     //
     void begin();
     void report(JsonObject& report);
     void loop();
 };
+

@@ -1,8 +1,8 @@
 #ifndef _H_ACNODE_SIG
 #define _H_ACNODE_SIG
 
-#include "ACNode-private.h"
 #include "ACBaseNode.h"
+#include "ACNode-private.h"
 #include "SIG/ACNode.h"
 
 #include <Ticker.h>
@@ -58,12 +58,12 @@
 
 void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length);
 
-class ACNode : public ACNodeBase {
+class ACNodeSIG : public ACNodeBase {
 private:
     typedef ACNodeBase super;
 public:
-    ACNode(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
-    ACNode(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
+    ACNodeSIG(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
+    ACNodeSIG(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
 
 #ifdef INPUT
     void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = INPUT /* Olimex BUT1 */);
@@ -112,7 +112,7 @@ protected:
 };
 
 // For use in callbacks that are from plain C
-extern ACNode *_acnode;
+extern ACNodeSIG *_acnode;
 
 extern void send(const char * topic, const char * payload);
 

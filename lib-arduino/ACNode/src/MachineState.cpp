@@ -5,47 +5,38 @@
 #include <ACBase.h>
 #include <MachineState.h>
 
-MachineState::state_t * MachineState::_initState(uint8_t state, MachineState::state_t dflt) {
-    return _initState(state, &dflt);
+#include <assert.h>
+
+#define X { Serial.printf("%s:%d - %s\n",__FILE__,__LINE__,__PRETTY_FUNCTION__); }
+
+MachineState::machinestate_t MachineState::defState(machinestate_t i, const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA) {
+    assert(_state2stateStruct[i]==NULL);
+
+    _state2stateStruct[i] = new AMState();
+    _state2stateStruct[i]->label = label;
+    _state2stateStruct[i]->ledState= ledState;
+    _state2stateStruct[i]->maxTimeInMilliSeconds = timeout;
+    _state2stateStruct[i]->failStateOnTimeout = nextstate;
+    _state2stateStruct[i]->safeForOTA = isSafeForOTA;
+
+    return i;
+};
+
+MachineState::machinestate_t MachineState::addState(const char * label, machinestate_t nextstate) {
+    return addState(label, LED::LED_ERROR,5 * 1000, nextstate, false);
 }
 
-MachineState::state_t * MachineState::_initState(uint8_t state,
-                                                 const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate)
-{
-    state_t s = {
-        .label = label,
-        .ledState = ledState,
-        .maxTimeInMilliSeconds = timeout,
-        .failStateOnTimeout = nextstate,
-        .timeoutTransitions = 0,
-        .autoReportCycle = 0,
-        .safeForOTA = true,
-        .onLoopCB = nullptr,
-        .onChangeCB = nullptr,
-        .onTimeoutCB = nullptr,
-        // Internal Bookkeeping
-        .timeInState = 0,
-        .stateCnt = 0,
-    };
-    return _initState(state, &s);
+MachineState::machinestate_t MachineState::addState(const char * label, time_t timeout, machinestate_t nextstate) {
+    return addState(label, LED::LED_ERROR,timeout, nextstate, false);
 }
 
-MachineState::state_t * MachineState::_initState(uint8_t state, MachineState::state_t * dflt) {
-    // state_t *s = heap_caps_malloc(sizeof(state_t), MALLOC_CAP_32BIT | MALLOC_CAP_SPIRAM);
-    state_t * s = (state_t *) malloc(sizeof(state_t));
-    if (!s) return NULL;
-    
-    if (dflt)
-        memcpy(s,dflt,sizeof(state_t)); // *s = *dflt;
-    else
-        memset(s,0,sizeof(s)); // *s = {};
-    
-    if (s->label) s->label = strdup(s->label);
-    
-    _state2stateStruct[state] = s;
-    // Serial.printf("State: %d - %p - %s\n", state, _state2stateStruct[state], s->label ? s->label : "????");
-    return s;
-}
+MachineState::machinestate_t MachineState::addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA) {
+    for (uint8_t i = 0; i < 255; i++)
+        if (_state2stateStruct[i]==NULL)
+	     return defState(i,label,ledState,timeout,nextstate,isSafeForOTA);
+    assert(NULL == "BUG -- More than 254 active states ?");
+    return 255;
+};
 
 const char * MachineState::label()  {
     return label(machinestate);
@@ -64,7 +55,7 @@ MachineState::machinestate_t MachineState::state() {
 }
 
 void MachineState::setState(machinestate_t s) {
-    // Log.printf("Changing state; %s -> %s\n", label(machinestate), label(s));
+    Log.printf("MachineState:setState; %s(%d) -> %s(%d)\n", label(machinestate), machinestate, label(s), s);
     newstate = s;
     if (_led) _led->set(ledState());
 }
@@ -73,78 +64,21 @@ void MachineState::operator=(machinestate_t s) {
     setState(s);
 }
 
-void MachineState::setOnLoopCallback(uint8_t state, THandlerFunction_OnLoopCB onLoopCB) {
-    state_t *s = _state2stateStruct[state];
-    if (s == NULL) s = _initState(state, NULL);
-    s->onLoopCB = onLoopCB;
+void MachineState::addOnLoopCallback(uint8_t state, THandlerFunction_OnLoopCB onLoopCB) {
+    AMState *s = _state2stateStruct[state];
+    assert(s);
+    s->onLoopCBs.push_back(onLoopCB);
 }
 
-void MachineState::setOnChangeCallback(uint8_t state, THandlerFunction_OnChangeCB onChangeCB) {
-    state_t *s = _state2stateStruct[state];
-    if (s == NULL)
-        s = _initState(state, NULL);
-    s->onChangeCB = onChangeCB;
+void MachineState::addOnChangeCallback(uint8_t state, THandlerFunction_OnChangeCB onChangeCB) {
+    AMState *s = _state2stateStruct[state];
+    if (s) s->onChangeCBs.push_back(onChangeCB);
 };
 
-void MachineState::setOnTimeoutCallback(uint8_t state, THandlerFunction_OnTimeoutCB onTimeoutCB) {
-    state_t *s = _state2stateStruct[state];
-    if (s == NULL)
-        s = _initState(state, NULL);
-    s->onTimeoutCB = onTimeoutCB;
-};
-
-MachineState::machinestate_t MachineState::addState(const char * label, machinestate_t nextstate) {
-    return addState((state_t) {
-        .label = label,
-        .ledState = LED::LED_ERROR,
-        .maxTimeInMilliSeconds = 5 * 1000,
-        .failStateOnTimeout = nextstate,
-        .timeoutTransitions = 0,
-        .autoReportCycle = 0,
-        .onLoopCB = nullptr,
-        .onChangeCB = nullptr,
-        .onTimeoutCB = nullptr,
-    });
-}
-
-MachineState::machinestate_t MachineState::addState(const char * label, time_t timeout, machinestate_t nextstate) {
-    return addState((state_t) {
-        .label = label,
-        .ledState = LED::LED_ERROR,
-        .maxTimeInMilliSeconds = timeout,
-        .failStateOnTimeout = nextstate,
-        .timeoutTransitions = 0,
-        .autoReportCycle = 0,
-        .onLoopCB = nullptr,
-        .onChangeCB = nullptr,
-        .onTimeoutCB = nullptr,
-    });
-}
-
-MachineState::machinestate_t MachineState::addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA) {
-    state_t s = {
-        .label = label,
-        .ledState = ledState,
-        .maxTimeInMilliSeconds = timeout,
-        .failStateOnTimeout = nextstate,
-        .timeoutTransitions = 0,
-        .autoReportCycle = 0,
-        .safeForOTA = isSafeForOTA,
-        .onLoopCB = nullptr,
-        .onChangeCB = nullptr,
-        .onTimeoutCB = nullptr,
-    };
-    return addState(s);
-}
-
-MachineState::machinestate_t MachineState::addState(state_t aState) {
-    for (uint8_t i = 0; i < 255; i++)
-        if (_state2stateStruct[i] == NULL) {
-            _initState(i, &aState);
-            return i;
-        };
-    Log.println("BUG -- More than 254 active states ?");
-    return 255;
+void MachineState::addOnTimeoutCallback(uint8_t state, THandlerFunction_OnTimeoutCB onTimeoutCB) {
+    AMState *s = _state2stateStruct[state];
+    assert(s);
+    s->onTimeoutCBs.push_back(onTimeoutCB);
 };
 
 MachineState::MachineState(LED * led) {
@@ -152,15 +86,15 @@ MachineState::MachineState(LED * led) {
     for(int i = 0; i < 256; i++)
         _state2stateStruct[i] = NULL;
     
-    _initState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD );
-    _initState(REBOOT, 	"Rebooting",            LED::LED_ERROR,   120 * 1000, REBOOT         );
-    _initState(BOOTING, 	"Booting",              LED::LED_ERROR,   120 * 1000, REBOOT         );
-    _initState(OUTOFORDER, 	"Out of order",         LED::LED_ERROR,   120 * 1000, REBOOT         );
-    _initState(TRANSIENTERROR,"Transient Error",      LED::LED_ERROR,     5 * 1000, WAITINGFORCARD );
-    _initState(NOCONN, 	"No network",           LED::LED_FLASH,        NEVER, NOCONN         );
-    _initState(CHECKINGCARD, 	"Checking card...",     LED::LED_IDLE,     10 * 1000, WAITINGFORCARD );
-    _initState(REJECTED, 	"Card rejected",        LED::LED_ERROR,     2 * 1000, WAITINGFORCARD );
-    _initState(ALL_STATES, 	"<default>",            LED::LED_IDLE,         NEVER, ALL_STATES     );
+    defState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD );
+    defState(REBOOT, 	"Rebooting",            LED::LED_ERROR,   120 * 1000, REBOOT         );
+    defState(BOOTING, 	"Booting",              LED::LED_ERROR,   120 * 1000, REBOOT         );
+    defState(OUTOFORDER, 	"Out of order",         LED::LED_ERROR,   120 * 1000, REBOOT         );
+    defState(TRANSIENTERROR,"Transient Error",      LED::LED_ERROR,     5 * 1000, WAITINGFORCARD );
+    defState(NOCONN, 	"No network",           LED::LED_FLASH,        NEVER, NOCONN         );
+    defState(CHECKINGCARD, 	"Checking card...",     LED::LED_IDLE,     10 * 1000, WAITINGFORCARD );
+    defState(REJECTED, 	"Sorry!",        LED::LED_ERROR,     2 * 1000, WAITINGFORCARD );
+    defState(ALL_STATES, 	"<default>",            LED::LED_IDLE,         NEVER, ALL_STATES     );
     
     laststate = OUTOFORDER;
     newstate = machinestate = BOOTING;
@@ -172,10 +106,11 @@ void MachineState::begin() {
     // register reboot 'late' -- so we know we're through as much init complexity
     // and surprises as possible.
     //
-    setOnLoopCallback(REBOOT, [](MachineState::machinestate_t s) -> void {
+    addOnLoopCallback(REBOOT, [](MachineState::machinestate_t s) -> void {
         _acnodebase->delayedReboot();
     });
     if (_led) _led->set(ledState());
+    Debug.println(__PRETTY_FUNCTION__);
 };
 
 void MachineState::report(JsonObject& report) {
@@ -188,26 +123,35 @@ void MachineState::report(JsonObject& report) {
 
 void MachineState::loop()
 {
+    // Debug.println(__PRETTY_FUNCTION__);
+
     machinestate = newstate;
     
     if (_state2stateStruct[machinestate] == NULL) {
-        Log.printf("State %d reached - which us undefind. ignoring.", machinestate);
+        Log.printf("State %d reached - which is undefind. ignoring.", machinestate);
         return;
     };
     
     if (laststate != machinestate) {
         Debug.printf("Changed from state <%s> to state <%s>\n", label(laststate), label(machinestate));
+        std::list<THandlerFunction_OnChangeCB> cbs;
 
-        if (_state2stateStruct[machinestate]->onChangeCB)
-            _state2stateStruct[machinestate]->onChangeCB(laststate, machinestate);
-        if (_state2stateStruct[ALL_STATES]->onChangeCB)
-            _state2stateStruct[ALL_STATES]->onChangeCB(laststate, machinestate);
-        
+        cbs = _state2stateStruct[machinestate]->onChangeCBs;
+        for (auto it = cbs.begin(); it!=cbs.end(); ++it) {
+            (*it)(laststate, machinestate);
+        };
+ 
+        cbs = _state2stateStruct[ALL_STATES]->onChangeCBs;
+        for (auto it = cbs.begin(); it!=cbs.end(); ++it)
+            (*it)(laststate, machinestate);
+    
         if (_state2stateStruct[laststate]) {
             _state2stateStruct[laststate]->timeInState += (millis() - laststatechange) / 1000;
             _state2stateStruct[laststate]->stateCnt ++;
         };
-        if (_led) _led->set(ledState());
+
+        if (_led) 
+		_led->set(ledState());
 
         laststate = machinestate;
         laststatechange = millis();
@@ -219,17 +163,22 @@ void MachineState::loop()
     {
         _state2stateStruct[machinestate]->timeoutTransitions++;
         
-        if (_state2stateStruct[laststate]->onTimeoutCB)
-            _state2stateStruct[laststate]->onTimeoutCB(machinestate);
-        if (_state2stateStruct[ALL_STATES]->onTimeoutCB)
-            _state2stateStruct[ALL_STATES]->onTimeoutCB(machinestate);
+        std::list<THandlerFunction_OnTimeoutCB> cbs;
+        
+        cbs = _state2stateStruct[laststate]->onTimeoutCBs;
+        for (auto it = cbs.begin(); it!=cbs.end(); ++it)
+            (*it)(machinestate);
+
+        cbs = _state2stateStruct[ALL_STATES]->onTimeoutCBs;
+        for (auto it = cbs.begin(); it!=cbs.end(); ++it)
+            (*it)(machinestate);
         
         laststate = machinestate;
         newstate = _state2stateStruct[machinestate]->failStateOnTimeout;
         
         Debug.printf("Time-out (%f seconds); will transition from %d<%s> to %d<%s>\n",
-                   _state2stateStruct[laststate]->maxTimeInMilliSeconds/1000.,
-                   laststate, label(laststate),
+                     _state2stateStruct[laststate]->maxTimeInMilliSeconds/1000.,
+                     laststate, label(laststate),
                      newstate, label(newstate));
         return;
     };
@@ -242,10 +191,15 @@ void MachineState::loop()
         lastReport = millis();
     };
     
-    if (_state2stateStruct[machinestate]->onLoopCB)
-        _state2stateStruct[machinestate]->onLoopCB(machinestate);
-    else if (_state2stateStruct[ALL_STATES]->onLoopCB)
-        _state2stateStruct[ALL_STATES]->onLoopCB(machinestate);
+    std::list<THandlerFunction_OnLoopCB> cbs;
+
+    cbs = _state2stateStruct[machinestate]->onLoopCBs;
+    for (auto it = cbs.begin(); it!=cbs.end(); ++it)
+        (*it)(machinestate);
+
+    cbs = _state2stateStruct[ALL_STATES]->onLoopCBs;
+    for (auto it = cbs.begin(); it!=cbs.end(); ++it)
+        (*it)(machinestate);
 };
 
 time_t MachineState::secondsInThisState() {
@@ -275,35 +229,4 @@ String MachineState::timeLeftInThisState() {
     return String(buff);
 };
 
-void MachineState::defineState(uint8_t state,
-                               const char * label,
-                               LED::led_state_t ledState,
-                               time_t timeout,
-                               machinestate_t nextstate,
-                               unsigned long timeoutTransitions,
-                               unsigned long autoReportCycle,
-                               THandlerFunction_OnLoopCB onLoopCB,
-                               THandlerFunction_OnChangeCB onChangeCB,
-                               THandlerFunction_OnTimeoutCB onTimeoutCB
-                               ) {
-    if (state >=254 || _state2stateStruct[state]) {
-        Log.printf("BUG -- inpossible state (%d:%s)\n", state, label);
-        return;
-    };
-    state_t aState = {
-        .label = label,
-        .ledState = ledState,
-        .maxTimeInMilliSeconds = timeout,
-        .failStateOnTimeout = nextstate,
-        .timeoutTransitions = timeoutTransitions,
-        .autoReportCycle = autoReportCycle,
-        .onLoopCB = onLoopCB,
-        .onChangeCB = onChangeCB,
-        .onTimeoutCB = onTimeoutCB,
-        // internal bookkeeping
-        .timeInState = 0,
-        .stateCnt = 0
-    };
-    _initState(state , &aState);
-}
 

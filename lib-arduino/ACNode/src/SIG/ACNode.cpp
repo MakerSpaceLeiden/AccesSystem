@@ -29,7 +29,7 @@ SIG2 sig2 = SIG2();
 // limits in MQTT callback and elsewhere.
 //
 // For use in callbacks that are from plain C
-ACNode *_acnode;
+ACNodeSIG *_acnode;
 
 void send(const char * topic, const char * payload) {
     if(_acnode)
@@ -37,22 +37,22 @@ void send(const char * topic, const char * payload) {
 }
 #endif
 
-ACNode::ACNode(const char * m, bool wired, acnode_proto_t proto) : ACNodeBase(m, wired), _proto(proto)
+ACNodeSIG::ACNodeSIG(const char * m, bool wired, acnode_proto_t proto) : ACNodeBase(m, wired), _proto(proto)
 {
     _acnode = this;
     pop();
 }
 
-ACNode::ACNode(const char *m, const char * ssid , const char * ssid_passwd, acnode_proto_t proto ) : ACNodeBase(m,ssid,ssid_passwd), _proto(proto)
+ACNodeSIG::ACNodeSIG(const char *m, const char * ssid , const char * ssid_passwd, acnode_proto_t proto ) : ACNodeBase(m,ssid,ssid_passwd), _proto(proto)
 {
     _acnode = this;
     pop();
 }
 
-void ACNode::pop() {
+void ACNodeSIG::pop() {
 }
 
-void ACNode::addSecurityHandler(ACSecurityHandler * handler) {
+void ACNodeSIG::addSecurityHandler(ACSecurityHandler * handler) {
     _security_handlers.insert(_security_handlers.end(), handler);
     
     // Some handlers need a begin or loop maintenance cycle - so we
@@ -60,7 +60,7 @@ void ACNode::addSecurityHandler(ACSecurityHandler * handler) {
     addHandler(handler);
 }
 
-void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button) {
+void ACNodeSIG::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button) {
     super::_begin(board, clear_button);
     
     switch(_proto) {
@@ -106,7 +106,7 @@ void ACNode::begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_
     _client.setCallback(mqtt_callback);
 };
 
-char * ACNode::cloak(char * tag) {
+char * ACNodeSIG::cloak(char * tag) {
     ACRequest q = ACRequest();
     strncpy(q.tag, tag, sizeof(q.tag));
     std::list<ACSecurityHandler *>::iterator it;
@@ -132,12 +132,12 @@ char * ACNode::cloak(char * tag) {
 }
 
 #ifdef HAS_SIG2
-void ACNode::add_trusted_node(const char *node) {
+void ACNodeSIG::add_trusted_node(const char *node) {
     sig2.add_trusted_node(node);
 }
 #endif
 
-ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
+ACBase::cmd_result_t ACNodeSIG::handle_cmd(ACRequest * req)
 {
     if (!strncmp("ping", req->cmd, 4)) {
         char buff[MAX_TOKEN_LEN*2];
@@ -146,19 +146,19 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
         snprintf(buff, sizeof(buff), "ack %s %s %d.%d.%d.%d", master, moi, myIp[0], myIp[1], myIp[2], myIp[3]);
         send(NULL, buff);
         Debug.println("replied on the pick with an ack.");
-        return ACNode::CMD_CLAIMED;
+        return ACNodeSIG::CMD_CLAIMED;
     };
     if (!strcmp("clearcache", req->cmd)) {
         Log.println("Command received to clear the cache");
         wipeCache();
-        return ACNode::CMD_CLAIMED;
+        return ACNodeSIG::CMD_CLAIMED;
     }
     if (!strcmp("unauthorize", req->cmd)) {
         char tmp[MAX_MSG], *p = tmp;
         strncpy(tmp, req->rest, sizeof(tmp));
-        SEP(tag, "No tag in unauthorize command", ACNode::CMD_CLAIMED)
+        SEP(tag, "No tag in unauthorize command", ACNodeSIG::CMD_CLAIMED)
         unsetCache(req->rest);
-        return ACNode::CMD_CLAIMED;
+        return ACNodeSIG::CMD_CLAIMED;
     };
     
     bool app = ((strcasecmp("approved",req->cmd)==0) || (strcasecmp("open",req->cmd)==0));
@@ -172,19 +172,19 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
         char tmp[MAX_MSG], *p = tmp;
         strncpy(tmp, req->rest, sizeof(tmp));
         
-        SEP(action, "No action in approval command", ACNode::CMD_CLAIMED)
-        SEP(machine, "No machine-name in approval command", ACNode::CMD_CLAIMED);
-        SEP(bcstr, "No nonce/beat in approval command", ACNode::CMD_CLAIMED);
+        SEP(action, "No action in approval command", ACNodeSIG::CMD_CLAIMED)
+        SEP(machine, "No machine-name in approval command", ACNodeSIG::CMD_CLAIMED);
+        SEP(bcstr, "No nonce/beat in approval command", ACNodeSIG::CMD_CLAIMED);
         beat_t bc = strtoul(bcstr, NULL, 10);
         
         if (beat_absdelta(beatCounter, _lastSwipe) > 60)  {
             Log.printf("Stale energize/denied command received - ignored.\n");
-            return ACNode::CMD_CLAIMED;
+            return ACNodeSIG::CMD_CLAIMED;
         };
         
         if (bc != _lastSwipe && bc != _lastSwipe+1) {
             Log.printf("Out of order energize/denied command received - ignored (got %lu, expected %lu)\n", bc, _lastSwipe);
-            return ACNode::CMD_CLAIMED;
+            return ACNodeSIG::CMD_CLAIMED;
         };
         
         
@@ -193,14 +193,14 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
             Log.printf("Received OK to power on %s\n", machine);
             if (_approved_callback) {
                 _approved_callback(machine);
-                return ACNode::CMD_CLAIMED;
+                return ACNodeSIG::CMD_CLAIMED;
             };
         } else {
             unsetCache(_lasttag);
             Log.printf("Received a DENIED to power on %s\n", machine);
             if (_denied_callback) {
                 _denied_callback(machine);
-                return ACNode::CMD_CLAIMED;
+                return ACNodeSIG::CMD_CLAIMED;
             };
         }
     }
@@ -208,14 +208,14 @@ ACBase::cmd_result_t ACNode::handle_cmd(ACRequest * req)
     if (!strcmp("outoforder", req->cmd)) {
         machinestate = OUTOFORDER;
         send(NULL, "event outoforder");
-        return ACNode::CMD_CLAIMED;
+        return ACNodeSIG::CMD_CLAIMED;
     }
 #endif
-    return ACNode::CMD_DECLINE;
+    return ACNodeSIG::CMD_DECLINE;
 }
 
 
-void ACNode::process(const char * topic, const char * payload)
+void ACNodeSIG::process(const char * topic, const char * payload)
 {
     size_t length = strlen(payload);
     char * p;
@@ -319,7 +319,7 @@ _done:
     return;
 }
 
-void ACNode::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) {
+void ACNodeSIG::request_approval(const char * tag, const char * operation, const char * target, bool useCacheOk) {
         if (tag == NULL) {
             Log.println("invalid tag==NULL passed, approval request not sent");
             return;
@@ -369,7 +369,7 @@ void ACNode::request_approval(const char * tag, const char * operation, const ch
         return;
 }
 
-void ACNode::report(JsonObject & out) {
+void ACNodeSIG::report(JsonObject & out) {
     if (_start_beat == 0)
         if (beatCounter > 50000)
             _start_beat =beatCounter +  millis()/1000;
@@ -388,7 +388,7 @@ void ACNode::report(JsonObject & out) {
 #endif
 }
 
-void ACNode::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
+void ACNodeSIG::checkClearEEPromAndCacheButtonPressed(uint8_t button) {
     const unsigned long prevSecs = MAX_WAIT_TIME_BUTTON_PRESSED / 1000;
     
     if (button == 255)
@@ -437,15 +437,15 @@ typedef struct publish_rec {
 #define MAX_RQ_QUEUELEN (15)
 publish_rec_t *publish_queue = NULL;
 
-void ACNode::send(const char * topic, const char * payload, bool _raw) {
+void ACNodeSIG::send(const char * topic, const char * payload, bool _raw) {
     char _topic[MAX_TOPIC];
     
     if (topic == NULL) {
-        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, ACNode::moi);
+        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, master, ACNodeSIG::moi);
         topic = _topic;
     }
     else if (index(topic,'/') == NULL) {
-        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, ACNode::moi, topic);
+        snprintf(_topic, sizeof(_topic), "%s/%s/%s", mqtt_topic_prefix, ACNodeSIG::moi, topic);
         topic = _topic;
     }
     
@@ -487,7 +487,7 @@ void ACNode::send(const char * topic, const char * payload, bool _raw) {
     *p = rec;
 }
 
-void ACNode::reconnectMQTT() {
+void ACNodeSIG::reconnectMQTT() {
     super::reconnectMQTT();
     
     char topic[MAX_TOPIC];
@@ -505,7 +505,7 @@ void ACNode::reconnectMQTT() {
     send_helo(NULL);
 }
 
-void ACNode::send_helo(char * token) {
+void ACNodeSIG::send_helo(char * token) {
     char topic[MAX_TOPIC];
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, moi, master);
     
@@ -559,7 +559,7 @@ void mqtt_callback(char* topic, byte * payload_theirs, unsigned int length) {
     _acnodebase->process(topic, payload);
 }
 
-void ACNode::mqttLoop() {
+void ACNodeSIG::mqttLoop() {
     ACNodeBase::mqttLoop();
     
     if (!publish_queue)

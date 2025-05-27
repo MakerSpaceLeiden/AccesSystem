@@ -56,25 +56,15 @@ void WhiteNodev108::pop() {
     // Non standard pins for i2c.
     Wire.begin(I2C_SDA, I2C_SCL);
     
-    buzzer(false);;
-    xpinMode(BUZZER, OUTPUT);
-    
     FAULTED =     machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER, MachineState::NEVER);
     SCREENSAVER = machinestate.addState("Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER, MachineState::WAITINGFORCARD);
     INFODISPLAY = machinestate.addState("User browsing info pages", LED::LED_OFF, 20 * 1000, MachineState::WAITINGFORCARD);
     POWERED =     machinestate.addState("Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);
-    
-    xpinMode(OFF_BUTTON, INPUT_PULLUP);
-    xpinMode(MENU_BUTTON, INPUT_PULLUP);
-
-    xpinMode(OPTO0, INPUT);
-    xpinMode(OPTO1, INPUT);
-    
-    if (!errorLed)
-        errorLed = new LED(LED_INDICATOR);
 
     _deskCtrl = new DeckController();
     addHandler(_deskCtrl);
+
+    Serial.println("WhiteNodev108::pop()");
 };
 
 // bracketing with a timer to keep some cadence. We should
@@ -104,6 +94,19 @@ void WhiteNodev108::buzzerErr() {
 };
 
 void WhiteNodev108::begin() {
+    buzzer(false);
+    xpinMode(BUZZER, OUTPUT);
+    xpinMode(OFF_BUTTON, INPUT_PULLUP);
+    xpinMode(MENU_BUTTON, INPUT_PULLUP);
+
+    xpinMode(OPTO0, INPUT);
+    xpinMode(OPTO1, INPUT);
+    
+    if (!errorLed) {
+	Debug.printf("Led indicator wired to %x %d\n", LED_INDICATOR, LED_INDICATOR);
+        errorLed = new LED(LED_INDICATOR);
+    };
+
     errorLed->begin();
 
     // All nodes have a build-in RFID reader; so fine to hardcode this.
@@ -239,8 +242,8 @@ void WhiteNodev108::begin() {
         };
     },  CHANGE);
     addHandler(menuButton);
-   
-    machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    //machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+    machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         Debug.printf("WhiteNodev108: Changing state (%d->%d): %s\n", last, current, machinestate.label());
 
         errorLed->set(machinestate.ledState());
@@ -265,11 +268,11 @@ void WhiteNodev108::begin() {
             _deskCtrl->first();
             return;
         } else if (current == MachineState::REJECTED) {
-            _display->updateDisplayStateMsg(_lasterrmsg,1);
+            updateDisplayStateMsg(_lasterrmsg);
             buzzerErr();
         };
         
-        if (current != INFODISPLAY)
+        if (current != INFODISPLAY && current != MachineState::REJECTED) 
             updateDisplayStateMsg(machinestate.label());
 
         if (_onChangeCB && (current == _onChangeState || _onChangeState ==MachineState::ALL_STATES))
@@ -334,12 +337,10 @@ void WhiteNodev108::begin() {
 }
 
 void WhiteNodev108::updateDisplay(String left, String right, bool rebuildFull) {
-    // Debug.printf("WhiteNodev108::updateDisplay %d\n", rebuildFull);
     _display->updateDisplay(machine,left,right,rebuildFull);
 };
 
 void WhiteNodev108::updateDisplayStateMsg(String msg,int line) {
-    // Debug.printf("Updating display: %d:%s\n",line,msg.c_str());
     _display->updateDisplayStateMsg(msg, line);
 }
 
