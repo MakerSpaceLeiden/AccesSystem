@@ -128,14 +128,14 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,
     
    char pubkey[ 2 * strlen(private_key_as_pem)];
     if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey))) {
-       	 	hdr["kid"] = shortkey(pubkey); // or is SHA256 better ?
-       	 	hdr["jwk"] = shortkey(pubkey);
-    }
+       	hdr["kid"] = shortkey(pubkey); // Or do we want the SHA256 of the pubkey or Cert here ??
+       	hdr["jwk"] = shortkey(pubkey);
+    };
 
     if(sha256) {
     	unsigned char tmp[128];
 	MBOK(rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)sha256, 32));
-        // See section 4.1.8 in RFC 7515
+	// See section 4.1.8 in RFC 7515
 	hdr["x5t#S256"] = String((char*)tmp,n);
     };
 
