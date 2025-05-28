@@ -141,7 +141,9 @@ public:
     void setTimeout(machinestate_t s, time_t timeoutMS) {
         _state2stateStruct[s]->maxTimeInMilliSeconds = timeoutMS;
     };
-
+    void setLedState(machinestate_t s, LED::led_state_t l) {
+        _state2stateStruct[s]->ledState= l;
+    };
     time_t secondsInThisState();
     time_t secondsLeftInThisState();
     String timeLeftInThisState();

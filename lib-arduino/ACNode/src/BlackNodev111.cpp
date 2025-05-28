@@ -14,6 +14,12 @@ BlackNodev111::BlackNodev111(const char * machine, bool wired, acnode_proto_t pr
 };
 
 void BlackNodev111::pop() {
+    // As the newer nodes use a green LEDE on the front to signal that they are
+    // alive; there is no need for the occasional flash of the erorr leds (or
+    // green Aart LED) on these newer nodes to signal aliveness. (see heartbeath 
+    // in loop() below).
+    //
+    machinestate.setLedState(MachineState::WAITINGFORCARD, LED::LED_OFF);
 };
 
 void BlackNodev111::begin() {

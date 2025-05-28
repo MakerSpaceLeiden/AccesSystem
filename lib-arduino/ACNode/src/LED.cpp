@@ -63,15 +63,15 @@ void LED::set(led_state_t state) {
     case LED_IDLE:
     case LED_PENDING:
     case LED_FAST:
-//      _ticker.attach_ms(100, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
+      _ticker.attach_ms(100, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_SLOW:
-//      _ticker.attach_ms(500, &flipPin,  this); // no need to detach - code will disarm and re-use existing timer.
+      _ticker.attach_ms(500, &flipPin,  this); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_ERROR:
     case NEVERSET: // include this here - though it should enver happen. 50 hz flash
     default:
-//      _ticker.attach_ms(20, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
+      _ticker.attach_ms(20, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
       break;
   }
 }

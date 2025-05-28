@@ -21,8 +21,8 @@ void ACNodeRest::pop() {
     _approvalAPI = new ApprovalAPI(_restAPI, machine);
 
     PAIRING_FAILED = machinestate.addState("Pairing Failed",  LED::LED_ERROR, 5*1000, MachineState::OUTOFORDER);
-    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 30*1000, PAIRING_FAILED, MachineState::WAITINGFORCARD);
-    WAIT_FOR_PAIRING = machinestate.addState("Needs to pair",  LED::LED_ERROR, 30*1000, MachineState::OUTOFORDER);
+    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 20*1000, PAIRING_FAILED, MachineState::WAITINGFORCARD);
+    WAIT_FOR_PAIRING = machinestate.addState("Pairing lost",  LED::LED_ERROR, 30*1000, MachineState::OUTOFORDER);
 
     machinestate.addOnChangeCallback(PAIRING_FAILED, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         if (_approvalAPI->canApprove()) {
@@ -85,7 +85,7 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
 
         String t = String(tag);
 	// Do not send it again if it is already in our list to send.
-        if (std::find(std::begin(_approvedTagsToSent), std::end( _approvedTagsToSent), t) != std::end( _approvedTagsToSent))
+        // if (std::find(std::begin(_approvedTagsToSent), std::end( _approvedTagsToSent), t) != std::end( _approvedTagsToSent))
         	_approvedTagsToSent.push_back(t);
 
         JsonDocument payload;
@@ -99,7 +99,7 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
         payload["cmd"] = "energize";
 
 // Signed replacement for public message
-if (1) {
+if (0) {
         String *res = jwt_sign(payload);
         if (res) {
 	    Log.println(*res);
