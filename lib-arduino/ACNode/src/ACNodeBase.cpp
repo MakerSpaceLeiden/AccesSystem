@@ -291,9 +291,16 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
 
     size_t max = MAX_MSG;
-    if (TLog::MAX_LOG_LINE > max)
-       max = TLog::MAX_LOG_LINE;
+
+    if (Log.maxLine() < max) {
+	Log.setMaxLine(max);
+	Debug.setMaxLine(max);
+    };
+
+#ifdef HAS_SIG2
+    // Extra space needed for signature, beat, etc.
     max += 5 + strlen(topic) + 10;
+#endif
 
     if (_client.getBufferSize() < max) {
 	Debug.printf("MQTT: Need to increase MQTT buffer form %lu to %lu\n", _client.getBufferSize(), max);
