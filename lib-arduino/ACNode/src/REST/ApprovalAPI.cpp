@@ -106,9 +106,9 @@ void ApprovalAPI::begin() {
 
 void ApprovalAPI::scheduleImmediateUpdate() {
     if (millis() - last_update > 5 * 1000)
-        interval = 0;
+        interval = esp_random() & 0xFFF; // about 4 seconds max
     else
-        interval = 5000;
+        interval = (50 + (esp_random() & 0xF)) * 1000; // 50 seconds + 16-seconds random slack
 }
 
 void ApprovalAPI::scheduleForcedReload() {
