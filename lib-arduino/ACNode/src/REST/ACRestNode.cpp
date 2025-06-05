@@ -167,7 +167,7 @@ void ACNodeRest::loop() {
 	        payload["iss"] = String(moi) + "/" + String(machine);
 
 	        payload["name"] = et.e.name;
-	        payload["sub"] = String("urn:fdc:makerspaceleiden.nl:20130521:user/") + et.e.uid; // rfc 4198
+	        payload["sub"] = String("urn:fdc:makerspaceleiden.nl:20130521:user:") + et.e.uid; // rfc 4198
 
         	payload["iat"] = time(NULL); // needed for replay protection; see RFC 7519 4.1.6
 
