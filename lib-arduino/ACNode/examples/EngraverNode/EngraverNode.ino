@@ -19,10 +19,10 @@
   Compile settings:
   - ESP32-WROOM-DA Module (or ESP32 Dev) with minial SPIFFs
   Wiring:
-  - https://wiki.makerspaceleiden.nl/mediawiki/index.php/Node_Tussendeur
+  - https://wiki.makerspaceleiden.nl/mediawiki/index.php/Node_Engraver
 
   History:  Aart v2 node until end of 2024 (with the power from a
-  separate PoE converter); updated by v1.12 black node.
+  separate PoE converter); updated by v1.14 blue node.
 
 */
 #include <BlueNodev114.h>
