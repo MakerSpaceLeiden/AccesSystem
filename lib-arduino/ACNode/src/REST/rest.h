@@ -27,5 +27,5 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag);
 size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret, String encodedpostargs = "");
 JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * ret, String encodedpostargs = "");
 
-String * jwt_sign(JsonDocument payload);
+String jwt_sign(JsonDocument payload);
 #endif

@@ -9,7 +9,7 @@
 
 #define X { Serial.printf("%s:%d - %s\n",__FILE__,__LINE__,__PRETTY_FUNCTION__); }
 
-MachineState::machinestate_t MachineState::defState(machinestate_t i, const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA) {
+MachineState::machinestate_t MachineState::defState(machinestate_t i, const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA, bool backgroundTaskOk) {
     assert(_state2stateStruct[i]==NULL);
 
     _state2stateStruct[i] = new AMState();
@@ -18,6 +18,7 @@ MachineState::machinestate_t MachineState::defState(machinestate_t i, const char
     _state2stateStruct[i]->maxTimeInMilliSeconds = timeout;
     _state2stateStruct[i]->failStateOnTimeout = nextstate;
     _state2stateStruct[i]->safeForOTA = isSafeForOTA;
+    _state2stateStruct[i]->backgroundTaskOk = backgroundTaskOk;
 
     return i;
 };
@@ -30,10 +31,10 @@ MachineState::machinestate_t MachineState::addState(const char * label, time_t t
     return addState(label, LED::LED_ERROR,timeout, nextstate, false);
 }
 
-MachineState::machinestate_t MachineState::addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA) {
+MachineState::machinestate_t MachineState::addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate, bool isSafeForOTA,  bool backgroundTaskOk) {
     for (uint8_t i = 0; i < 255; i++)
         if (_state2stateStruct[i]==NULL)
-	     return defState(i,label,ledState,timeout,nextstate,isSafeForOTA);
+	     return defState(i,label,ledState,timeout,nextstate,isSafeForOTA,backgroundTaskOk);
     assert(NULL == "BUG -- More than 254 active states ?");
     return 255;
 };
@@ -43,6 +44,7 @@ const char * MachineState::label()  {
 }
 
 bool MachineState::safeForOTA() { return _state2stateStruct[machinestate]->safeForOTA;};
+bool MachineState::backgroundTaskOk() { return _state2stateStruct[machinestate]->backgroundTaskOk;};
 
 const char * MachineState::label(uint8_t state)  {
     if (_state2stateStruct[state] && _state2stateStruct[state] ->label)
@@ -86,14 +88,14 @@ MachineState::MachineState(LED * led) {
     for(int i = 0; i < 256; i++)
         _state2stateStruct[i] = NULL;
     
-    defState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD, true );
+    defState(WAITINGFORCARD,"Waiting for card",     LED::LED_IDLE,         NEVER, WAITINGFORCARD, true, true );
     defState(REBOOT, 	"Rebooting",            LED::LED_ERROR,   120 * 1000, REBOOT         );
     defState(BOOTING, 	"Booting",              LED::LED_ERROR,   120 * 1000, REBOOT         );
-    defState(OUTOFORDER, 	"Out of order",         LED::LED_ERROR,   120 * 1000, REBOOT         );
-    defState(TRANSIENTERROR,"Transient Error",      LED::LED_ERROR,     5 * 1000, WAITINGFORCARD );
-    defState(NOCONN, 	"No network",           LED::LED_FLASH,        NEVER, NOCONN         );
-    defState(CHECKINGCARD, 	"Checking card...",     LED::LED_IDLE,     10 * 1000, WAITINGFORCARD );
-    defState(REJECTED, 	"Sorry!",        LED::LED_ERROR,     2 * 1000, WAITINGFORCARD );
+    defState(OUTOFORDER, 	"Out of order",         LED::LED_ERROR,   120 * 1000, REBOOT, true, true );
+    defState(TRANSIENTERROR,"Transient Error",      LED::LED_ERROR,     5 * 1000, WAITINGFORCARD, true, false );
+    defState(NOCONN, 	"No network",           LED::LED_FLASH,        NEVER, NOCONN, true, true);
+    defState(CHECKINGCARD, 	"Checking card...",     LED::LED_IDLE,     10 * 1000, WAITINGFORCARD, true, true );
+    defState(REJECTED, 	"Sorry!",        LED::LED_ERROR,     2 * 1000, WAITINGFORCARD, false, true );
     defState(ALL_STATES, 	"<default>",            LED::LED_IDLE,         NEVER, ALL_STATES     );
     
     laststate = OUTOFORDER;

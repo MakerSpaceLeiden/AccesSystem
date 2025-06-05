@@ -107,7 +107,7 @@ char * shortkey(char * pem) {
 }
 
 
-String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  char * cert_as_pem, unsigned char * sha256 )
+String generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  char * cert_as_pem, unsigned char * cert_sha256, unsigned char * pubkey_sha256 )
 {
     mbedtls_entropy_context entropy_ctx;
     mbedtls_ctr_drbg_context ctr_drbg;
@@ -116,7 +116,7 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,
     unsigned char * buff, *ptr = buff;
     unsigned char hash[32];
     unsigned char *sig;
-    String * out;
+    String out;
     JsonDocument hdr;
     String hdrSerialized, plSerialized;
     size_t nHdrSerialized, nPlSerialized;
@@ -125,16 +125,23 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,
 
     hdr["typ"] = "JWT";
     hdr["alg"] = "ES256";
-    
-   char pubkey[ 2 * strlen(private_key_as_pem)];
-    if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey))) {
-       	hdr["kid"] = shortkey(pubkey); // Or do we want the SHA256 of the pubkey or Cert here ??
-       	hdr["jwk"] = shortkey(pubkey);
+   
+    if (pubkey_sha256) {
+    	unsigned char tmp[48];
+	MBOK(rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)pubkey_sha256, 32));
+	hdr["kid"] = String((char*)tmp,n);
     };
 
-    if(sha256) {
-    	unsigned char tmp[128];
-	MBOK(rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)sha256, 32));
+    if (private_key_as_pem) { 
+        char pubkey[ 2 * strlen(private_key_as_pem)];
+        if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey))) {
+           	hdr["jwk"] = shortkey(pubkey);
+        };
+    };
+
+    if(cert_sha256) {
+    	unsigned char tmp[48];
+	MBOK(rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)cert_sha256, 32));
 	// See section 4.1.8 in RFC 7515
 	hdr["x5t#S256"] = String((char*)tmp,n);
     };
@@ -196,7 +203,7 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,
     MBOK(rfc4648_base64_encode(ptr, len + buff - ptr, &n, sig, sig_len));
     ptr += n;
     
-    out = new String((char*)buff);
+    out = String((char*)buff);
     free(buff);
 
     mbedtls_pk_free(&ctx);

@@ -31,7 +31,7 @@
 #define HTTP_TIMEOUT (5000)
 #endif
 
-mbedtls_x509_crt * client_cert_ptr = NULL, client_cert;
+// mbedtls_x509_crt * client_cert_ptr = NULL, client_cert;
 
 char * ca_root = NULL;
 char * nonce = NULL;
@@ -39,7 +39,7 @@ char * server_cert_as_pem = NULL;
 char * client_cert_as_pem = NULL;
 char * client_key_as_pem = NULL;
 
-unsigned char sha256_client[32], sha256_server[32], sha256_server_key[32];
+unsigned char sha256_client[32], sha256_server[32], sha256_server_key[32], sha256_client_pubkey[32];
 
 const char * KS_NAME = "keystore";
 const char * KS_KEY_VERSION = "version";
@@ -87,10 +87,7 @@ bool getks(Preferences keystore, const char * key, char ** dst) {
 }
 
 rest_ret_t setupAuth(const char * terminalName) {
-    mbedtls_x509write_cert crt;
-    mbedtls_pk_context key;
     Preferences keystore;
-    char tmp[65];
     bool paired = false;
     
     if (!keystore.begin(KS_NAME, false))
@@ -102,6 +99,9 @@ rest_ret_t setupAuth(const char * terminalName) {
         !getks(keystore, KS_KEY_CLIENT_KEY, &client_key_as_pem) ||
         !keystore.getBytes(KS_KEY_SERVER_KEY, sha256_server_key, 32))
     {
+        mbedtls_x509write_cert crt;
+        mbedtls_pk_context key;
+
         Log.println("Incomplete/absent keystore");
         keystore.end();
         
@@ -126,16 +126,25 @@ rest_ret_t setupAuth(const char * terminalName) {
         Log.printf("Using existing keys (keystore version 0x%03x), fully configured\n", version);
         paired = true;
         keystore.end();
-    }
+    };
+
+
+    mbedtls_x509_crt crt;
+    mbedtls_x509_crt_init(&crt);
+    if (mbedtls_x509_crt_parse(&crt, (const unsigned char*)client_cert_as_pem, 1+strlen(client_cert_as_pem)) || fingerprint_from_certpubkey(&crt, sha256_client_pubkey)) {
+        Log.printf("Certificate appears broken.");
+    };
+
     fingerprint_from_pem(client_cert_as_pem, sha256_client);
-    
+
+    char tmp[65];
     Log.printf("Fingerprint %s for <%s> (as shown in CRM)\n",sha256toHEX(sha256_client, tmp), terminalName ? terminalName : "<unset>" );
 
     return paired ? NOERROR_OK : NOERROR;
 }
 
-String * jwt_sign(JsonDocument payload) {
-    return generateSignedES256JWT(payload, client_key_as_pem, client_cert_as_pem, sha256_client);
+String jwt_sign(JsonDocument payload) {
+    return generateSignedES256JWT(payload, client_key_as_pem, client_cert_as_pem, sha256_client, sha256_client_pubkey);
 }
 
 void wipekeys() {
@@ -644,8 +653,6 @@ exit:
     
     return l; // Return actual length in the buffer
 }
-
-
 
 JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * retp, String encodedpostargs) {
     JsonDocument res;

@@ -9,6 +9,13 @@
 //       around a 160k when empty.
 //
 
+class ApprovalEntryWithTag {
+public:
+	ApprovalEntryWithTag(ApprovalEntry *e, const char *tag) : e(*e), tag(String(tag)) {};
+	ApprovalEntry e;
+	String	tag;
+};
+
 class ACNodeRest : public ACNodeBase {
 private:
     typedef ACNodeBase super;
@@ -41,7 +48,7 @@ protected:
 private:
    // Que of tags to inform the server about on a best effort basis.
     const unsigned long TAG_SEND_INTERVAL = 5 * 1000; // at least 5 seconds in between tag sends.
-    std::list<String> _approvedTagsToSent;
+    std::list<ApprovalEntryWithTag> _approvedTagsToSent;
     unsigned long _lastApprovalTime;
  
 };
