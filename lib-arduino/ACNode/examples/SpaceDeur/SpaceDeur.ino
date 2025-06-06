@@ -208,7 +208,7 @@ void setup() {
     // attempt to track down MQTT issue.
     //
     report["mqtt_host"] = String(node.mqtt_server);
-    report["mqtt_host"] = String(node.mqtt_port);
+    report["mqtt_port"] = String(node.mqtt_port);
     report["mqtt_isUp"] = node.isUp();
     report["mqtt_isConnected"] = node.isConnected();
   });
