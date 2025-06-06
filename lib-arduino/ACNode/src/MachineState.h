@@ -22,6 +22,7 @@ public:
     unsigned long timeoutTransitions;
     unsigned long autoReportCycle;
     bool safeForOTA; // Can we safely allow a resetting Over the Air update (OTA) ?
+    bool backgroundTaskOk; // can we do bookkeeping safely
         
     // Bookkeeping
     time_t timeInState;
@@ -113,7 +114,7 @@ public:
     void setState(machinestate_t s);
     
     bool safeForOTA();
-
+    bool backgroundTaskOk();
 #if 0
     bool operator <(machinestate_t s) { return s > machinestate; };
     bool operator ==(void s) { return (machinestate_t)s == machinestate; };
@@ -129,11 +130,11 @@ public:
     void addOnChangeCallback(machinestate_t state, THandlerFunction_OnChangeCB onChangeCB);
     void addOnTimeoutCallback(machinestate_t state, THandlerFunction_OnTimeoutCB onTimeoutCB);
    
-    machinestate_t defState(machinestate_t i, const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate = WAITINGFORCARD, bool isSafeForOTA = false);
+    machinestate_t defState(machinestate_t i, const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate = WAITINGFORCARD, bool isSafeForOTA = false, bool backgroundTaskOk = false);
 
     machinestate_t addState(const char * label, machinestate_t nextstate = WAITINGFORCARD);
     machinestate_t addState(const char * label, time_t timeout, machinestate_t nextstate = WAITINGFORCARD);
-    machinestate_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate = WAITINGFORCARD, bool isSafeForOTA = true);
+    machinestate_t addState(const char * label, LED::led_state_t ledState, time_t timeout, machinestate_t nextstate = WAITINGFORCARD, bool isSafeForOTA = true, bool backgroundTaskOk = false);
     
     void setTimeoutState(machinestate_t s, machinestate_t next) {
         _state2stateStruct[s]->failStateOnTimeout = next;

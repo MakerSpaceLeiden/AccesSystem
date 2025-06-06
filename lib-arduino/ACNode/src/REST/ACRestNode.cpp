@@ -83,40 +83,12 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
             _approved_callback(machine);
         };
 
-        String t = String(tag);
 	// Do not send it again if it is already in our list to send.
         // if (std::find(std::begin(_approvedTagsToSent), std::end( _approvedTagsToSent), t) != std::end( _approvedTagsToSent))
-        	_approvedTagsToSent.push_back(t);
-
-        JsonDocument payload;
-        payload["iat"] = time(NULL); // needed for replay protection; see RFC 7519 4.1.6
-        payload["name"] = e->name;
-        payload["machine"] = machine;
-        payload["node"] = moi;
-        payload["userid"] = e->uid.toInt();
-        payload["acl"] = "approved";
-        payload["res"] = true;
-        payload["cmd"] = "energize";
-
-// Signed replacement for public message
-if (0) {
-        String *res = jwt_sign(payload);
-        if (res) {
-	    Log.println(*res);
-            _client.publish("ac/jwt", res->c_str());
-            delete res;
-        } else {
-	    Log.println("** ERROR in JWT generation");
+	{
+        	_approvedTagsToSent.push_back(ApprovalEntryWithTag(e,tag));
 	}
-};
 
-// Old style
-if (1) {
-	String payloadAsString;
-	serializeJson(payload,payloadAsString);
-	_client.publish("ac/log/master",("JSON="+payloadAsString).c_str());
-}
-        
         _approve++;
         return;
     };
@@ -157,13 +129,56 @@ void ACNodeRest::sentNotification(String dest, String subject, String msg) {
     _restAPI->sentNotification(sender, dest, subject, msg);
 }
 
+static String epochseconds2iso8601(time_t n) {
+        struct tm * t = gmtime(&n);
+	char buff[10];
+	snprintf(buff,sizeof(buff),"%04d%02d%02d", t->tm_year, 1 + t->tm_mon, t->tm_mday);
+	return String(buff);
+}
+
 void ACNodeRest::loop() {
     super::loop();
 
     static unsigned lst = 0;
-    if (machinestate == MachineState::WAITINGFORCARD && _approvedTagsToSent.size() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 1000) {
-        _approvalAPI->sendBestEffortTagApproved(*(_approvedTagsToSent.begin()));
+    if (_approvedTagsToSent.size() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 500) {
+	ApprovalEntryWithTag et = *(_approvedTagsToSent.begin());
         _approvedTagsToSent.pop_front();
+
+        _approvalAPI->sendBestEffortTagApproved(et.tag);
+	{
+	        JsonDocument payload;
+	        payload["name"] = et.e.name;
+	        payload["machine"] = machine;
+	        payload["node"] = moi;
+	        payload["userid"] = et.e.uid.toInt();
+	        payload["acl"] = "approved";
+	        payload["cmd"] = "energize";
+
+		// Old style
+		String payloadAsString;
+		serializeJson(payload,payloadAsString);
+		_client.publish("ac/log/master",("JSON="+payloadAsString).c_str());
+	};
+
+	// Signed replacement for public message
+	//
+	{
+	        JsonDocument payload;
+	        payload["iss"] = String(moi) + "/" + String(machine);
+
+	        payload["name"] = et.e.name;
+	        payload["sub"] = String("urn:fdc:makerspaceleiden.nl:20130521:user:") + et.e.uid; // rfc 4198
+
+        	payload["iat"] = time(NULL); // needed for replay protection; see RFC 7519 4.1.6
+
+	        payload["scope"] = "energize";
+	        payload["res"] = true;
+
+	        String res = jwt_sign(payload);
+	        if (res.length()) 
+	            _client.publish("ac/jwt", res.c_str());
+	};
+        
 	lst = millis();
     };
 }

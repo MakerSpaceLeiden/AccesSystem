@@ -256,10 +256,10 @@ void ApprovalAPI::report(JsonObject& report) {
     char buff[32] = "never";
     
     if (datadate) {
-        strncpy(buff, ctime((const time_t *) &datadate),32);
-        buff[25]='\0';
+        strncpy(buff, ctime((const time_t *) &datadate),sizeof(buff)-1);
+        buff[24]='\0'; // strip \n
     };
-    report["bintag_date"] = buff;
+    report["bintag_date"] = String(buff);
 };
 
 /* Simple binary search for a 32 byte hasn strh.
@@ -437,11 +437,13 @@ void ApprovalDeck::render_pane(bool refresh) {
     
     struct tm * t = gmtime((const time_t *)&(_approvalAPI->datadate));
     char ds[12], ts[12];
+    time_t age = time(NULL) - _approvalAPI->datadate;
+
     strftime(ds,sizeof(ds),"%Y-%m-%d",t);
     strftime(ts,sizeof(ts),"%H:%M:%S",t);
     _display->printf("Dated:%s\n",ds);
     _display->printf("      %sZ\n",ts);
-    _display->printf("Age  :%s\n",since(_approvalAPI->datadate));
+    _display->printf("Age  :%s\n",since(age));
     _display->printf("Check:%s %s\n", _approvalAPI->last_update ?
                      since((millis() - _approvalAPI->last_update)/1000) : "never",
 		     _approvalAPI->last_update ? "ago" : "");
