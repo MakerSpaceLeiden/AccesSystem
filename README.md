@@ -11,7 +11,7 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
 
   The master node and a sample database. Can be ran out of the box with
 
-       ./master.py --debug --dbfile sample-keydb.txt 
+       uv run python master.py --debug --dbfile sample-keydb.txt 
 
 * SimpleDeurNode
 
@@ -82,19 +82,17 @@ then the seralisation into an ascii string wil be '13-17-0-33-19'.
    to activate the stepper to open the door.
 
 
-Currentl dependencyies for a `pip install' are:
+Current dependencies are managed with `uv`:
 
-	wheel setuptools 
+	uv sync
 
-followed by (as otherwise dependencies can go funny):
+Dependencies are defined in `pyproject.toml` and include:
 
-	daemon setproctitle configargparse python-axolotl_curve25519 ed25519 python-axolotl paho-mqtt pycrypto
+	requests python-daemon setproctitle configargparse paho-mqtt python-axolotl-curve25519 ed25519 pycryptodome
 
-Pip can generally be installed with
+Uv can generally be installed with
 
-	pkg install pip
-	port install pip
-	apt install python-pip
+	curl -LsSf https://astral.sh/uv/install.sh | sh
 
 etc. On some platforms you will have to also install the headers; e.g.
 
