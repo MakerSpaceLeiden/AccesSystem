@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 cd /usr/local/AccesSystem/Master
-python3 ./master.py --config acnode-prod.ini --pidfile /var/db/master/master-prod.pid -vvcc  2>&1 | rotatelogs -n 30 /var/log/master/daily-log 86400
+uv run python ./master.py --config acnode-prod.ini --pidfile /var/db/master/master-prod.pid -vvcc  2>&1 | rotatelogs -n 30 /var/log/master/daily-log 86400
 exit 0
 
 
@@ -34,7 +34,7 @@ load_rc_config $name
 
 pidfile=${master_pidfile}
 
-command=/usr/local/AccesSystem/Master/master.py
+command=/usr/local/bin/uv run python /usr/local/AccesSystem/Master/master.py
 
 command_args="-c ${master_config} --dbfile ${master_dbfile} ${master_flags} --pidfile ${master_pidfile} --daemonize"
 required_files="${master_config} ${master_dbfile}"
