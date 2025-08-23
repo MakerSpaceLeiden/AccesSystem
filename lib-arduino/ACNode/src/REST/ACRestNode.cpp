@@ -1,5 +1,5 @@
-#include "Rest/ACRestNode.h"
-#include "Rest/rest.h"
+#include "REST/ACRestNode.h"
+#include "REST/rest.h"
 
 ACNodeRest::ACNodeRest(const char * machine, const char * ssid, const char * ssid_passwd) : super(machine,ssid,ssid_passwd) {
     CONSTS();

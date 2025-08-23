@@ -1,7 +1,7 @@
 #include <ACNode.h>
 #include "ConfigPortal.h"
 #include <EEPROM.h>
-#include <ArduinoJSON.h>
+#include <ArduinoJson.h>
 #include <esp_debug_helpers.h>
 #include "util/part.h"
 #include "esp_task_wdt.h"

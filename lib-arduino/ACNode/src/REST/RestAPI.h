@@ -1,6 +1,6 @@
 #include <stddef.h>
 #include <functional>
-#include <ArduinoJSON.h>
+#include <ArduinoJson.h>
 
 #include <ACBaseNode.h>
 #include <ACBase.h>

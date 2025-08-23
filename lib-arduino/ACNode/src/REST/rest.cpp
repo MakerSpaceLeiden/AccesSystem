@@ -2,7 +2,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <WiFiUdp.h>
-#include <ArduinoJSON.h>
+#include <ArduinoJson.h>
 #include <Preferences.h>
 
 #include <nvs_flash.h>
