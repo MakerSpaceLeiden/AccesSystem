@@ -118,12 +118,8 @@ class MachineDeck : public Deck {
 
 void setup() {
   Serial.begin(115200);
-<<<<<<< Updated upstream
-  Log.printf("\nBooting(): %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
-=======
   Serial.println("\n\n\n");
   Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__ );
->>>>>>> Stashed changes
 
   // Init the hardware and get it into a safe state.
   // Init the hardware and get it into a safe state.
@@ -162,12 +158,6 @@ void setup() {
   expandedPinMode(INTERLOCK, INPUT);
   interlockDetect = new IODebounce(INTERLOCK);
   node.addHandler(interlockDetect);
-
-<<<<<<< Updated upstream
-=======
-  pinMode(INTERLOCK, INPUT);
-  interlockDetect = new IODebounce(INTERLOCK);
->>>>>>> Stashed changes
   interlockDetect->setCallback([](const int newState) {
     if ((node.machinestate == MachineState::CHECKINGCARD || node.machinestate == MachineState::WAITINGFORCARD) && newState == LOW) {
       Log.println("Alert: Power on the interlock observed while " MACHINE " should be locked.");
@@ -198,13 +188,8 @@ void setup() {
   }, CHANGE);
 
   motorCurrent = new IODebounce(MOTOR_CURRENT);
-<<<<<<< Updated upstream
-  motorCurrent->setAnalogThreshold(30); 
   node.addHandler(motorCurrent);
-
-=======
   motorCurrent->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
->>>>>>> Stashed changes
   motorCurrent->setCallback([](const int newState) {
     if (node.machinestate == POWERED && newState) {
       Debug.println("Detected current. Motor switched on");
