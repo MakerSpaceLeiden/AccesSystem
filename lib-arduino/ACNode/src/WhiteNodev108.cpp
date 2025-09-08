@@ -105,6 +105,7 @@ void WhiteNodev108::begin() {
     if (!errorLed) {
 	Debug.printf("Led indicator wired to %x %d\n", LED_INDICATOR, LED_INDICATOR);
         errorLed = new LED(LED_INDICATOR);
+        addHandler(errorLed);
     };
 
     errorLed->begin();

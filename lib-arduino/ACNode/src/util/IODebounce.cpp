@@ -13,8 +13,13 @@ IODebounce::IODebounce(int pin, unsigned long delay){
     _lastChangeTime = 0;
     _analogThreshold = 0;
     _prevStateBtn = _lastStateBtn = rawState();
+#if 0
+    // temporary removed - to see if we can solve the issue
+    // with the broken Wire semaphore concept (see ticketXX)
+    //
     _ticker = new Ticker();
     _ticker->attach_ms(delay/SAMPLES_PER_DELAY,_update,(uint32_t )this);
+#endif
 }
 
 IODebounce::~IODebounce() {
@@ -68,6 +73,8 @@ void IODebounce::_ticker_update(){
 };
 
 void IODebounce::loop() {
+    _ticker_update();
+
     if (!_hasfired)
         return;
 

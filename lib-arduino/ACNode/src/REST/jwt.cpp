@@ -107,7 +107,7 @@ char * shortkey(char * pem) {
 }
 
 
-String generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  char * cert_as_pem, unsigned char * cert_sha256, unsigned char * pubkey_sha256 )
+String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem,  char * cert_as_pem, unsigned char * cert_sha256, unsigned char * pubkey_sha256 )
 {
     mbedtls_entropy_context entropy_ctx;
     mbedtls_ctr_drbg_context ctr_drbg;
@@ -167,6 +167,10 @@ String generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  
     //
     len = B64L(hdrSerialized.length()) + 1 + B64L(plSerialized.length()) + 1 + B64L(128) + 1;
     ptr = buff = (unsigned char*) malloc(len);
+    if (!buff) {
+        Log.println("jwt malloc failed.");
+	goto exit;
+    };
     
     MBOK(rfc4648_base64_encode(ptr, len + buff - ptr, &n, (const unsigned char*)hdrSerialized.c_str(), hdrSerialized.length()));
     ptr += n;
@@ -204,11 +208,11 @@ String generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  
     ptr += n;
     
     out = String((char*)buff);
-    free(buff);
 
     mbedtls_pk_free(&ctx);
     mbedtls_ctr_drbg_free( &ctr_drbg );
     mbedtls_entropy_free( &entropy_ctx );
 exit:
+    free(buff);
     return out;
 }

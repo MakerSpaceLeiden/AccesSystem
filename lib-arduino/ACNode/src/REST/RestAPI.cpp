@@ -39,17 +39,21 @@ ACBase::cmd_result_t RestAPI::handleTagSwipe(const char * tag) {
     return ACBase::CMD_CLAIMED;
 }
 
+// Three options - buffp == NULL;  just ok/no ok -- no data
+//                 *buffp == NULL; no data or malloced data
+//  		   *buffp 	 ; use this buffer
+//
 int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, String encodedpostargs) {
-    unsigned char *p = NULL;
-    if (buffp) p = *buffp;
-    rest_ret_t ret;
+    unsigned char ** p = buffp;
+    rest_ret_t ret = ERR_FATAL;
 
+    if (buffp) p = buffp;
+    
     size_t n = raw_rest(_terminalName,url,maxbufflenp,buffp,&ret,encodedpostargs);
 
     switch(ret) {
         case NOERROR_OK:
         case NOERROR:
-            return n;
             break;
         case ERR_FATAL:
             if (md < FULLY_REGISTERED) md = WIFI_FAIL_REBOOT;
@@ -62,12 +66,19 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
             md = WAITING_FOR_NTP;
             break;
     }
-    if (p == NULL && *buffp) {
+
+    if (p && *p == NULL || ret < 0) {
         free(*buffp);
-	*buffp = NULL;
+        *buffp = NULL;
     };
-    Log.printf("Failed %s\n", url);
-    return -1;
+
+
+    if (ret < 0) {
+	Log.printf("Failed %s\n", url);
+        return -1;
+    };
+
+    return n;
 }
 
 
@@ -245,12 +256,20 @@ void RestAPI::loop()
 };
 
 
-extern unsigned char sha256_client[32];
+extern unsigned char sha256_client[32]; // cheat
+
+void RestAPI::report(JsonObject& report) {
+    report["rest"] = ready();
+    report["rest_label"] = getStatLabel();
+
+    char tmp[128 + 1];
+    sha256toHEX(sha256_client, tmp);
+    report["rest_sha256"] = tmp;
+};   
 
 void RestDeck::render_pane(bool refresh) {
     if(!refresh)
         return;
-
 
     if (!_restAPI) {
         _display->print_centred("NO REST");
