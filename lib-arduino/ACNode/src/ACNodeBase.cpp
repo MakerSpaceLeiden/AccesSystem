@@ -579,8 +579,8 @@ void ACNodeBase::mqttLoop() {
 }
 
 void ACNodeBase::reconnectMQTT() {
-    static unsigned long last_mqtt_connect_try = 0;
-     if (millis() - last_mqtt_connect_try < 10*1000 || last_mqtt_connect_try)
+    static unsigned long last_mqtt_connect_try = millis();
+     if (millis() - last_mqtt_connect_try < 10*1000)
 	return;
 
     last_mqtt_connect_try = millis();
