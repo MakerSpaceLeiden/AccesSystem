@@ -114,6 +114,16 @@ void BlackNodev111::setYesCallback(ButtonCallback callback, int mode ) {
     
 void BlackNodev111::loop() {
     super::loop();
+#if 0
+    static int volume = 0;
+    volume += hearthbeat();
+    if (volume > 127) {
+	xdigitalWrite(LEDE, HIGH);
+	volume -= 255;
+    } else {
+	xdigitalWrite(LEDE, LOW);
+    };
+#endif
     xanalogWrite(LEDE,hearthbeat());
 
     static unsigned long last = 0;

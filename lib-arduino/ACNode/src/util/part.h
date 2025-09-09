@@ -5,6 +5,7 @@
 
 void partition_info(Print &out);
 String currentPartition();
+size_t get_rom_size();
 #endif
 
 

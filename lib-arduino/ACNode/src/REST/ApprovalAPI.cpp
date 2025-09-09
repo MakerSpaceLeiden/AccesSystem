@@ -140,7 +140,7 @@ void ApprovalAPI::loop() {
             break;
         case NO_UPDATE_NEEDED:
             Debug.println("No TagDB update needed");
-            interval =  (3600  + (esp_random() & 0xFF)) * 1000;
+            interval =  (3600  + (esp_random() & 0xFF -128)) * 1000; 
             break;
         case NEEDS_UPDATE:
             updateTagDB();
@@ -162,13 +162,16 @@ ApprovalAPI::update_t ApprovalAPI::needsUpdate() {
     unsigned long cntr;
 
     int n = _restAPI->get(url,&len,&buff);
-    if (n < 0) 
+    if (n < 2)
 	goto exit;
 
     buff[n-1] = 0; // damages last byte (CR/LF or comments) - which is ok as we own this buffer
     cntr = atoi((char *)buff);
 
-    Log.printf("TagDB identifier: %08x: %s%c(previous: %08x)\n", cntr, (identifier == cntr) ? "no changes" : "*Changed!*", (identifier == cntr) ? 0 : 32, identifier);
+    if  (identifier == cntr) 
+	    Log.printf("TagDB identifier: %08x: no changes\n", cntr);
+    else
+	    Log.printf("TagDB identifier: %08x: CHANGED (previous: %08x)\n", cntr, identifier);
  
     last_update = millis();
     
@@ -215,6 +218,7 @@ bool ApprovalAPI::import(const unsigned char * binfile, size_t len) {
         version = MSLv2;
     else {
         Log.printf("Unknown tagblob version\n");
+	free((void *)binfile);
         return false;
     };
     
@@ -234,6 +238,7 @@ bool ApprovalAPI::import(const unsigned char * binfile, size_t len) {
     
     if (ptr_eof != binfile + len || len_tag - ntags * TAG_ENTRY_SIZE != 0) {
         Log.printf("Tagblob currupted\n");
+	free((void *)binfile);
         return false;
     };
     Log.printf("Loaded %lu TAGs with ID 0x%08x, size %lu, version %s, dated %s",

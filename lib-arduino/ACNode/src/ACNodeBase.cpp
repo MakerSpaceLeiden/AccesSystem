@@ -366,11 +366,13 @@ void ACNodeBase::report(JsonObject & out) {
     out[ "mac" ] = macstr;
     out[ "board" ] = getHW();
     out[ "sdk" ] = _sdk;
+    out[ "rom_size_bits" ] = get_rom_size() * 8;
     
     if (_start_beat == 0)
         if (time(NULL) > 1542275849)
             _start_beat = time(NULL) + millis()/1000;
-    
+    out[ "uptime" ] = uptimeInSeconds();
+
     out[ "approve" ] = _approve;
     out[ "deny" ] = _deny;
     out[ "requests" ] = _reqs;    
