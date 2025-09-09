@@ -19,6 +19,7 @@
 */
 #include <WhiteNodev108.h>
 #include <ButtonDebounce.h>
+#include "/Users/dirkx/.passwd.h"
 
 #ifndef MACHINE
 #define MACHINE "metalmitresaw"
@@ -43,10 +44,10 @@ const unsigned long COOLANT_NAG_TIMEOUT = 60;  // Start nagging after running fo
 WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 
-#define SAFETY                  (node.OPTO1)
-#define PUMP                    (node.OPTO0)
-#define RELAY_GPIO              (node.OUT0)
-#define MOTOR_CURRENT           (node.CURR0)
+#define SAFETY (node.OPTO1)
+#define PUMP (node.OPTO0)
+#define RELAY_GPIO (node.OUT0)
+#define MOTOR_CURRENT (node.CURR0)
 
 ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
 
@@ -79,11 +80,11 @@ void setup() {
   pumpDetect->setCallback([](const int newState) {
     // remove coolant nag from screen, if any.
     if (node.machinestate == RUNNING && !newState)
-      node.updateDisplay(node.machine,node.machinestate.label(), true);
+      node.updateDisplay(node.machine, node.machinestate.label(), true);
 
     Log.printf("Coolant pump now %s\n", newState ? "OFF" : "ON");
   },
-  CHANGE);
+                          CHANGE);
 
   pinMode(SAFETY, INPUT);
   safetyDetect = new ButtonDebounce(SAFETY);
@@ -96,8 +97,7 @@ void setup() {
       normal_poweroff++;
       node.machinestate = MachineState::WAITINGFORCARD;
       node.buzzerOk();
-    }
-    else if (node.machinestate == RUNNING && newState == LOW) {
+    } else if (node.machinestate == RUNNING && newState == LOW) {
       // Refuse to let the safety be used to power something off. As
       // the relay is really not designed for this.
       //
@@ -108,7 +108,7 @@ void setup() {
       Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
     };
   },
-  CHANGE);
+                            CHANGE);
 
   motorCurrent = new ButtonDebounce(MOTOR_CURRENT);
   motorCurrent->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
@@ -124,13 +124,13 @@ void setup() {
                  node.machinestate.label(), newState ? "ON" : "OFF");
     }
   },
-  CHANGE);
+                            CHANGE);
 
   node.setOTAPasswordHash(OTA_PASSWD_HASH);
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  node.onReport([](JsonObject & report) {
+  node.onReport([](JsonObject &report) {
     report["bad_poweroff"] = bad_poweroff;
     report["normal_poweroff"] = normal_poweroff;
     report["no_coolant_longruns"] = no_coolant;
@@ -153,10 +153,12 @@ void setup() {
     // We allow 'taking over this achine while it is on' -- hence this check for
     // if it is powered; and in that case -also- accepting a new approval.
     //
+#if 0
     if (node.machinestate != POWERED & node.machinestate != MachineState::CHECKINGCARD) {
       node.buzzerErr();
       return;
     };
+#endif
     node.machinestate = POWERED;
   });
 
