@@ -137,12 +137,10 @@ void ApprovalAPI::loop() {
         case FAIL:
             Debug.println("TagDB update failed, scheduling retry");
             interval =  (600  + (esp_random() & 0xFF)) * 1000;
-            interval =  (10  + (esp_random() & 0xF)) * 1000; // XXX for testing only now !
             break;
         case NO_UPDATE_NEEDED:
             Debug.println("No TagDB update needed");
             interval =  (3600  + (esp_random() & 0xFF -128)) * 1000; 
-            interval =  (30  + (esp_random() & 0xF)) * 1000; // XX for testing only now. Should be an hour
             break;
         case NEEDS_UPDATE:
             updateTagDB();
