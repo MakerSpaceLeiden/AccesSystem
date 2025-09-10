@@ -53,7 +53,9 @@ public:
 
 class ACBase {
 public:
-    virtual const char * name() { return "ACBase"; }
+    ACBase(const char * name = NULL) { if (name) _name = strdup(name); };
+    ~ACBase() { if (_name) free(_name); }
+    virtual const char * name() { return _name ? _name : "ACBase"; }
     
     typedef enum cmd_results { CMD_DECLINE, CMD_CLAIMED } cmd_result_t;
     
@@ -81,6 +83,7 @@ protected:
     bool _debug;
     bool _isUp;
     // protected:
+   char * _name = NULL;
 };
 
 class ACSecurityHandler : public ACBase {

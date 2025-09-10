@@ -54,7 +54,7 @@ void BlackNodev111::begin() {
 
     if (YES_BUTTON != -1) {
 	xpinMode(YES_BUTTON, INPUT_PULLUP);
-	yesButton = new IODebounce(YES_BUTTON);
+	yesButton = new IODebounce("YesButton", YES_BUTTON);
 
         yesButton->setCallback([&](const int newState) {
             Debug.printf("YES button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
@@ -78,7 +78,9 @@ void BlackNodev111::begin() {
     };
 
     if (!errorLed)
-	errorLed = new LEDAW(LED_INDICATOR);
+	errorLed = new LEDAW("ErrorLedAW", LED_INDICATOR);
+    addHandler(errorLed);
+
     super::begin();
 }
 

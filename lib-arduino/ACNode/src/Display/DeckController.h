@@ -5,6 +5,8 @@
 
 class DeckController : public ACBase {
 public:
+    virtual char * name() { return "DeckController"; };
+
     void addDeckAsFirst(Deck *d);
     void addDeck(Deck *d);
 

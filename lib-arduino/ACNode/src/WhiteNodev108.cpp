@@ -104,7 +104,7 @@ void WhiteNodev108::begin() {
     
     if (!errorLed) {
 	Debug.printf("Led indicator wired to %x %d\n", LED_INDICATOR, LED_INDICATOR);
-        errorLed = new LED(LED_INDICATOR);
+        errorLed = new LED("errorLed", LED_INDICATOR);
         addHandler(errorLed);
     };
 
@@ -171,7 +171,7 @@ void WhiteNodev108::begin() {
     tzset();
 #endif
     
-    offButton = new IODebounce(OFF_BUTTON);
+    offButton = new IODebounce("OffButton", OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
         Debug.printf("OFF button %s\n",newState ? "released" : "pressed");
 
@@ -209,7 +209,7 @@ void WhiteNodev108::begin() {
     addHandler(offButton);
   
     pinMode(14,INPUT_PULLUP);
-    menuButton = new IODebounce(MENU_BUTTON);
+    menuButton = new IODebounce("MenuButton", MENU_BUTTON);
     menuButton->setCallback([&](const int newState) {
         Debug.printf("MENU button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
         if (_menuCallBack &&

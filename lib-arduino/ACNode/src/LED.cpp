@@ -8,7 +8,7 @@
 //
 static void flipPin(LED * led) { led->_update(); }
 
-LED::LED(const byte pin, const bool inverted) : _pin(pin) ,_inverted(inverted) {
+LED::LED(const char * name, const byte pin, const bool inverted) : ACBase(name), _pin(pin) ,_inverted(inverted) {
 #if 0
         if (_pin != -1) {
   	   _ticker = Ticker();

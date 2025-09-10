@@ -7,7 +7,7 @@ static void _update(uint32_t arg) {
     c->_ticker_update();
 }
 
-IODebounce::IODebounce(int pin, unsigned long delay){
+IODebounce::IODebounce(const char *name, int pin, unsigned long delay) : ACBase(name) {
     _pin = pin;
     _delay = delay;
     _lastChangeTime = 0;

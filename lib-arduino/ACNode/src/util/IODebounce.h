@@ -15,10 +15,10 @@
 
 class IODebounce : public ACBase {
   public:
-    IODebounce(int pin, unsigned long delay = 40 /* mSeconds stable */);
+    IODebounce(const char *name = NULL, int pin = -1, unsigned long delay = 40 /* mSeconds stable */);
     ~IODebounce();
 
-    const char * name() { return "IODebounce"; };
+    // const char * name() { return "IODebounce"; };
     
     void setAnalogThreshold(unsigned short val); // Set to 0 to go back to digital again.
 
