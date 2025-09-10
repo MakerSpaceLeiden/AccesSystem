@@ -5,8 +5,6 @@
 #include "ACNode-private.h"
 #include "SIG/ACNode.h"
 
-#include <Ticker.h>
-
 #include <WiFiUdp.h>
 #include <PubSubClient.h>        // https://github.com/knolleary/
 

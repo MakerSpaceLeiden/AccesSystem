@@ -10,6 +10,9 @@ static void flipPin(LED * led) { led->_update(); }
 
 LED::LED(const char * name, const byte pin, const bool inverted) : ACBase(name), _pin(pin) ,_inverted(inverted) {
 #if 0
+	// Temporarily removed - we rely on the loop() now
+	// until the Wire/Adafruit issues on the unchecked
+        // Semaphore return flag is fixed.
         if (_pin != -1) {
   	   _ticker = Ticker();
         };

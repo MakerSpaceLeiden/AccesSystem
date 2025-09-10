@@ -7,7 +7,6 @@
 #define IODebounce_h
 
 #include "Arduino.h"
-#include "Ticker.h"
 #include <functional>
 
 #include "ExpandedGPIO.h"
@@ -50,6 +49,5 @@ class IODebounce : public ACBase {
     ButtonCallback _callBack = NULL;
     digitalReadFunction _digitalRead = &expandedDigitalRead;
     analogReadFunction _analogRead = &expandedAnalogRead;
-    Ticker * _ticker;
 };
 #endif

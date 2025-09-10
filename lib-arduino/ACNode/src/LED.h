@@ -1,6 +1,5 @@
 #pragma once
 #include "ACBase.h"
-#include "Ticker.h"
 
 class LED : public ACBase {
 public:
@@ -22,7 +21,6 @@ public:
 protected:
    unsigned int _pin,_tock;
    const bool _inverted;
-//   Ticker _ticker;
    led_state_t _lastState;
    unsigned long _lst, _tsSpeed;
 private:
