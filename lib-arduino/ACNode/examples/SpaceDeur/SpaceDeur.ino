@@ -44,9 +44,7 @@
 #define MACHINE "spacedeur"
 BlackNodev111 node = BlackNodev111(MACHINE);
 
-#ifdef OTA_PASSWD_HASH
-OTA ota = OTA(OTA_PASSWD_HASH);
-#else
+#ifndef OTA_PASSWD_HASH
 // Comment out this line if you are experimenting, etc.
 #error "You propablly do not want to deploy without OTA"
 #endif
@@ -213,8 +211,8 @@ void setup() {
     report["mqtt_isConnected"] = node.isConnected();
   });
 
-#ifdef OTA_PASSWD
-  node.addHandler(&ota);
+#ifdef OTA_PASSWD_HASH
+  node.setOTAPasswordHash(ota_password_hash);
 #endif
 
   // node.set_debug(true);
