@@ -14,7 +14,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 
-  Board: v1.11 / black; with no screen and a solenoid on OUT0
+  Board: v1.12 / black; with screen and a solenoid on OUT0
 
   Compile settings:
   - ESP32-WROOM-DA Module (or ESP32 Dev) with minial SPIFFs
