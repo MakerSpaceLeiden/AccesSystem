@@ -189,7 +189,7 @@ void setup() {
   }, CHANGE);
 
   motorCurrent = new IODebounce(MOTOR_CURRENT);
-  motorCurrent->setAnalogThreshold(30); 
+  motorCurrent->setAnalogThreshold(30);  // Was 600
   node.addHandler(motorCurrent);
 
   motorCurrent->setCallback([](const int newState) {
@@ -239,6 +239,7 @@ void setup() {
     // We allow 'taking over this machine while it is on' -- hence this check for
     // if it is powered; and in that case -also- accepting a new approval.
     //
+#if 0
     if ((node.machinestate != POWERED) &&
         (node.machinestate != MachineState::WAITINGFORCARD) &&
         (node.machinestate != MachineState::CHECKINGCARD) &&
@@ -249,7 +250,7 @@ void setup() {
       node.buzzerErr();
       return;
     };
-
+#endif
     Log.println("Action Approved.");
     if (node.machinestate != POWERED)
       node.machinestate = ACTIVATED;

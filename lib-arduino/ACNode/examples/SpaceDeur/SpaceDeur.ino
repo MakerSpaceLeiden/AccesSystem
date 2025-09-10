@@ -26,11 +26,6 @@
   https://wiki.makerspaceleiden.nl/mediawiki/index.php/PowerNodeBlue-bringup
   https://wiki.makerspaceleiden.nl/mediawiki/index.php/Node_Spacedeur
 
-  Mechanics
-
-  1)  Stepper motor with a pully; rope to the door handle
-  2)  https://wiki.makerspaceleiden.nl/mediawiki/index.php/Project_Grote_Schakelaar
-
   Note: Espressif ESP32 3.2.0 seems to have an older version of MBED-TLS than
       the 2.0.15 and later versions (with mbedtls_sha256_starts_ret not yet
       replacing the legacy mbedtls_sha256_starts()).
@@ -82,38 +77,6 @@ long DOOR_ROPELEN = 300;
 // #define AARTLED_GPIO      (16) // weggehaald, maart 2019, Lucas
 // Introduced by alex - 2020-01-8
 //
-#define GROTE_SCHAKELAAR_SENSOR (node.IOA)  // Was 34
-#define GROTE_SCHAKELAAR_IS_OPEN (HIGH)
-#define GROTE_SCHAKELAAR_TOPIC "makerspace/groteschakelaar"
-
-void setup_grote_schakelaar() {
-  expandedPinMode(GROTE_SCHAKELAAR_SENSOR, INPUT);
-}
-
-void grote_schakelaar_loop() {
-  // debounce
-  static unsigned long lst = 0;
-  static int last_grote_schakelaar = expandedDigitalRead(GROTE_SCHAKELAAR_SENSOR);
-
-  if (expandedDigitalRead(GROTE_SCHAKELAAR_SENSOR) != last_grote_schakelaar) {
-    last_grote_schakelaar = expandedDigitalRead(GROTE_SCHAKELAAR_SENSOR);
-    lst = millis();
-  };
-
-  // Start trusting the value once it has been stable for 100 milli Seconds.
-  //
-  if (lst && millis() - lst > 100) {
-    // stable for over 100 milliseconds; so we trust this value;
-    if (last_grote_schakelaar == GROTE_SCHAKELAAR_IS_OPEN) {
-      Log.println("Grote schakelaar: Space is now open.");
-      // node.send(GROTE_SCHAKELAAR_TOPIC, "1");
-    } else {
-      Log.println("Grote schakelaar: Space is now closed.");
-      // node.send(GROTE_SCHAKELAAR_TOPIC, "0");
-    };
-    lst = 0;
-  }
-}
 
 // Stepper motor-Pololu / A4988 - wiring
 //
@@ -234,8 +197,6 @@ void setup() {
   expandedPinMode(node.IOD, INPUT);
   expandedPinMode(node.IOE, INPUT);
 
-  setup_grote_schakelaar();
-
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
   // esp_task_wdt_deinit();
   esp_task_wdt_init(60 * 1000, false);
@@ -264,7 +225,6 @@ void loop() {
 #endif
 
   node.loop();
-  grote_schakelaar_loop();
   stepper.run();
 
   if (node.machinestate == START_OPENING_DOOR) {
