@@ -140,7 +140,7 @@ void ACNodeRest::loop() {
     super::loop();
 
     static unsigned lst = 0;
-    if (_approvedTagsToSent.size() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 500) {
+    if (_approvedTagsToSent.size() && machinestate.isStable() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 500) {
 	ApprovalEntryWithTag et = *(_approvedTagsToSent.begin());
         _approvedTagsToSent.pop_front();
 
