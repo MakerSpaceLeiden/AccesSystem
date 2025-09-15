@@ -2,10 +2,12 @@
 #define SAMPLES_PER_DELAY (4)
 #include <TLog.h>
 
+#if 0
 static void _update(uint32_t arg) {
     IODebounce * c = (IODebounce*)arg;
     c->_ticker_update();
 }
+#endif
 
 IODebounce::IODebounce(const char *name, int pin, unsigned long delay) : ACBase(name) {
     _pin = pin;
@@ -23,7 +25,9 @@ IODebounce::IODebounce(const char *name, int pin, unsigned long delay) : ACBase(
 }
 
 IODebounce::~IODebounce() {
+#if 0
     delete _ticker;
+#endif
 };
 
 void IODebounce::setAnalogThreshold(unsigned short val) {
