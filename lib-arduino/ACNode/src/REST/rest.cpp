@@ -258,6 +258,12 @@ rest_ret_t registerDevice(const char * terminalName) {
         ret = NOERROR_OK;
     }
     else if (httpCode == HTTP_CODE_UNAUTHORIZED) {
+        if (nonce) {
+        	Log.printf("Deleting previous nonce");
+		free(nonce);
+		nonce = NULL;
+	};
+
         Log.printf("We're not authorized - but got a nonce to try\n");
         nonce = strdup((https.getString().c_str()));
         ret = NOERROR;
