@@ -54,6 +54,7 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
     switch(ret) {
         case NOERROR_OK:
         case NOERROR:
+            return n;
             break;
         case ERR_FATAL:
             if (md < FULLY_REGISTERED) md = WIFI_FAIL_REBOOT;
@@ -66,19 +67,14 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
             md = WAITING_FOR_NTP;
             break;
     }
+    Log.printf("Failed %s\n", url);
 
-    if (p && *p == NULL || ret < 0) {
-        free(*buffp);
-        *buffp = NULL;
+    if (p && *p == NULL) {
+	free(*buffp);
+       	*buffp = NULL;
     };
 
-
-    if (ret < 0) {
-	Log.printf("Failed %s\n", url);
-        return -1;
-    };
-
-    return n;
+    return -1;
 }
 
 
