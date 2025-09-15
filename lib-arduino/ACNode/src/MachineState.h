@@ -93,7 +93,7 @@ public:
 private:
     AMState * _state2stateStruct[256];
     
-    machinestate_t machinestate = OUTOFORDER, laststate = OUTOFORDER, newstate = BOOTING;
+    machinestate_t machinestate = OUTOFORDER, laststate = OUTOFORDER, lastloopstate = OUTOFORDER;
     unsigned long laststatechange, lastReport;
     
     LED * _led = NULL;
@@ -115,6 +115,7 @@ public:
     
     bool safeForOTA();
     bool backgroundTaskOk();
+    bool isStable();
 #if 0
     bool operator <(machinestate_t s) { return s > machinestate; };
     bool operator ==(void s) { return (machinestate_t)s == machinestate; };

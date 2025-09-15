@@ -45,6 +45,7 @@ const char * MachineState::label()  {
 
 bool MachineState::safeForOTA() { return _state2stateStruct[machinestate]->safeForOTA;};
 bool MachineState::backgroundTaskOk() { return _state2stateStruct[machinestate]->backgroundTaskOk;};
+bool MachineState::isStable() { return lastloopstate == machinestate; };
 
 const char * MachineState::label(uint8_t state)  {
     if (_state2stateStruct[state] && _state2stateStruct[state] ->label)
@@ -56,10 +57,41 @@ MachineState::machinestate_t MachineState::state() {
     return machinestate;
 }
 
-void MachineState::setState(machinestate_t s) {
-    Log.printf("MachineState:setState; %s(%d) -> %s(%d)\n", label(machinestate), machinestate, label(s), s);
-    newstate = s;
-    if (_led) _led->set(ledState());
+void MachineState::setState(machinestate_t newstate) {
+    Log.printf("MachineState:setState; %s(%d) -> %s(%d)\n", label(machinestate), machinestate, label(newstate), newstate);
+
+    if (machinestate == newstate) {
+	Log.println("*BUG* no change in state; ignored.");
+	return;
+    };
+
+    laststate = machinestate;
+    machinestate = newstate;
+
+    if (_led) 
+	_led->set(ledState());
+    
+    if (_state2stateStruct[laststate]) {
+        _state2stateStruct[laststate]->timeInState += (millis() - laststatechange) / 1000;
+        _state2stateStruct[laststate]->stateCnt ++;
+    };
+    laststatechange = millis();
+
+    if (_state2stateStruct[machinestate] == NULL) {
+        Log.printf("State %d reached - which is undefind. ignoring.", machinestate);
+        return;
+    };
+    
+    std::list<THandlerFunction_OnChangeCB> cbs;
+
+    cbs = _state2stateStruct[machinestate]->onChangeCBs;
+    for (auto it = cbs.begin(); it!=cbs.end(); ++it) {
+        (*it)(laststate, machinestate);
+    };
+ 
+    cbs = _state2stateStruct[ALL_STATES]->onChangeCBs;
+    for (auto it = cbs.begin(); it!=cbs.end(); ++it)
+        (*it)(laststate, machinestate);
 }
 
 void MachineState::operator=(machinestate_t s) {
@@ -99,7 +131,7 @@ MachineState::MachineState(LED * led) {
     defState(ALL_STATES, 	"<default>",            LED::LED_IDLE,         NEVER, ALL_STATES     );
     
     laststate = OUTOFORDER;
-    newstate = machinestate = BOOTING;
+    machinestate = BOOTING;
 };
 
 // ACBase - standard handlers.
@@ -126,62 +158,29 @@ void MachineState::report(JsonObject& report) {
 void MachineState::loop()
 {
     // Debug.println(__PRETTY_FUNCTION__);
-
-    machinestate = newstate;
-    
-    if (_state2stateStruct[machinestate] == NULL) {
-        Log.printf("State %d reached - which is undefind. ignoring.", machinestate);
-        return;
-    };
-    
-    if (laststate != machinestate) {
-        Debug.printf("Changed from state <%s> to state <%s>\n", label(laststate), label(machinestate));
-        std::list<THandlerFunction_OnChangeCB> cbs;
-
-        cbs = _state2stateStruct[machinestate]->onChangeCBs;
-        for (auto it = cbs.begin(); it!=cbs.end(); ++it) {
-            (*it)(laststate, machinestate);
-        };
- 
-        cbs = _state2stateStruct[ALL_STATES]->onChangeCBs;
-        for (auto it = cbs.begin(); it!=cbs.end(); ++it)
-            (*it)(laststate, machinestate);
-    
-        if (_state2stateStruct[laststate]) {
-            _state2stateStruct[laststate]->timeInState += (millis() - laststatechange) / 1000;
-            _state2stateStruct[laststate]->stateCnt ++;
-        };
-
-        if (_led) 
-		_led->set(ledState());
-
-        laststate = machinestate;
-        laststatechange = millis();
-        return;
-    };
-    
     if (_state2stateStruct[machinestate]->maxTimeInMilliSeconds != NEVER &&
         (millis() - laststatechange > _state2stateStruct[machinestate]->maxTimeInMilliSeconds))
     {
         _state2stateStruct[machinestate]->timeoutTransitions++;
+
+        machinestate_t newstate = _state2stateStruct[machinestate]->failStateOnTimeout; 
+
+        Debug.printf("Time-out (%f seconds); will transition from %d<%s> to %d<%s>\n",
+                     _state2stateStruct[machinestate]->maxTimeInMilliSeconds/1000.,
+                     machinestate, label(machinestate),
+                     newstate, label(newstate)
+	);
         
         std::list<THandlerFunction_OnTimeoutCB> cbs;
-        
         cbs = _state2stateStruct[laststate]->onTimeoutCBs;
         for (auto it = cbs.begin(); it!=cbs.end(); ++it)
-            (*it)(machinestate);
+            (*it)(newstate);
 
         cbs = _state2stateStruct[ALL_STATES]->onTimeoutCBs;
         for (auto it = cbs.begin(); it!=cbs.end(); ++it)
-            (*it)(machinestate);
-        
-        laststate = machinestate;
-        newstate = _state2stateStruct[machinestate]->failStateOnTimeout;
-        
-        Debug.printf("Time-out (%f seconds); will transition from %d<%s> to %d<%s>\n",
-                     _state2stateStruct[laststate]->maxTimeInMilliSeconds/1000.,
-                     laststate, label(laststate),
-                     newstate, label(newstate));
+            (*it)(newstate);
+       
+        setState(newstate);
         return;
     };
     
@@ -202,6 +201,8 @@ void MachineState::loop()
     cbs = _state2stateStruct[ALL_STATES]->onLoopCBs;
     for (auto it = cbs.begin(); it!=cbs.end(); ++it)
         (*it)(machinestate);
+ 
+    lastloopstate = machinestate;
 };
 
 time_t MachineState::secondsInThisState() {
