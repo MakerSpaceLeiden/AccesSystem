@@ -74,14 +74,13 @@ void ApprovalAPI::readCache() {
         Log.println("Cache malloc failed.");
         return;
     };
-    if (len == f.read((uint8_t*)tmp,len))
-        import(tmp,len);
-    else {
-        Log.println("Cache loading failed.");
-        free((void*)tmp);
-    };
-    
     f.close();
+
+    if ((len ==  f.read((uint8_t*)tmp,len) && import(tmp,len))
+	return;  // Import takes over responsibility for the malloced buffer
+
+    Log.println("Cache loading failed");
+    free((void*)tmp);
 }
 
 void ApprovalAPI::writeCache() {
