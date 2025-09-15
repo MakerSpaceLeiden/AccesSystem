@@ -338,7 +338,8 @@ void ACNodeSIG::request_approval(const char * tag, const char * operation, const
         };
            
         char * tmp = (char *)malloc(MAX_MSG);
-            char * buff = (char *)malloc(MAX_MSG);
+        char * buff = (char *)malloc(MAX_MSG);
+
         if (!tmp || !buff) {
             Log.println("Out of memory during cloacking");
             goto _return_request_approval;
@@ -363,9 +364,9 @@ void ACNodeSIG::request_approval(const char * tag, const char * operation, const
             _reqs++;
         send(NULL,buff);
 
-    _return_request_approval:
+_return_request_approval:
         if (tmp) free(tmp);
-            if (buff) free(buff);
+        if (buff) free(buff);
         return;
 }
 
