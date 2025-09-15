@@ -63,14 +63,16 @@ void setup() {
 
   // Add the states needed for this node.
   //
-  BUZZING = node.machinestate.addState((const char*)"Approved",
+  BUZZING = node.machinestate.addState((const char*)"Buzzing",
                                        LED::LED_IDLE,
                                        (time_t)(BUZZ_TIME * 1000), // stay in this state for BUZZ_TIME seconds
-                                       node.machinestate.WAITINGFORCARD // then go back to waiting for the next swipe.
+                                       node.machinestate.WAITINGFORCARD, // then go back to waiting for the next swipe.
+				       false /* no OTA during this */, 
+				       false /* No reporting until we're done with the door. */
                                       );
 
   node.onApproval([](const char *machine) {
-    Log.printf("Engaging the buzzer\n");
+    Log.printf("Engaging the solenoid/buzzer\n");
     node.machinestate = BUZZING;
     opening_door_count++;
   });
@@ -107,7 +109,6 @@ void loop() {
   //
   node.setMonitoredOutput(SOLENOID_GPIO, (node.machinestate.state() == BUZZING));
 
-  //
   // And also buzz during this time
   //
   node.buzzer((node.machinestate.state() == BUZZING));
