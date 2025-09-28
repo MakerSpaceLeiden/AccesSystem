@@ -1,3 +1,4 @@
+#if HAS_SEED_PN532
 #include <RFID/RFID_PN532_EX.h>
 #include <Wire.h>
 
@@ -82,3 +83,4 @@ void RFID_PN532_EX::loop() {
     
     return;
 }
+#endif

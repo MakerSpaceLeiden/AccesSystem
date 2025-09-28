@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <functional>
 
+#if HAS_SEED_PN532
 // Relies on https://github.com/Seeed-Studio/PN532
 //
 // Which is not part of the Arduino ecosystem.
@@ -31,4 +32,5 @@ private:
     PN532_I2C * _i2cNFCDevice;
     PN532 * _nfc532;
 };
+#endif // HAS_SEED_PN532
 #endif
