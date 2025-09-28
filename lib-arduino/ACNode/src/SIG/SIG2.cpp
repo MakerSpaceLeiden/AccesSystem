@@ -4,15 +4,14 @@
 
 #include "SIG/ACNode-private.h"
 #include "SIG/SIG2.h"
-
-#ifdef HAS_SIG2
+#include "REST/rnd.h"
 
 #include <mbedtls/aes.h>
+#include <mbedtls/entropy.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/dhm.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
 #include <mbedtls/ecdh.h>
+#include <mbedtls/bignum.h>
 
 // We're using libsodium (NaCL) its crypto signing capabilities as we happen
 // to know that these are Ed25519 based. This removes the reliance on an (extra)
@@ -110,8 +109,6 @@ bool sig2_active() {
 }
 
 uint8_t runtime_seed[ 32 ];
-mbedtls_entropy_context entropy;
-mbedtls_ctr_drbg_context ctr_drbg;
 
 // Destructively swap a 32 byte value from network (big) to host order.
 void ntoh32(unsigned char * src) {
@@ -127,14 +124,13 @@ void ntoh32(unsigned char * src) {
 
 int kickoff_RNG() {
     // Libsodium has its own random internals. mbedtls needs to be fed.
-    
-    mbedtls_entropy_init( &entropy );
-    if (mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy,
-                              (const unsigned char*)RNG_APP_TAG, sizeof(RNG_APP_TAG))) return -1;
+    ensure_rnd(); 
+
     for (int i = 0; i < 25; i++) {
         uint32_t r = esp_random();
         mbedtls_ctr_drbg_update(&ctr_drbg, (const unsigned char *)&r, sizeof(r)); // in later versions of mbedtls - this returns an int which we can check errors with.
     };
+
     unsigned char mac[6];
     WiFi.macAddress(mac);
     mbedtls_ctr_drbg_update(&ctr_drbg, (const unsigned char *)&mac, sizeof(mac)); // in later versions of mbedtls - this returns an int which we can check errors with.
@@ -165,19 +161,28 @@ void wipe_eeprom() {
 
 void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
     resetWatchdog();
-    
+   
     // Historically we've passed the keys as base64; withouth mapping them to a network (big endian)
     // order. This worked as Arm (RaspPI, ESP32) and Intel (server) are all little endian. But the
     // read/write interface of mbedtls is `proper' and produces things in network (big endian)
     // order. So until we go for a new version - we solve this by fixing the network order 'again'.
     //
     ntoh32(pubencr_tmp);
-    if ((0 != mbedtls_mpi_lset( &ctx_cli.Qp.Z, 1 )) ||
-        (0 != mbedtls_mpi_read_binary( &ctx_cli.Qp.X, pubencr_tmp, CURVE259919_KEYLEN)) ||
-        (0 != mbedtls_ecdh_compute_shared( &ctx_cli.grp, &ctx_cli.z, &ctx_cli.Qp, &ctx_cli.d,
+#if 0 
+    if ((0 != mbedtls_mpi_lset( &ctx_cli.private_Qp.Z, 1 )) ||
+        (0 != mbedtls_mpi_read_binary( &ctx_cli.private_Qp.X, pubencr_tmp, CURVE259919_KEYLEN)) ||
+        (0 != mbedtls_ecdh_compute_shared( &ctx_cli.grp, &ctx_cli.private_z, &ctx_cli.private_Qp, &ctx_cli.private_d,
                                           mbedtls_ctr_drbg_random, &ctr_drbg )) ||
-        (0 != mbedtls_mpi_write_binary( &ctx_cli.z, sessionkey, CURVE259919_KEYLEN))
-        ) {
+        (0 != mbedtls_mpi_write_binary( &ctx_cli.private_z, sessionkey, CURVE259919_KEYLEN))
+    ) 
+#else
+    size_t olen = 0;
+    if ((0 != mbedtls_ecdh_read_public(&ctx_cli, pubencr_tmp, CURVE259919_KEYLEN)) ||
+	(0 != mbedtls_ecdh_calc_secret(&ctx_cli, &olen, sessionkey, sizeof(sessionkey),  mbedtls_ctr_drbg_random, &ctr_drbg)) ||	
+	(olen != sizeof(sessionkey))
+    )
+#endif
+    {
         Log.println("Something went wrong during calculateSharedSecret(). Aborting.");
         return;
     }
@@ -186,6 +191,7 @@ void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
     // passed the buffers as base64 'raw'. So we fix this by swapping 'again'.
     //
     ntoh32(sessionkey);
+   
     
     resetWatchdog();
     
@@ -215,6 +221,7 @@ void SIG2::begin() {
     Log.println("Got a valid eeprom.");
     Beat::begin();
     mbedtls_ctr_drbg_init( &ctr_drbg );
+    mbedtls_ecdh_init(&ctx_cli);
 }
 
 void SIG2::loop() {
@@ -230,9 +237,9 @@ void SIG2::loop() {
     };
     
     unsigned long str = millis();
-    mbedtls_entropy_update_manual(&entropy,(const unsigned char*)&str,sizeof(str));
+    mbedtls_entropy_update_manual(&entropy_ctx,(const unsigned char*)&str,sizeof(str));
     uint32_t seed = trng();
-    mbedtls_entropy_update_manual(&entropy,(const unsigned char*)&seed,sizeof(seed));
+    mbedtls_entropy_update_manual(&entropy_ctx,(const unsigned char*)&seed,sizeof(seed));
     
     if (!_acnodebase->isConnected()) {
         // force re-connecting, etc post reconnect.
@@ -254,11 +261,21 @@ void SIG2::loop() {
 #endif
         resetWatchdog();
         bzero(sessionkey, sizeof(sessionkey));
-        
+       
+#if 0 
         if ((0 != mbedtls_ecp_group_load( &ctx_cli.grp, MBEDTLS_ECP_DP_CURVE25519 )) ||
             (0 != mbedtls_ecdh_gen_public( &ctx_cli.grp, &ctx_cli.d, &ctx_cli.Q, mbedtls_ctr_drbg_random, &ctr_drbg)) ||
             (0 != mbedtls_mpi_write_binary( &ctx_cli.Q.X, node_publicsession, 32 ))
-            ) {
+            ) 
+#else
+	size_t olen = 0;
+        if ((0 != mbedtls_ecdh_setup(&ctx_cli, MBEDTLS_ECP_DP_CURVE25519 )) ||
+	    (0 != mbedtls_ecdh_make_public( &ctx_cli, &olen, node_publicsession, sizeof(node_publicsession), 
+			 mbedtls_ctr_drbg_random, &ctr_drbg)) ||
+	   (olen != sizeof(node_publicsession))
+	)
+#endif
+        {
             Log.println("Curve25519 generation failed.");
             return;
         };
@@ -813,4 +830,3 @@ void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]
     size_t olen = 0;
     mbedtls_base64_encode((unsigned char *)nonce, B64L(HASH_LENGTH), &olen, nonce_raw, sizeof(nonce_raw));
 };
-#endif // HAS_SIG2
