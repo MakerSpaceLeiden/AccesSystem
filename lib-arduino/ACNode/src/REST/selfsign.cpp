@@ -9,17 +9,15 @@
 
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/x509_csr.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
 #include "mbedtls/md.h"
 #include "mbedtls/error.h"
-#include "mbedtls/ctr_drbg.h"
 #include "mbedtls/base64.h"
 #include <mbedtls/sha256.h>
 
 #include <TLog.h>
 #include "REST/selfsign.h"
 #include "REST/geneckey.h"
+#include "rnd.h"
 
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -106,20 +104,9 @@ int populate_self_signed(mbedtls_pk_context * key, const char * CN_or_full_DN, m
     char dn[128];
     const char * cn = NULL;
     int ret;
-    
-    mbedtls_entropy_context entropy_ctx;
-    mbedtls_ctr_drbg_context ctr_drbg;
-    
-    mbedtls_mpi serial;
-    
-    mbedtls_entropy_init( &entropy_ctx );
-    mbedtls_ctr_drbg_init( &ctr_drbg );
-    
-    mbedtls_mpi_init( &serial );
+    ensure_rnd();
+
     mbedtls_x509write_crt_init( crt );
-    
-    MBOK(mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func,
-                               &entropy_ctx, (const unsigned char *) seed, strlen(seed)));
     
     mbedtls_x509write_crt_set_subject_key( crt, key );
     mbedtls_x509write_crt_set_issuer_key( crt, key );
@@ -142,9 +129,8 @@ int populate_self_signed(mbedtls_pk_context * key, const char * CN_or_full_DN, m
     mbedtls_x509write_crt_set_version( crt, DFL_VERSION );
     mbedtls_x509write_crt_set_md_alg( crt, DFL_DIGEST );
     
-    MBOK(mbedtls_ctr_drbg_random(&ctr_drbg, rndbuff, sizeof(rndbuff)));
-    MBOK(mbedtls_mpi_read_binary( &serial, rndbuff, sizeof(rndbuff)));
-    MBOK(mbedtls_x509write_crt_set_serial( crt, &serial));
+    MBOK(mbedtls_ctr_drbg_random(p_ctr_drbg, rndbuff, sizeof(rndbuff)));
+    MBOK(mbedtls_x509write_crt_set_serial_raw(crt, rndbuff, sizeof(rndbuff)));
     
     MBOK(mbedtls_x509write_crt_set_validity( crt, DFL_NOT_BEFORE, DFL_NOT_AFTER ));
     
@@ -164,10 +150,6 @@ int populate_self_signed(mbedtls_pk_context * key, const char * CN_or_full_DN, m
 exit:
     return 0;
     
-    mbedtls_mpi_free( &serial );
-    mbedtls_ctr_drbg_free( &ctr_drbg );
-    mbedtls_entropy_free( &entropy_ctx );
-    
     if (ret)
         return ret;
 }
@@ -177,24 +159,16 @@ int sign_and_topem(mbedtls_pk_context * key, mbedtls_x509write_cert * crt,  char
     unsigned char * tmp = NULL, * cp = NULL, *kp = NULL;
     char buf[48];
     int ret;
-    
-    mbedtls_entropy_context entropy_ctx;
-    mbedtls_ctr_drbg_context ctr_drbg;
-    
-    mbedtls_entropy_init( &entropy_ctx );
-    mbedtls_ctr_drbg_init( &ctr_drbg );
-    MBOK(mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func,
-                               &entropy_ctx, (const unsigned char *) seed, strlen(seed)));
-    
+   
+    ensure_rnd(); 
     // MBOK(mbedtls_pk_write_key_pem(key, NULL, 0)); /* we cannot get the length yet in this version of mbed@espressif */
     ret = DEFAULT_PEM_MAX;
     kp = tmp  = (unsigned char *) malloc(ret);
     MBOK(mbedtls_pk_write_key_pem(key, tmp, ret));
     
-    // MBOK(mbedtls_x509write_crt_pem(crt, NULL, 0, mbedtls_ctr_drbg_random, &ctr_drbg)); /* we cannot get the length yet in this version of mbed@espressif */
     ret = DEFAULT_PEM_MAX;
     cp = tmp = (unsigned char *) malloc(ret);
-    MBOK(mbedtls_x509write_crt_pem(crt, tmp, ret, mbedtls_ctr_drbg_random, &ctr_drbg));
+    MBOK(mbedtls_x509write_crt_pem(crt, tmp, ret, mbedtls_ctr_drbg_random, p_ctr_drbg));
     
     ret = 0;
     *out_cert_as_pem = strdup((const char*) cp);
@@ -207,9 +181,6 @@ exit:
     if (kp)
         free(kp);
     
-    mbedtls_ctr_drbg_free( &ctr_drbg );
-    mbedtls_entropy_free( &entropy_ctx );
-    
     return ret;
 }
 
@@ -220,7 +191,7 @@ int fingerprint_from_pem(char * buff, unsigned char sha256[256 / 8]) {
     unsigned char * p = (unsigned char*) strdup(buff);
     
     if (((ret = pem2der(p)) < 0 ) ||
-        ((ret = mbedtls_sha256_ret(p, ret, sha256, 0)) < 0 ))
+        ((ret = mbedtls_sha256(p, ret, sha256, 0)) < 0 ))
     {
         Log.printf("fingerprint_from_pem failed: %02X\n", -ret);
         memset(sha256, 0, 32);
@@ -237,7 +208,7 @@ int fingerprint_from_certpubkey(const mbedtls_x509_crt * crt, unsigned char sha2
     
     if (((ret = mbedtls_pk_write_pubkey_pem(pk , buff, sizeof(buff))) < 0) ||
         ((ret = pem2der(buff)) < 0 ) ||
-        ((ret = mbedtls_sha256_ret(buff, ret, sha256, 0)) < 0 ))
+        ((ret = mbedtls_sha256(buff, ret, sha256, 0)) < 0 ))
     {
         Log.printf("fingerprint_from_certpubkey failed: %02X\n", -ret);
         memset(sha256, 0, 32);
@@ -279,13 +250,8 @@ int sign_and_toder(mbedtls_pk_context * key, mbedtls_x509write_cert * crt, unsig
     char buf[48];
     int ret;
     int outkeylen = -1, outcertlen = -1;
-    
-    mbedtls_entropy_context entropy_ctx;
-    mbedtls_ctr_drbg_context ctr_drbg;
-    
-    mbedtls_entropy_init( &entropy_ctx );
-    mbedtls_ctr_drbg_init( &ctr_drbg );
-    
+    ensure_rnd();
+
     // some padding routine deep inside mbed tls insist on this.
     if (!(der = (unsigned char*) heap_caps_malloc(DEFAULT_DER_MAX, MALLOC_CAP_32BIT))) {
         Log.println("Failed to allocate memory");
@@ -307,10 +273,7 @@ int sign_and_toder(mbedtls_pk_context * key, mbedtls_x509write_cert * crt, unsig
     Log.println((char*)der);
     
     
-    MBOK(mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func,
-                               &entropy_ctx, (const unsigned char *) seed, strlen(seed)));
-    
-    MBOK(mbedtls_x509write_crt_der(crt, der, DEFAULT_DER_MAX, mbedtls_ctr_drbg_random, &ctr_drbg));
+    MBOK(mbedtls_x509write_crt_der(crt, der, DEFAULT_DER_MAX, mbedtls_ctr_drbg_random, p_ctr_drbg));
     outcertlen = ret;
     
     if ((NULL == *out_cert_as_der) && (NULL == (*out_cert_as_der = (unsigned char*)malloc(outcertlen)))) {
@@ -322,7 +285,7 @@ int sign_and_toder(mbedtls_pk_context * key, mbedtls_x509write_cert * crt, unsig
     
     Log.println("completion");
     
-    MBOK(mbedtls_x509write_crt_pem(crt, der, DEFAULT_DER_MAX, mbedtls_ctr_drbg_random, &ctr_drbg));
+    MBOK(mbedtls_x509write_crt_pem(crt, der, DEFAULT_DER_MAX, mbedtls_ctr_drbg_random, p_ctr_drbg));
     Log.println((char*)der);
     
     dump_der_as_pem("CERTIFICATE", *out_cert_as_der, outcertlen);
@@ -337,8 +300,6 @@ exit:
     *outkeylenp = outkeylen;
     *outcertlenp = outcertlen;
     
-    mbedtls_ctr_drbg_free( &ctr_drbg );
-    mbedtls_entropy_free( &entropy_ctx );
     
     return ret;
 }

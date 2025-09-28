@@ -12,6 +12,8 @@
 #include <mbedtls/ctr_drbg.h>
 
 #include "REST/geneckey.h"
+#include "rnd.h"
+
 #include <TLog.h>
 
 // We cannot use CURVE2551 in the older version of Espressif -- as mbedtls does not know its OID.
@@ -23,21 +25,11 @@ static const char *seed = "geneckey" __DATE__ __TIME__;
 
 int geneckey(mbedtls_pk_context *key)
 {
-  mbedtls_entropy_context entropy_ctx;
-  mbedtls_ctr_drbg_context ctr_drbg;
   char buff[48];
   int ret = 1;
 
-  mbedtls_ctr_drbg_init( &ctr_drbg );
-  mbedtls_entropy_init( &entropy_ctx );
+  ensure_rnd();
 
-  if ( ( ret = mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy_ctx,
-                                      (const unsigned char*)seed, strlen(seed))) != 0 ) {
-    mbedtls_strerror(ret, buff, sizeof(buff));
-    Log.print("mbedtls_ctr_drbg_seed: ");
-    Log.println(buff);
-    return ret;
-  };
   mbedtls_pk_init(key);
   if ( ( ret = mbedtls_pk_setup(key,
                                 mbedtls_pk_info_from_type( MBEDTLS_PK_ECKEY ) ) ) != 0 ) {
@@ -70,8 +62,6 @@ int geneckey(mbedtls_pk_context *key)
 #endif
 
 exit:
-  mbedtls_ctr_drbg_free( &ctr_drbg );
-  mbedtls_entropy_free( &entropy_ctx );
   return ret;
 
 }

@@ -5,8 +5,6 @@
 
 #include <mbedtls/base64.h>
 #include <mbedtls/dhm.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
 #include <mbedtls/ecdh.h>
 #include "mbedtls/pk.h"
 #include <mbedtls/md.h>
@@ -20,6 +18,8 @@
 #include <mbedtls/x509_crt.h>
 
 #include "util/common-utils.h"
+#include "rnd.h"
+
 #include "esp_random.h"
 
 
@@ -78,7 +78,12 @@ bool extract_pubkey_from_privkey(const char * private_key_as_pem, const char * p
     int ret;
     mbedtls_pk_context ctx;
     mbedtls_pk_init(&ctx);
-    MBOK(mbedtls_pk_parse_key(&ctx, (const unsigned char*) private_key_as_pem, strlen(private_key_as_pem) + 1, NULL, 0));
+    ensure_rnd();
+
+    MBOK(mbedtls_pk_parse_key(&ctx, 
+		(const unsigned char*) private_key_as_pem, strlen(private_key_as_pem) + 1, 
+		NULL /* password */, 0 /* passwd len */, 
+		mbedtls_ctr_drbg_random, p_ctr_drbg));
     MBOK(mbedtls_pk_write_pubkey_pem(&ctx, (unsigned char*) public_key, len));
     return true;
 exit:
@@ -109,8 +114,6 @@ char * shortkey(char * pem) {
 
 String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem,  char * cert_as_pem, unsigned char * cert_sha256, unsigned char * pubkey_sha256 )
 {
-    mbedtls_entropy_context entropy_ctx;
-    mbedtls_ctr_drbg_context ctr_drbg;
     mbedtls_pk_context ctx;
     size_t key_len, sig_len, len, n;
     unsigned char * buff, *ptr = buff;
@@ -184,22 +187,23 @@ String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem, 
     // in RFC 4648 hashed format.
     //
     MBOK(mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), buff, ptr - buff, hash));
-    
-    mbedtls_entropy_init( &entropy_ctx);
-    mbedtls_ctr_drbg_init( &ctr_drbg);
-    MBOK(mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func,
-                               &entropy_ctx, (const unsigned char *) seed, strlen(seed)));
-    
+   
+    ensure_rnd();
     mbedtls_pk_init(&ctx);
-    MBOK(mbedtls_pk_parse_key(&ctx, (const unsigned char*) private_key_as_pem, strlen(private_key_as_pem) + 1, NULL, 0));
+    MBOK(mbedtls_pk_parse_key(&ctx, 
+		(const unsigned char*) private_key_as_pem, strlen(private_key_as_pem) + 1, 
+                NULL /* password */, 0 /* passwd len */,
+                mbedtls_ctr_drbg_random, p_ctr_drbg));
 
     key_len = mbedtls_pk_get_len(&ctx);
     sig_len = key_len * 2 + 10;
     sig  = (unsigned char *) calloc(1, sig_len);
    
     // Sign the hash 
-    MBOK(mbedtls_pk_sign(&ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash),
-                         sig, &sig_len, mbedtls_ctr_drbg_random, &ctr_drbg));
+    MBOK(mbedtls_pk_sign(&ctx, MBEDTLS_MD_SHA256, 
+		hash, sizeof(hash),
+                sig, sig_len, &sig_len,
+		mbedtls_ctr_drbg_random, p_ctr_drbg));
     sig_len = ecdsa_asn1_to_raw(sig, key_len, sig_len);
     
     *ptr++ = '.'; // Separator payload/signature
@@ -210,8 +214,6 @@ String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem, 
     out = String((char*)buff);
 
     mbedtls_pk_free(&ctx);
-    mbedtls_ctr_drbg_free( &ctr_drbg );
-    mbedtls_entropy_free( &entropy_ctx );
 exit:
     free(buff);
     return out;

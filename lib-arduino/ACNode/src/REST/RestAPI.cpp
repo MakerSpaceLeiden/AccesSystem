@@ -2,6 +2,7 @@
 #include "selfsign.h"
 #include "rest.h"
 #include "util/common-utils.h"
+#include "rnd.h"
 
 void RestAPI::begin() {
     md = WAITING_FOR_NTP;
@@ -22,6 +23,7 @@ void RestAPI::begin() {
             md = WIFI_FAIL_REBOOT;
             break;
     };
+    ensure_rnd();
 }
 
 ACBase::cmd_result_t RestAPI::handleTagSwipe(const char * tag) {
