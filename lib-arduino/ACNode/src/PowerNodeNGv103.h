@@ -3,6 +3,8 @@
 #ifndef _H_POWERNODENG103
 #define _H_POWERNODENG103
 
+#if HAS_SEED_PN532
+
 #include <RFID/RFID_PN532_EX.h>
 #include <Wire.h>
 #include <ExpandedGPIO.h>
@@ -65,4 +67,5 @@ class PowerNodeNGv103 : public ACNode {
         unsigned long _last_pn532_check = 0, _last_seen_alive = 0;
 	void pop();
 };
+#endif // #if HAS_SEED_PN532
 #endif

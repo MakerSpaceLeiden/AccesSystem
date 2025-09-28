@@ -2,6 +2,9 @@
 #include <OlimexBoard.h>
 #include <ETH.h>
 
+#if HAS_SEED_PN532
+
+
 static const uint8_t CLEAR_EEPROM_AND_CACHE_BUTTON = 34;
 
 void PowerNodeNGv103::pop() {
@@ -63,4 +66,5 @@ void PowerNodeNGv103::onSwipe(RFID::THandlerFunction_SwipeCB fn) {
 	if (_reader)
                 _reader->onSwipe(fn);
 };
+#endif // #if HAS_SEED_PN532
 
