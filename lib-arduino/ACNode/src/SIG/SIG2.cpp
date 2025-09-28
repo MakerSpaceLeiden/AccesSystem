@@ -5,6 +5,8 @@
 #include "SIG/ACNode-private.h"
 #include "SIG/SIG2.h"
 
+#ifdef HAS_SIG2
+
 #include <mbedtls/aes.h>
 #include <mbedtls/base64.h>
 #include <mbedtls/dhm.h>
@@ -811,4 +813,4 @@ void SIG2::populate_nonce(const char * seedOrNull, char nonce[B64L(HASH_LENGTH)]
     size_t olen = 0;
     mbedtls_base64_encode((unsigned char *)nonce, B64L(HASH_LENGTH), &olen, nonce_raw, sizeof(nonce_raw));
 };
-
+#endif // HAS_SIG2
