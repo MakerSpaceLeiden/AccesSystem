@@ -74,11 +74,13 @@ exit:
     return 0;
 };
 
-bool extract_pubkey_from_privkey(const char * private_key_as_pem, const char * public_key, size_t len) {
+bool extract_pubkey_from_privkey(const char * private_key_as_pem, const char * public_key, size_t len, mbedtls_ctr_drbg_context *ctr_drbg) {
     int ret;
     mbedtls_pk_context ctx;
     mbedtls_pk_init(&ctx);
-    MBOK(mbedtls_pk_parse_key(&ctx, (const unsigned char*) private_key_as_pem, strlen(private_key_as_pem) + 1, NULL, 0));
+    MBOK(mbedtls_pk_parse_key(&ctx, (const unsigned char*) private_key_as_pem, 
+                              strlen(private_key_as_pem) + 1, NULL, 0,
+                              &mbedtls_ctr_drbg_random, ctr_drbg));
     MBOK(mbedtls_pk_write_pubkey_pem(&ctx, (unsigned char*) public_key, len));
     return true;
 exit:
@@ -132,9 +134,10 @@ String generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  
 	hdr["kid"] = String((char*)tmp,n);
     };
 
+    mbedtls_ctr_drbg_init( &ctr_drbg);
     if (private_key_as_pem) { 
         char pubkey[ 2 * strlen(private_key_as_pem)];
-        if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey))) {
+        if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey), &ctr_drbg)) {
            	hdr["jwk"] = shortkey(pubkey);
         };
     };
@@ -182,12 +185,13 @@ String generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  
     MBOK(mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), buff, ptr - buff, hash));
     
     mbedtls_entropy_init( &entropy_ctx);
-    mbedtls_ctr_drbg_init( &ctr_drbg);
     MBOK(mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func,
                                &entropy_ctx, (const unsigned char *) seed, strlen(seed)));
     
     mbedtls_pk_init(&ctx);
-    MBOK(mbedtls_pk_parse_key(&ctx, (const unsigned char*) private_key_as_pem, strlen(private_key_as_pem) + 1, NULL, 0));
+    MBOK(mbedtls_pk_parse_key(&ctx, (const unsigned char*) private_key_as_pem, 
+                              strlen(private_key_as_pem) + 1, NULL, 0,
+                              &mbedtls_ctr_drbg_random, &ctr_drbg));
 
     key_len = mbedtls_pk_get_len(&ctx);
     sig_len = key_len * 2 + 10;
@@ -195,7 +199,7 @@ String generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem,  
    
     // Sign the hash 
     MBOK(mbedtls_pk_sign(&ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash),
-                         sig, &sig_len, mbedtls_ctr_drbg_random, &ctr_drbg));
+                         sig, sig_len, &sig_len, mbedtls_ctr_drbg_random, &ctr_drbg));
     sig_len = ecdsa_asn1_to_raw(sig, key_len, sig_len);
     
     *ptr++ = '.'; // Separator payload/signature

@@ -110,12 +110,9 @@ int populate_self_signed(mbedtls_pk_context * key, const char * CN_or_full_DN, m
     mbedtls_entropy_context entropy_ctx;
     mbedtls_ctr_drbg_context ctr_drbg;
     
-    mbedtls_mpi serial;
-    
     mbedtls_entropy_init( &entropy_ctx );
     mbedtls_ctr_drbg_init( &ctr_drbg );
     
-    mbedtls_mpi_init( &serial );
     mbedtls_x509write_crt_init( crt );
     
     MBOK(mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func,
@@ -143,8 +140,7 @@ int populate_self_signed(mbedtls_pk_context * key, const char * CN_or_full_DN, m
     mbedtls_x509write_crt_set_md_alg( crt, DFL_DIGEST );
     
     MBOK(mbedtls_ctr_drbg_random(&ctr_drbg, rndbuff, sizeof(rndbuff)));
-    MBOK(mbedtls_mpi_read_binary( &serial, rndbuff, sizeof(rndbuff)));
-    MBOK(mbedtls_x509write_crt_set_serial( crt, &serial));
+    MBOK(mbedtls_x509write_crt_set_serial_raw( crt, rndbuff, sizeof(rndbuff)));
     
     MBOK(mbedtls_x509write_crt_set_validity( crt, DFL_NOT_BEFORE, DFL_NOT_AFTER ));
     
@@ -164,7 +160,6 @@ int populate_self_signed(mbedtls_pk_context * key, const char * CN_or_full_DN, m
 exit:
     return 0;
     
-    mbedtls_mpi_free( &serial );
     mbedtls_ctr_drbg_free( &ctr_drbg );
     mbedtls_entropy_free( &entropy_ctx );
     
@@ -220,7 +215,7 @@ int fingerprint_from_pem(char * buff, unsigned char sha256[256 / 8]) {
     unsigned char * p = (unsigned char*) strdup(buff);
     
     if (((ret = pem2der(p)) < 0 ) ||
-        ((ret = mbedtls_sha256_ret(p, ret, sha256, 0)) < 0 ))
+        ((ret = mbedtls_sha256(p, ret, sha256, 0)) < 0 ))
     {
         Log.printf("fingerprint_from_pem failed: %02X\n", -ret);
         memset(sha256, 0, 32);
@@ -237,7 +232,7 @@ int fingerprint_from_certpubkey(const mbedtls_x509_crt * crt, unsigned char sha2
     
     if (((ret = mbedtls_pk_write_pubkey_pem(pk , buff, sizeof(buff))) < 0) ||
         ((ret = pem2der(buff)) < 0 ) ||
-        ((ret = mbedtls_sha256_ret(buff, ret, sha256, 0)) < 0 ))
+        ((ret = mbedtls_sha256(buff, ret, sha256, 0)) < 0 ))
     {
         Log.printf("fingerprint_from_certpubkey failed: %02X\n", -ret);
         memset(sha256, 0, 32);

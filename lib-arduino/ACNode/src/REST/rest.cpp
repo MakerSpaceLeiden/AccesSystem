@@ -186,7 +186,7 @@ rest_ret_t fetchCA(const char * terminalName) {
     };
     
     peer = client.getPeerCertificate();
-    mbedtls_sha256_ret(peer->raw.p, peer->raw.len, sha256_server, 0);
+    mbedtls_sha256(peer->raw.p, peer->raw.len, sha256_server, 0);
     server_cert_as_pem = der2pem("CERTIFICATE", peer->raw.p, peer->raw.len);
     
     // Traverse up to (any) root & serialize the CAcert. We need it in
@@ -245,7 +245,7 @@ rest_ret_t registerDevice(const char * terminalName) {
         ret = ERR_REPAIR;
         goto exit;
     };
-    mbedtls_sha256_ret(peer->raw.p, peer->raw.len, sha256, 0);
+    mbedtls_sha256(peer->raw.p, peer->raw.len, sha256, 0);
     if (memcmp(sha256, sha256_server, 32)) {
         Log.println("Server changed mid registration. Aborting");
         ret = ERR_REPAIR;
@@ -311,15 +311,15 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     //
     mbedtls_sha256_context sha_ctx;
     mbedtls_sha256_init(&sha_ctx);
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
+    mbedtls_sha256_starts(&sha_ctx, 0);
     
     // we happen to know that the first two can safely be treated as strings.
     //
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) nonce, strlen(nonce));
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_update_ret(&sha_ctx, sha256_client, 32);
-    mbedtls_sha256_update_ret(&sha_ctx, sha256_server, 32);
-    mbedtls_sha256_finish_ret(&sha_ctx, sha256);
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) nonce, strlen(nonce));
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
+    mbedtls_sha256_update(&sha_ctx, sha256_client, 32);
+    mbedtls_sha256_update(&sha_ctx, sha256_server, 32);
+    mbedtls_sha256_finish(&sha_ctx, sha256);
     sha256toHEX(sha256, (char*)tmp);
     mbedtls_sha256_free(&sha_ctx);
     
@@ -348,7 +348,7 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     httpCode =  https.GET();
     
     peer = client.getPeerCertificate();
-    mbedtls_sha256_ret(peer->raw.p, peer->raw.len, tmp, 0);
+    mbedtls_sha256(peer->raw.p, peer->raw.len, tmp, 0);
 
     if (memcmp(tmp, sha256_server, 32)) {
         Log.println("Server changed mid registration. Aborting");
@@ -372,10 +372,10 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     Log.println("Registration was accepted - we got a nonce");
 
     mbedtls_sha256_init(&sha_ctx);
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_update_ret(&sha_ctx, sha256, 32);
-    mbedtls_sha256_finish_ret(&sha_ctx, sha256);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
+    mbedtls_sha256_update(&sha_ctx, sha256, 32);
+    mbedtls_sha256_finish(&sha_ctx, sha256);
     sha256toHEX(sha256, (char*)tmp);
     mbedtls_sha256_free(&sha_ctx);
     

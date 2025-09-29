@@ -294,10 +294,10 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     mbedtls_sha256_context sha_ctx;
     mbedtls_sha256_init(&sha_ctx);
     
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, ptr_salt, 32);
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_finish_ret(&sha_ctx, saltedtag);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, ptr_salt, 32);
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
+    mbedtls_sha256_finish(&sha_ctx, saltedtag);
     mbedtls_sha256_free(&sha_ctx);
     
     const unsigned char * ptr = getEntryPtr(saltedtag);
@@ -335,10 +335,10 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     // the key entry
     //
     unsigned char saltkey[32];
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_update_ret(&sha_ctx, ptr_keysalt, 32);
-    mbedtls_sha256_finish_ret(&sha_ctx, saltkey);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
+    mbedtls_sha256_update(&sha_ctx, ptr_keysalt, 32);
+    mbedtls_sha256_finish(&sha_ctx, saltkey);
     
     unsigned char dec[32];
     memcpy((void*)dec,(void*)tagkey,32);
@@ -350,10 +350,10 @@ ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
     // bytes as the actual IV.
     //
     unsigned char uiv[32];
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, ptr_ivs, 32);
-    mbedtls_sha256_update_ret(&sha_ctx, ptr + 64, 4); // In network order.
-    mbedtls_sha256_finish_ret(&sha_ctx, uiv);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, ptr_ivs, 32);
+    mbedtls_sha256_update(&sha_ctx, ptr + 64, 4); // In network order.
+    mbedtls_sha256_finish(&sha_ctx, uiv);
     
     unsigned char plaintext[paddedlen]; // i.e. include any padding.
     

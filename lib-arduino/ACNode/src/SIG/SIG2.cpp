@@ -161,6 +161,15 @@ void wipe_eeprom() {
     save_eeprom();
 }
 
+// An API change makes fields in the context private by prepending private_ to them.
+// This of course doesn't prevent access, it just hides them, and makes the interface awful to use.
+// These macros remove a little of that inconvenience by shortening the accessor.
+#define MSLTLS_ECDH_QP(ctx) &ctx.private_ctx.private_mbed_ecdh.private_Qp
+#define MSLTLS_ECDH_Q(ctx) &ctx.private_ctx.private_mbed_ecdh.private_Q
+#define MSLTLS_ECDH_z(ctx) &ctx.private_ctx.private_mbed_ecdh.private_z
+#define MSLTLS_ECDH_grp(ctx) &ctx.private_ctx.private_mbed_ecdh.private_grp
+#define MSLTLS_ECDH_d(ctx) &ctx_cli.private_ctx.private_mbed_ecdh.private_d
+
 void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
     resetWatchdog();
     
@@ -170,11 +179,11 @@ void calculateSharedSecret(uint8_t pubencr_tmp[CURVE259919_SESSIONLEN]) {
     // order. So until we go for a new version - we solve this by fixing the network order 'again'.
     //
     ntoh32(pubencr_tmp);
-    if ((0 != mbedtls_mpi_lset( &ctx_cli.Qp.Z, 1 )) ||
-        (0 != mbedtls_mpi_read_binary( &ctx_cli.Qp.X, pubencr_tmp, CURVE259919_KEYLEN)) ||
-        (0 != mbedtls_ecdh_compute_shared( &ctx_cli.grp, &ctx_cli.z, &ctx_cli.Qp, &ctx_cli.d,
+    if ((0 != mbedtls_mpi_lset( MSLTLS_ECDH_QP(ctx_cli).private_Z, 1 )) ||
+        (0 != mbedtls_mpi_read_binary( MSLTLS_ECDH_QP(ctx_cli).private_X, pubencr_tmp, CURVE259919_KEYLEN)) ||
+        (0 != mbedtls_ecdh_compute_shared( MSLTLS_ECDH_grp(ctx_cli), MSLTLS_ECDH_z(ctx_cli), MSLTLS_ECDH_QP(ctx_cli), MSLTLS_ECDH_d(ctx_cli),
                                           mbedtls_ctr_drbg_random, &ctr_drbg )) ||
-        (0 != mbedtls_mpi_write_binary( &ctx_cli.z, sessionkey, CURVE259919_KEYLEN))
+        (0 != mbedtls_mpi_write_binary( MSLTLS_ECDH_z(ctx_cli), sessionkey, CURVE259919_KEYLEN))
         ) {
         Log.println("Something went wrong during calculateSharedSecret(). Aborting.");
         return;
@@ -253,9 +262,9 @@ void SIG2::loop() {
         resetWatchdog();
         bzero(sessionkey, sizeof(sessionkey));
         
-        if ((0 != mbedtls_ecp_group_load( &ctx_cli.grp, MBEDTLS_ECP_DP_CURVE25519 )) ||
-            (0 != mbedtls_ecdh_gen_public( &ctx_cli.grp, &ctx_cli.d, &ctx_cli.Q, mbedtls_ctr_drbg_random, &ctr_drbg)) ||
-            (0 != mbedtls_mpi_write_binary( &ctx_cli.Q.X, node_publicsession, 32 ))
+        if ((0 != mbedtls_ecp_group_load( MSLTLS_ECDH_grp(ctx_cli), MBEDTLS_ECP_DP_CURVE25519 )) ||
+            (0 != mbedtls_ecdh_gen_public( MSLTLS_ECDH_grp(ctx_cli), MSLTLS_ECDH_d(ctx_cli), MSLTLS_ECDH_Q(ctx_cli), mbedtls_ctr_drbg_random, &ctr_drbg)) ||
+            (0 != mbedtls_mpi_write_binary( MSLTLS_ECDH_Q(ctx_cli).private_X, node_publicsession, 32 ))
             ) {
             Log.println("Curve25519 generation failed.");
             return;
