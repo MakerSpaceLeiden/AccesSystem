@@ -6,7 +6,7 @@
 
 #include "rnd.h"
 
-static mbedtls_entropy_context entropy_ctx;
+mbedtls_entropy_context entropy_ctx;
 mbedtls_ctr_drbg_context ctr_drbg, *p_ctr_drbg;
 
 const char TAG[] ="rnd";
