@@ -18,7 +18,8 @@ class SKU {
 public:
     SKU();
     SKU(String n, double p, String description) : name(n), price(p), desc(description) {};
-    String name, desc;
+    String name;
+    String desc;
     double price;
 };
 
@@ -75,7 +76,7 @@ private:
     double amount_no_ok_needed = AMOUNT_NO_OK_NEEDED;
     RestAPI * _restAPI;
     THandlerFunction_NotifyReady _ready_cb;
-    bool _ready, _needsPricelist;
+    bool _ready = false, _needsPricelist = false;
     unsigned long _lastPricelist = 0;
     
     String _raw_claim(const char * url, std::vector<String> args);

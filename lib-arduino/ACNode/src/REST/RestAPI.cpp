@@ -57,7 +57,8 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
             return n;
             break;
         case ERR_FATAL:
-            if (md < FULLY_REGISTERED) md = WIFI_FAIL_REBOOT;
+            if (md < FULLY_REGISTERED) 
+		md = WIFI_FAIL_REBOOT;
             break;
         case ERR_REPAIR:
             paired = false;
@@ -213,7 +214,7 @@ void RestAPI::loop()
             break;
         }
         case WIFI_FAIL_REBOOT:
-            Log.println("Rebooting");
+            Log.println("Rebooting in WiFi fail in payment setup");
             delay(5000);
             ESP.restart();
             return;

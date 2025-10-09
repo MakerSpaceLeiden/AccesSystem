@@ -529,13 +529,13 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     
     
     if (httpCode == HTTP_CODE_NOT_FOUND) {
-        Log.printf("raw_rest: not-found: %s(%d) - %s: %s\n", https.errorToString(httpCode), httpCode, https.getString().c_str());
+        Log.printf("raw_rest: not-found: %s(%d): %s\n", https.errorToString(httpCode), httpCode, https.getString().c_str());
         *ret = ERR_RETRYABLE;
         goto exit;
     };
     
     if (httpCode != HTTP_CODE_OK) {
-        Log.printf("raw_rest: failed: %s(%d) - %s\n", https.errorToString(httpCode), httpCode, https.getString().c_str());
+        Log.printf("raw_rest: failed: %s(%d):  %s\n", https.errorToString(httpCode), httpCode, https.getString().c_str());
         *ret = ERR_RETRYABLE;
         goto exit;
     };

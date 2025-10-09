@@ -36,12 +36,15 @@ bool PaymentAPI::pay(const char *tag, double amount, const char *lbl) {
 }
 
 bool PaymentAPI::fetchPricelist() {
+    const char * url = PAY_URL "/v2/register";
     _lastPricelist = millis();
 
-    JsonDocument res = _restAPI->get(PAY_URL REGISTER_PATH);
-    
+    Debug.printf("Fetching pricelist at %s\n", url);
+    JsonDocument res = _restAPI->get(url);
+    // serializeJson(res, Debug);
+ 
     if (!res["pricelist"]) {
-        Log.println("No pricelist received");
+        Log.println("No pricelist in reply from server");
         return false;
     };
     
@@ -73,13 +76,18 @@ bool PaymentAPI::fetchPricelist() {
     pricelist = new Pricelist();
     
     for (JsonVariant item : arr) {
-        
-        SKU sku(item["amount"],item["price"],item["desc"]);
+        String name = item["name"];
+        String desc = item["description"];
+        double price = atof(item["price"]);
+ 
+        SKU sku(name,price,desc);
         pricelist->items.push_back(sku);
         
         if (item["default"])
             pricelist->defaultItem =  &(pricelist->items.back());
     };
+
+    Log.printf("Pricelist fetched, %d entries\n", pricelistlen);
     return true;
 }
 
@@ -147,9 +155,11 @@ String PaymentAPI::_raw_claim(const char * url, std::vector<String> args) {
 void PaymentAPI::loop() {
     if (!_needsPricelist)
 	return;
+    if (!eth_connected()) 
+	return;
     if(!ready()) 
 	return;
-    if ((millis() > _lastPricelist + (pricelist ? 1 : 180 ) * 60 * 1000) || (_lastPricelist != 0))
+    if ((millis() > _lastPricelist + (pricelist ? 180 : 1) * 60 * 1000) || (_lastPricelist == 0))
     	fetchPricelist();
 }
 

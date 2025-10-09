@@ -60,7 +60,7 @@ MachineState::machinestate_t MachineState::state() {
 void MachineState::setState(machinestate_t newstate) {
     Log.printf("MachineState:setState; %s(%d) -> %s(%d)\n", label(machinestate), machinestate, label(newstate), newstate);
 
-    if (machinestate == newstate) {
+    if (machinestate == newstate && machinestate != BOOTING) {
 	Log.println("*BUG* no change in state; ignored.");
 	return;
     };

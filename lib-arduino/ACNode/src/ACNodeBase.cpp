@@ -576,7 +576,7 @@ void ACNodeBase::mqttLoop() {
     bool n = _client.connected();
 
     if (l != n) 
-	Log.printf("MQTT connection change; now %s\n", n ? "up" : "DOWN");
+	Debug.printf("MQTT connection change; now %s\n", n ? "up" : "DOWN");
     l = n;
     
     if (n)
@@ -593,7 +593,7 @@ void ACNodeBase::reconnectMQTT() {
     last_mqtt_connect_try = millis();
     _mqtt_reconnects ++;
 
-    Log.printf("MQTT Connecting <%s> to %s:%d (%s)\n",
+    Debug.printf("MQTT Connecting <%s> to %s:%d (%s)\n",
                moi, mqtt_server, mqtt_port,
                state2str(_client.state()));
     
