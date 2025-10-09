@@ -385,7 +385,14 @@ void ACNodeBase::report(JsonObject & out) {
     out["coreTemp"]  = coreTemp();
 #endif
     out["heap_free"] = ESP.getFreeHeap();
-    
+   
+    // attempt to track down MQTT issue.
+    //
+    out["mqtt_host"] = mqtt_server;
+    out["mqtt_port"] = mqtt_port;
+    out["mqtt_isUp"] = isUp();
+    out["mqtt_isConnected"] = isConnected();
+ 
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it)
         (*it)->report(out);

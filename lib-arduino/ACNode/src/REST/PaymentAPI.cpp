@@ -36,6 +36,8 @@ bool PaymentAPI::pay(const char *tag, double amount, const char *lbl) {
 }
 
 bool PaymentAPI::fetchPricelist() {
+    _lastPricelist = millis();
+
     JsonDocument res = _restAPI->get(PAY_URL REGISTER_PATH);
     
     if (!res["pricelist"]) {
@@ -140,4 +142,20 @@ String PaymentAPI::_raw_claim(const char * url, std::vector<String> args) {
 	free(buffp);
     };
     return ret;
+}
+
+void PaymentAPI::loop() {
+    if (!_needsPricelist)
+	return;
+    if(!ready()) 
+	return;
+    if ((millis() > _lastPricelist + (pricelist ? 1 : 180 ) * 60 * 1000) || (_lastPricelist != 0))
+    	fetchPricelist();
+}
+
+void PaymentAPI::report(JsonObject& report) {
+    report["payment"] = ready();
+    report["pricelist"] = pricelist ? pricelist->items.size() : 0;
+    if (pricelist)
+    	report["pricelist_age"] = (millis() - _lastPricelist)/1000;
 }

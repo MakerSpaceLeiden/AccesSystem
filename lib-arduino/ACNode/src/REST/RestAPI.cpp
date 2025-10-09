@@ -77,6 +77,11 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
     return -1;
 }
 
+bool RestAPI::rest(const char *url,String encodedpostargs) {
+    rest_ret_t ret = ERR_FATAL;
+    size_t n = raw_rest(_terminalName,url,NULL,NULL,&ret,encodedpostargs);
+    return ret == NOERROR;
+}
 
 JsonDocument RestAPI::get(const char *url,String encodedpostargs) {
     rest_ret_t ret;
