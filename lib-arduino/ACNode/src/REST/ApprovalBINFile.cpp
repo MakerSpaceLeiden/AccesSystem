@@ -195,13 +195,6 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
     size_t paddedlen = (size_t)*(unsigned char*)(mptr + 2);
     unsigned char * padded_enc_name = (unsigned char *)mptr + 3;
     
-Serial.printf("PTR=%p\n", ptr);
-Serial.printf("MPTR=%p\n", mptr);
-Serial.printf("Has=%lu\n", has);
-Serial.printf("Needs=%lu\n", needs);
-Serial.printf("Plen=%lu\n", paddedlen);
-Serial.printf("IDX=%lu\n", idx);
-
     if (paddedlen % 16) {
         Log_printf("getEntry: size not a multiple of 16\n");
         return NULL;
