@@ -206,7 +206,6 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
         (*it)->begin();
     }
 
-    Log.printf("Host details %s (%s)\n", moi, localIP().toString().c_str());
     partition_info(Log); 
 }
 

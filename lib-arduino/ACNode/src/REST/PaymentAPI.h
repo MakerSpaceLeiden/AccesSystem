@@ -32,6 +32,7 @@ public:
 
 class PaymentAPI : public ACBase {
 public:
+    const char * name() { return "PaymentAPI"; };
     PaymentAPI(RestAPI * restAPI, bool needsPricelist = false) : _restAPI(restAPI), _needsPricelist(needsPricelist)  {
         _restAPI->onPaired([&]() -> void {
             if (_ready_cb)

@@ -104,9 +104,8 @@ void setup() {
   node.addHandler(paymentAPI);
 
   node.onApproval([](const char* machine) {
-    Serial.printf("Approval callback called\n");
-
     card_swiped_count++;
+
     if (pin_selected == NO_PIN_SELECTED) {
       Log.printf("Card swiped; but no amount to pay selected\n");
       return;
@@ -119,13 +118,12 @@ void setup() {
 
     for (auto it = paymentAPI->pricelist->items.begin(); it != paymentAPI->pricelist->items.end(); ++it) {
       const char * p = it->name.c_str();
-      Serial.printf("Checking against %s\n", it->name.c_str());
 
       if (strncmp(p, "button ", 7))
         continue;
 
       if (atoi(p + 7) == pin_selected + 1) {
-        Debug.printf("Card swiped by %s, button %d pressed: %s: %s. Triggering %.2f payment RQ on the Solo terminal",
+        Debug.printf("Card swiped by %s, button %d pressed: %s: %s. Requesting a %.2f payment RQ on the Solo terminal\n",
                      node.lastApproved()->name.c_str(),
                      pin_selected + 1, it->name.c_str(), it->desc.c_str(), it->price);
 
@@ -147,9 +145,8 @@ void setup() {
         pin_selected = NO_PIN_SELECTED;
         return;
       }
-      Debug.printf("SKU %d did not match button %d, skipped", pin_selected + 1);
     }
-    Log.printf("Card swiped; button %d selected, but not on the pricelist", pin_selected + 1);
+    Log.printf("Card swiped; button %d selected, but not on the pricelist\n", pin_selected + 1);
   });
 
   node.onDenied([](const char* machine) {
@@ -179,14 +176,19 @@ void loop() {
 
   if ((millis() > _lst_change + 50 * 1000) && (pin_selected  != NO_PIN_SELECTED)) {
     Log.println("Resetting buttons; idle for too long");    
-    digitalWrite(GPIO_PIN[pin_selected], HIGH);
     pin_selected = NO_PIN_SELECTED;
   };
 
   switch (node.machinestate) {
     case MachineState::WAITINGFORCARD:
-      // first scan; then set - so we can take the first and
-      // thus ignore multi-presses.
+      // first update; then scan and then set - so we can take the first and
+      // thus ignore multi-presses; and still can 'reset' even though a lit 
+      // LED reads as a button press.
+      //
+      for (int i = 0; i < N_PINS; i++) {
+        pinMode(GPIO_PIN[i], (pin_selected == i) ? OUTPUT_OPEN_DRAIN : INPUT);
+        digitalWrite(GPIO_PIN[i], pin_selected == i ? LOW : HIGH);
+      }
       for (int i = 0; i < N_PINS; i++) {
         if (pin_selected != i) {
           if (digitalRead(GPIO_PIN[i]) == LOW) {
@@ -197,10 +199,6 @@ void loop() {
           };
         };
       };
-      for (int i = 0; i < N_PINS; i++) {
-        pinMode(GPIO_PIN[i], (pin_selected == i) ? OUTPUT_OPEN_DRAIN : INPUT);
-        digitalWrite(GPIO_PIN[i], pin_selected == i ? LOW : HIGH);
-      }
       break;
     default:
       pin_selected = NO_PIN_SELECTED;
