@@ -2,7 +2,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <WiFiUdp.h>
-#include <ArduinoJSON.h>
+#include <ArduinoJson.h>
 #include <Preferences.h>
 
 #include <nvs_flash.h>
@@ -186,7 +186,7 @@ rest_ret_t fetchCA(const char * terminalName) {
     };
     
     peer = client.getPeerCertificate();
-    mbedtls_sha256_ret(peer->raw.p, peer->raw.len, sha256_server, 0);
+    mbedtls_sha256(peer->raw.p, peer->raw.len, sha256_server, 0);
     server_cert_as_pem = der2pem("CERTIFICATE", peer->raw.p, peer->raw.len);
     
     // Traverse up to (any) root & serialize the CAcert. We need it in
@@ -245,7 +245,7 @@ rest_ret_t registerDevice(const char * terminalName) {
         ret = ERR_REPAIR;
         goto exit;
     };
-    mbedtls_sha256_ret(peer->raw.p, peer->raw.len, sha256, 0);
+    mbedtls_sha256(peer->raw.p, peer->raw.len, sha256, 0);
     if (memcmp(sha256, sha256_server, 32)) {
         Log.println("Server changed mid registration. Aborting");
         ret = ERR_REPAIR;
@@ -317,15 +317,15 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     //
     mbedtls_sha256_context sha_ctx;
     mbedtls_sha256_init(&sha_ctx);
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
+    mbedtls_sha256_starts(&sha_ctx, 0);
     
     // we happen to know that the first two can safely be treated as strings.
     //
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) nonce, strlen(nonce));
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_update_ret(&sha_ctx, sha256_client, 32);
-    mbedtls_sha256_update_ret(&sha_ctx, sha256_server, 32);
-    mbedtls_sha256_finish_ret(&sha_ctx, sha256);
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) nonce, strlen(nonce));
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
+    mbedtls_sha256_update(&sha_ctx, sha256_client, 32);
+    mbedtls_sha256_update(&sha_ctx, sha256_server, 32);
+    mbedtls_sha256_finish(&sha_ctx, sha256);
     sha256toHEX(sha256, (char*)tmp);
     mbedtls_sha256_free(&sha_ctx);
     
@@ -354,7 +354,7 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     httpCode =  https.GET();
     
     peer = client.getPeerCertificate();
-    mbedtls_sha256_ret(peer->raw.p, peer->raw.len, tmp, 0);
+    mbedtls_sha256(peer->raw.p, peer->raw.len, tmp, 0);
 
     if (memcmp(tmp, sha256_server, 32)) {
         Log.println("Server changed mid registration. Aborting");
@@ -378,10 +378,10 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     Log.println("Registration was accepted - we got a nonce");
 
     mbedtls_sha256_init(&sha_ctx);
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_update_ret(&sha_ctx, sha256, 32);
-    mbedtls_sha256_finish_ret(&sha_ctx, sha256);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
+    mbedtls_sha256_update(&sha_ctx, sha256, 32);
+    mbedtls_sha256_finish(&sha_ctx, sha256);
     sha256toHEX(sha256, (char*)tmp);
     mbedtls_sha256_free(&sha_ctx);
     
@@ -542,7 +542,6 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     
     len = https.getSize();
     if (len) {
-#if 1
         if (len == -1)
             max = 128 * 1024 * 1024; // Hard cap when the length is unknown (we should propably realloc() for this).
         
@@ -570,77 +569,57 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
         }
 
         WiFiClient * stream = https.getStreamPtr();
-        stream->setTimeout(15);
         l = 0;
-        for(;;) {
-            size_t n = stream->readBytes(buff, max);
-            if (n > 0)
-                l+=n;
-            if (n <= 0 || buffp) break;
-            stream->setTimeout(5);
-        };
-#else
-#if 1
-        String payload = https.getString();
-        len = l = payload.length() + 1;
-        if (buffp) {
-            if (maxbufflenp && *maxbufflenp && *maxbufflenp+1 < l)
-                l = *maxbufflenp - 1; // Keep room for terminating zero in case of a string
-
-            if (*buffp == NULL)
-                buff = (unsigned char *)malloc(l);
-            else
-                buff = *buffp;
-            
-            buff[l]=0;
-            bcopy(payload.c_str(), buff, l);
-        };
-#else
-        if (len == -1)
-            max = 512 * 1024 * 1024; // Hard cap when the length is unknown (we should propably realloc() for this).
-
-        // Use a temporary buffer if 16k if we're going to throw the
-        // results away anyway.
-        if (buffp == NULL)
-            max = 16 * 1024;
-
-        // Limit the amount to read if any limit is specified.
-        //
-        max = ((maxbufflenp && *maxbufflenp && (*maxbufflenp )< max) ? (*maxbufflenp) : (max));
-            
-        
-        if (buffp == NULL || *buffp == NULL)
-            buff = (unsigned char *)malloc(max);
-        else
-            buff = *buffp;
-        
-        if (buff == NULL) {
-            Log.printf("raw_rest: malloc(%lu) failed\n",max);
-            *ret = ERR_FATAL;
-            goto exit;
-        }
-
-        WiFiClient * stream = https.getStreamPtr();
-        size_t left = max;
-        while(https.connected() && left) {
-            size_t size = stream->available();
-            if (!size) {
-                yield();
-                continue;
+        unsigned long _lst = millis(), TO = 2500;
+        for(unsigned char * p = buff;;) {
+	    if (!stream->connected()) {
+                if (len != -1)
+                   Log.println("Connection closed unexpectedly");
+                break; 
             };
-            int n = stream->readBytes(buff + (buffp ? 0 : l), size > left ? size : left);
-            if (n > 0) {
-                l += n;
-                left -= n;
+
+      	    int sizeAvailable = stream->available();
+            if (sizeAvailable == 0) {
+		if (millis() > _lst + TO) {
+			Log.println("HTTP read timeout");
+			break;
+		};
+		delay(250);
+		continue;
+	    };
+            size_t left = (buffp == NULL) ? max : max - l; 
+
+            if (left > sizeAvailable)
+                  left = sizeAvailable;
+
+            int n = stream->readBytes(p, left);
+            if (n <= 0) {
+		Log.println("HTTP read error");
+		break;
+	    };
+            if (n != left) {
+		Debug.println("HTTP read incomplete, retry");
             };
-        }
-#endif
-#endif
+            _lst = millis();
+            TO = 750;
+
+            l+=n;
+  	    if (buffp == NULL)
+		continue;
+
+	    p += n;
+	    if (l >= max)
+		break;
+        };
     }
     if (buffp == NULL)
         free(buff); // we used a temp buffer - mainly to learn the actual size.
-    else
-    if (*buffp == NULL)
+    else if (len != -1 && len != l) {
+        Log.printf("Incomplete HTTP read; expected %d, got %d\n", len, l);
+        if (*buffp == NULL)
+            free(buff);
+        l = 0;
+    } else if (*buffp == NULL)
         *buffp = buff; // return the allocated buffer if we created one.
 
     // If we do not know the lenght; set it to what we actually read.

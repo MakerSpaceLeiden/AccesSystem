@@ -37,25 +37,30 @@
 #define MACHINE "sumup"
 
 ACNodeRest node = ACNodeRest(MACHINE);
+
+#ifdef OTA_PASSWD_HASH256
+OTA ota(OTA_PASSWD_HASH256);
+#else
 #ifdef OTA_PASSWD_HASH
 OTA ota(OTA_PASSWD_HASH);
 #endif
+#endif
 
 // Wiring
-#define RFID_RESET    (00)
-#define RFID_MISO     (03) // 03 
-#define RFID_MOSI     (02) // 02
-#define RFID_CS       (15) // labeled SDA on the blue boards
-#define RFID_CLK      (32)
-#define RFID_IRQ      (34)
+#define RFID_RESET (00)
+#define RFID_MISO (03)  // 03
+#define RFID_MOSI (02)  // 02
+#define RFID_CS (15)    // labeled SDA on the blue boards
+#define RFID_CLK (32)
+#define RFID_IRQ (34)
 
-#define BUTTON_1      (05)  // label  5 euro
-#define BUTTON_2      (04)  // label 10 euro
-#define BUTTON_3      (14)  // label 25 euro
-#define BUTTON_4      (13)  // label 50 euro
+#define BUTTON_1 (05)  // label  5 euro
+#define BUTTON_2 (04)  // label 10 euro
+#define BUTTON_3 (14)  // label 25 euro
+#define BUTTON_4 (13)  // label 50 euro
 
-RFID_MFRC522 * rfid;
-PaymentAPI * paymentAPI;
+RFID_MFRC522* rfid;
+PaymentAPI* paymentAPI;
 
 const int N_PINS = 4;
 uint8_t GPIO_PIN[N_PINS] = { BUTTON_1, BUTTON_2, BUTTON_3, BUTTON_4 };
@@ -71,7 +76,7 @@ float amount_requested_paid = 0;
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
-  Serial.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
+  Serial.printf("Booted: %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
 
   // Change to something like debug or test
   // if you want to send all output to a different
@@ -83,18 +88,21 @@ void setup() {
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
 
+  configTime(0, 0, NTP_POOL);
+  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 0);
+  tzset();
+
 #ifdef OTA_PASSWD_HASH
   node.addHandler(&ota);
 #else
 #error "You propablly do not want to deploy without OTA"
 #endif
-
   // Propably should be moved into ACNode as it is so generic.
   //
   rfid = new RFID_MFRC522(RFID_CS, RFID_RESET, RFID_IRQ, RFID_CLK, RFID_MISO, RFID_MOSI);
   node.addHandler(rfid);
 
-  rfid->onSwipe([&](const char *tag) -> ACBase::cmd_result_t {
+  rfid->onSwipe([&](const char* tag) -> ACBase::cmd_result_t {
     Debug.println("Handling swipe - asking for name/mapping owner");
     return node._restAPI->handleTagSwipe(tag);
   });
@@ -109,7 +117,6 @@ void setup() {
     if (pin_selected == NO_PIN_SELECTED) {
       Log.printf("Card swiped; but no amount to pay selected\n");
       return;
-
     };
     if (paymentAPI->pricelist == NULL) {
       Log.printf("Card swiped; but we have no pricelist (yet)\n");
@@ -117,13 +124,13 @@ void setup() {
     }
 
     for (auto it = paymentAPI->pricelist->items.begin(); it != paymentAPI->pricelist->items.end(); ++it) {
-      const char * p = it->name.c_str();
+      const char* p = it->name.c_str();
 
       if (strncmp(p, "button ", 7))
         continue;
 
       if (atoi(p + 7) == pin_selected + 1) {
-        Debug.printf("Card swiped by %s, button %d pressed: %s: %s. Requesting a %.2f payment RQ on the Solo terminal\n",
+        Debug.printf("Card swiped by %s, button %d pressed. Product: <%s>, %s. Requesting a %.2f payment RQ on the Solo terminal\n",
                      node.lastApproved()->name.c_str(),
                      pin_selected + 1, it->name.c_str(), it->desc.c_str(), it->price);
 
@@ -155,7 +162,7 @@ void setup() {
     denied_count++;
   });
 
-  node.onReport([](JsonObject & report) {
+  node.onReport([](JsonObject& report) {
     report["card_swiped_count"] = card_swiped_count;
     report["denied_count"] = denied_count;
     report["requests_failed"] = requests_failed;
@@ -174,15 +181,15 @@ void loop() {
   static unsigned long _lst_change = 0;
   node.loop();
 
-  if ((millis() > _lst_change + 50 * 1000) && (pin_selected  != NO_PIN_SELECTED)) {
-    Log.println("Resetting buttons; idle for too long");    
+  if ((millis() > _lst_change + 50 * 1000) && (pin_selected != NO_PIN_SELECTED)) {
+    Log.println("Resetting buttons; idle for too long");
     pin_selected = NO_PIN_SELECTED;
   };
 
   switch (node.machinestate) {
     case MachineState::WAITINGFORCARD:
       // first update; then scan and then set - so we can take the first and
-      // thus ignore multi-presses; and still can 'reset' even though a lit 
+      // thus ignore multi-presses; and still can 'reset' even though a lit
       // LED reads as a button press.
       //
       for (int i = 0; i < N_PINS; i++) {

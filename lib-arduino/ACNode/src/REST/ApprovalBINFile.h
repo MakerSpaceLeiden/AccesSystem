@@ -22,10 +22,11 @@ public:
     inline size_t getNumberOfTags() { return ntags; };
 
     const char * versionStr() { switch(version) {
-        case UNK: return (const char *)"unk";
+        case UNK: break;
         case MSLv1: return (const char *)"v1";
         case MSLv2: return (const char *)"v2";
-    };};
+    };  return (const char *)"unk"; };
+
 protected:
     const unsigned char * blob = NULL;
     size_t blob_len = 0;

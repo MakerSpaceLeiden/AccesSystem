@@ -53,7 +53,7 @@ void WiFiEventLoop() {
             _connected = true;
             break;
         case EV(ETH_GOT_IP):
-            Log.printf("ETH MAC: %s, IPv4: %s%s, %d Mbps ",
+            Log.printf("ETH MAC: %s, IPv4: %s%s, %d Mbps",
             	ETH.macAddress().c_str(),
 		ETH.localIP().toString().c_str(),
                 ETH.fullDuplex() ? ", FULL_DUPLEX" : "",
