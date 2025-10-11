@@ -34,6 +34,9 @@
 #include <ETH.h>
 #include <WiredEthernet.h>
 
+// For the buzzer
+#include <Ticker.h>
+
 #define MACHINE "sumup"
 
 ACNodeRest node = ACNodeRest(MACHINE);
@@ -59,6 +62,8 @@ OTA ota(OTA_PASSWD_HASH);
 #define BUTTON_3 (14)  // label 25 euro
 #define BUTTON_4 (13)  // label 50 euro
 
+#define BUZZER (16)
+
 RFID_MFRC522* rfid;
 PaymentAPI* paymentAPI;
 
@@ -73,10 +78,32 @@ unsigned long card_swiped_count = 0;
 unsigned long requests_failed = 0;
 float amount_requested_paid = 0;
 
+Ticker buzzer;
+void buzzerOff() {
+  digitalWrite(BUZZER, LOW);
+};
+
+void soundBuzzer(float seconds) {
+  digitalWrite(BUZZER, HIGH);
+  buzzer.attach(seconds, buzzerOff);
+}
+void okSound() {
+  soundBuzzer(0.1);
+};
+
+void errSound() {
+  for (int i = 0; i < N_PINS; i++)
+    digitalWrite(GPIO_PIN[i], LOW);
+  soundBuzzer(1.0);
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n\n");
   Serial.printf("Booted: %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
+
+  pinMode(BUZZER, OUTPUT);
+  digitalWrite(BUZZER, LOW);
 
   // Change to something like debug or test
   // if you want to send all output to a different
@@ -87,6 +114,7 @@ void setup() {
   // Setup ethernet == default Olimex
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
+
 
   configTime(0, 0, NTP_POOL);
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 0);
@@ -103,6 +131,7 @@ void setup() {
   node.addHandler(rfid);
 
   rfid->onSwipe([&](const char* tag) -> ACBase::cmd_result_t {
+    okSound();
     Debug.println("Handling swipe - asking for name/mapping owner");
     return node._restAPI->handleTagSwipe(tag);
   });
@@ -111,15 +140,23 @@ void setup() {
   paymentAPI = new PaymentAPI(node._restAPI, true /* wants pricelist */);
   node.addHandler(paymentAPI);
 
+  node.onDenied([](const char* machine) {
+    Debug.println("Card denied.");
+    errSound();
+    return;
+  });
+
   node.onApproval([](const char* machine) {
     card_swiped_count++;
 
     if (pin_selected == NO_PIN_SELECTED) {
       Log.printf("Card swiped; but no amount to pay selected\n");
+      errSound();
       return;
     };
     if (paymentAPI->pricelist == NULL) {
       Log.printf("Card swiped; but we have no pricelist (yet)\n");
+      errSound();
       return;
     }
 
@@ -143,11 +180,13 @@ void setup() {
 
         if (node._restAPI->rest(SUMUP_URL, String(buff))) {
           Debug.printf("SOLO terminal asking for %.2f payment by %s now.",
-                       it->price, node.lastApproved()->name);
+                       it->price, node.lastApproved()->name.c_str());
           amount_requested_paid += it->price;
+          okSound();
         } else {
           Debug.println("SOLO terminal could not be activated, network issue to CRM server?");
           requests_failed++;
+          errSound();
         };
         pin_selected = NO_PIN_SELECTED;
         return;
@@ -158,6 +197,7 @@ void setup() {
 
   node.onDenied([](const char* machine) {
     Log.println("Denied");
+    errSound();
     pin_selected = NO_PIN_SELECTED;
     denied_count++;
   });
