@@ -570,7 +570,7 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
 
         WiFiClient * stream = https.getStreamPtr();
         l = 0;
-        unsigned long _lst = millis(), TO = 2500;
+        unsigned long _lst = millis(), TO = 3500;
         for(unsigned char * p = buff;;) {
 	    if (!stream->connected()) {
                 if (len != -1)
@@ -601,7 +601,7 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
 		Debug.println("HTTP read incomplete, retry");
             };
             _lst = millis();
-            TO = 750;
+            TO = 1500;
 
             l+=n;
   	    if (buffp == NULL)
