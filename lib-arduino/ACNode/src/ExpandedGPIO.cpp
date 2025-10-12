@@ -24,6 +24,7 @@ void ExpandedGPIO::addMCP(unsigned int i2caddr, TwoWire * wire) {
 void ExpandedGPIO::addAW9523(unsigned int i2caddr, TwoWire * wire) {
     if (awp)
         return;
+
     awp= new Adafruit_AW9523();
     awp->begin(i2caddr,wire);
     awp->reset(); // all pins in open-drain; output mode
@@ -34,25 +35,32 @@ void ExpandedGPIO::xpinMode(uint8_t pin, uint8_t mode) {
     if ((pin & PIN_GPIO_MASK) == PIN_HPIO_PLAIN) {
         pinMode(pin,mode);
         return;
-    } else
-        if (((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) && mcp) {
-            mcp->pinMode(pin & ~PIN_GPIO_MASK, mode);
-            return;
-        } else
-            if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) {
+    };
+    if ((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) {
+        if (!mcp) Serial.println("Error - MCP not yet configured");
+        mcp->pinMode(pin & ~PIN_GPIO_MASK, mode);
+        return;
+    };
+    if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) {
+        if (!awp) Serial.println("Error - AWP not yet configured");
 #if 0
-                // Something odd with the init - pinMode does not seem to work.
-                //
-                aw.reset(); // all pins in open-drain; output mode
-                aw.openDrainPort0(false);
-                // aw.configureLEDMode((1 << LEDA) | (1 << LEDB) | (1 << LEDC) | (1 << LEDD) | (1 << LEDE));
-                aw.configureDirection((1 << LEDA) | (1 << LEDB) | (1 << LEDC) | (1 << LEDD) | (1 << LEDE));
+        // Something odd with the init - pinMode does not seem to work.
+        //
+        aw.reset(); // all pins in open-drain; output mode
+        aw.openDrainPort0(false);
+        // aw.configureLEDMode((1 << LEDA) | (1 << LEDB) | (1 << LEDC) | (1 << LEDD) | (1 << LEDE));
+        aw.configureDirection((1 << LEDA) | (1 << LEDB) | (1 << LEDC) | (1 << LEDD) | (1 << LEDE));
 #endif
-                awp->pinMode(pin & ~PIN_GPIO_MASK, mode);
-                return;
-            } else
-                if (0) if (wp++<MAXREPORT)
-                    Log.printf("No expanded pinMode() for pin 0x%x, ignored.\n", pin);
+	if (mode == INPUT_PULLUP) {
+//	   Debug.printf("Pin mode PULLUP not supported on pin %d of AWP\n", pin & ~PIN_GPIO_MASK);
+	   mode = INPUT;
+        };
+        // Serial.printf("AWP - set pin %d to %d (I=%d,IP=%d,O=%d,LED=%d)\n", pin & ~PIN_GPIO_MASK, mode, INPUT, INPUT_PULLUP, OUTPUT, AW9523_LED_MODE);
+        awp->pinMode(pin & ~PIN_GPIO_MASK, mode);
+        return;
+    };
+     if (0) if (wp++<MAXREPORT)
+          Log.printf("No expanded pinMode() for pin 0x%x, ignored.\n", pin);
 }
 
 

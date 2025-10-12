@@ -18,7 +18,8 @@ class SKU {
 public:
     SKU();
     SKU(String n, double p, String description) : name(n), price(p), desc(description) {};
-    String name, desc;
+    String name;
+    String desc;
     double price;
 };
 
@@ -29,17 +30,17 @@ public:
     SKU * defaultItem;
 };
 
-class PaymentAPI {
+class PaymentAPI : public ACBase {
 public:
-    PaymentAPI(RestAPI * restAPI) : _restAPI(restAPI) {
+    PaymentAPI(RestAPI * restAPI, bool needsPricelist = false) : _restAPI(restAPI), _needsPricelist(needsPricelist)  {
         _restAPI->onPaired([&]() -> void {
-            // conceivable we could also load the price list here - but
-            // not sure if that is always needed ?
             if (_ready_cb)
                 _ready_cb();
             _ready = true;
         });
     };
+    void loop();
+    void report(JsonObject& report);
 
     typedef std::function<void(void)> THandlerFunction_NotifyReady;
     Pricelist * pricelist = NULL;
@@ -56,6 +57,7 @@ public:
     // Claim up to a certain amount. If not settled - it will either be auto
     // settled or left to a human administrator (of settleAfterOrNone == 0).
     //
+
 #define DO_NOT_AUTO_SETTLE (0)
     String claim(const char * againstUserID,
                  double amount,
@@ -74,7 +76,8 @@ private:
     double amount_no_ok_needed = AMOUNT_NO_OK_NEEDED;
     RestAPI * _restAPI;
     THandlerFunction_NotifyReady _ready_cb;
-    bool _ready;
+    bool _ready = false, _needsPricelist = false;
+    unsigned long _lastPricelist = 0;
     
     String _raw_claim(const char * url, std::vector<String> args);
 };

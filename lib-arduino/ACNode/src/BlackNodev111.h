@@ -15,6 +15,7 @@ private:
 public:
     BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_SIG2);
     BlackNodev111(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
+    BlackNodev111() { Serial.println("Destroy WhiteNode - should never happen"); };
 
     const char * name() { return "BlackNodev111"; }
     
@@ -29,7 +30,6 @@ public:
     static const uint8_t AW_INT = 36; // Was opto 2
     
     void CONSTS() {
-
         // super::CONSTS();
         
         // Rewired to their own pins (mostly shared with strapping
@@ -80,9 +80,6 @@ public:
             { 255, NULL },
         };
         iostates = s;
-
-	Debug.printf("Wiring errorLed AW %x %d\n", LED_INDICATOR, LED_INDICATOR);
-        errorLed = new LEDAW(LED_INDICATOR);
     };
     void begin();
     void pop();

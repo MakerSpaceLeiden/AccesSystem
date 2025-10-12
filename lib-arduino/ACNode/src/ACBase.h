@@ -16,7 +16,7 @@ extern beat_t beatCounter;      // My own timestamp - manually kept due to SPI t
 extern beat_t beat_absdelta(beat_t a, beat_t b);
 
 #define MAX_TOKEN_LEN  ( 128)
-#define MAX_MSG        ( 250)
+#define MAX_MSG        (2*1024)
 #define MAX_HOST       (  48)
 #define MAX_NAME       (  16)
 #define MAX_TOPIC      ((MAX_NAME +1) * 3  + 1)
@@ -53,7 +53,9 @@ public:
 
 class ACBase {
 public:
-    virtual const char * name() { return "ACBase"; }
+    ACBase(const char * name = NULL) { if (name) _name = strdup(name); };
+    ~ACBase() { if (_name) free(_name); }
+    virtual const char * name() { return _name ? _name : "ACBase"; }
     
     typedef enum cmd_results { CMD_DECLINE, CMD_CLAIMED } cmd_result_t;
     
@@ -81,6 +83,7 @@ protected:
     bool _debug;
     bool _isUp;
     // protected:
+   char * _name = NULL;
 };
 
 class ACSecurityHandler : public ACBase {

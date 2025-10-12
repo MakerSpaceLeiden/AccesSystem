@@ -28,6 +28,7 @@ static void partloop(Print &out, const char * label, esp_partition_type_t part_t
          iterator = esp_partition_next(iterator);
         }
       }
+      esp_partition_iterator_release(iterator);
 }
 
 void partition_info(Print &out) {
@@ -42,3 +43,19 @@ String currentPartition() {
 		return String(running->label);
 	return String("Unset");
 }
+
+size_t get_rom_size() {
+   static size_t total = 0;
+   if (total == 0) {
+      ESP_LOGI("ROM", "Partition table\n=====\n");
+
+      esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
+      for (; it != NULL; it = esp_partition_next(it)) {
+        const esp_partition_t *part = esp_partition_get(it);
+        ESP_LOGI("ROM", "\tPartition '%s' at offset 0x%" PRIx32 " type %x, size 0x%" PRIx32, part->label, part->address, part->type, part->size);
+       	total += part->size;
+      };
+      esp_partition_iterator_release(it);
+    };
+    return total;
+};

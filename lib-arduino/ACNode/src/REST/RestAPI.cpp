@@ -39,11 +39,16 @@ ACBase::cmd_result_t RestAPI::handleTagSwipe(const char * tag) {
     return ACBase::CMD_CLAIMED;
 }
 
+// Three options - buffp == NULL;  just ok/no ok -- no data
+//                 *buffp == NULL; no data or malloced data
+//  		   *buffp 	 ; use this buffer
+//
 int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, String encodedpostargs) {
-    unsigned char *p = NULL;
-    if (buffp) p = *buffp;
-    rest_ret_t ret;
+    unsigned char ** p = buffp;
+    rest_ret_t ret = ERR_FATAL;
 
+    if (buffp) p = buffp;
+    
     size_t n = raw_rest(_terminalName,url,maxbufflenp,buffp,&ret,encodedpostargs);
 
     switch(ret) {
@@ -52,7 +57,8 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
             return n;
             break;
         case ERR_FATAL:
-            if (md < FULLY_REGISTERED) md = WIFI_FAIL_REBOOT;
+            if (md < FULLY_REGISTERED) 
+		md = WIFI_FAIL_REBOOT;
             break;
         case ERR_REPAIR:
             paired = false;
@@ -62,14 +68,21 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
             md = WAITING_FOR_NTP;
             break;
     }
-    if (p == NULL && *buffp) {
-        free(*buffp);
-	*buffp = NULL;
-    };
     Log.printf("Failed %s\n", url);
+
+    if (p && *p == NULL) {
+	free(*buffp);
+       	*buffp = NULL;
+    };
+
     return -1;
 }
 
+bool RestAPI::rest(const char *url,String encodedpostargs) {
+    rest_ret_t ret = ERR_FATAL;
+    size_t n = raw_rest(_terminalName,url,NULL,NULL,&ret,encodedpostargs);
+    return ret == NOERROR;
+}
 
 JsonDocument RestAPI::get(const char *url,String encodedpostargs) {
     rest_ret_t ret;
@@ -201,7 +214,7 @@ void RestAPI::loop()
             break;
         }
         case WIFI_FAIL_REBOOT:
-            Log.println("Rebooting");
+            Log.println("Rebooting in WiFi fail in payment setup");
             delay(5000);
             ESP.restart();
             return;
@@ -245,12 +258,20 @@ void RestAPI::loop()
 };
 
 
-extern unsigned char sha256_client[32];
+extern unsigned char sha256_client[32]; // cheat
+
+void RestAPI::report(JsonObject& report) {
+    report["rest"] = ready();
+    report["rest_label"] = getStatLabel();
+
+    char tmp[128 + 1];
+    sha256toHEX(sha256_client, tmp);
+    report["rest_sha256"] = tmp;
+};   
 
 void RestDeck::render_pane(bool refresh) {
     if(!refresh)
         return;
-
 
     if (!_restAPI) {
         _display->print_centred("NO REST");

@@ -48,6 +48,7 @@ public:
     void sentNotification(String sender, String dest, String subject, String msg);
     
     JsonDocument get(const char *url,String encodedpostargs = "");
+    bool rest(const char *url,String encodedpostargs = "");
     
     // Will return the actual number of bytes read; or a -1 on error.
     // if maxbufflenp is a pointer to a max value; this cap the number
@@ -64,6 +65,7 @@ public:
 
     bool isPaired() { return paired; };
 
+    void report(JsonObject& report);
 private:
     THandlerFunction_NotifyPair _pair_cb;
     THandlerFunction_NotifyPaired _paired_cb;

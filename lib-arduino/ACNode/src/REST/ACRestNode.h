@@ -9,6 +9,13 @@
 //       around a 160k when empty.
 //
 
+class ApprovalEntryWithTag {
+public:
+	ApprovalEntryWithTag(ApprovalEntry *e, const char *tag) : e(*e), tag(String(tag)) {};
+	ApprovalEntry e;
+	String	tag;
+};
+
 class ACNodeRest : public ACNodeBase {
 private:
     typedef ACNodeBase super;
@@ -21,7 +28,7 @@ public:
     void pop();
     
     void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
-    // void loop();
+    void loop();
 
     void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
     
@@ -39,5 +46,10 @@ protected:
     ApprovalAPI *_approvalAPI;
     ApprovalEntry * _lastApproved;
 private:
+   // Que of tags to inform the server about on a best effort basis.
+    const unsigned long TAG_SEND_INTERVAL = 5 * 1000; // at least 5 seconds in between tag sends.
+    std::list<ApprovalEntryWithTag> _approvedTagsToSent;
+    unsigned long _lastApprovalTime;
+ 
 };
 #endif

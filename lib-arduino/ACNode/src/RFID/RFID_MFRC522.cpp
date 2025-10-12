@@ -16,19 +16,19 @@
 
 RFID_MFRC522::RFID_MFRC522(const byte sspin , const byte rstpin , const byte irqpin , const byte spiclk , const byte spimiso , const byte spimosi )
 {
-#ifdef ESP32
+//#ifdef ESP32
     if (spiclk != 255 || spimiso != 255 || spimosi != 255)
         SPI.begin(spiclk, spimiso, spimosi);
     else
-#endif
-        SPI.begin();
+//#endif
+       SPI.begin();
     
     _spiDevice = new MFRC522_SPI(sspin, rstpin, &SPI);
     _mfrc522 = new MFRC522(_spiDevice);
     _irqpin = irqpin;
     _rstpin = rstpin;
     
-    Debug.println("MFRC522: SPI wired.");
+    // Serial.printf("MFRC522: SPI wired CLK=%d, MISO/MOSI=%d,%d, SDA=%d, RST=%d, IRQ=%d\n",spiclk, spimiso,spimosi,sspin,irqpin,rstpin);
 }
 
 RFID_MFRC522::~RFID_MFRC522() {
@@ -176,8 +176,8 @@ String RFID_MFRC522::firmwareVersionString() {
         char * str;
 	unsigned char version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
         switch(version) {
-		case 0x00: str="00-i2c-error"; break;
-		case 0xFF: str="FF-i2c-error"; break;
+		case 0x00: str="00-wiring-error"; break;
+		case 0xFF: str="FF-wiring-error"; break;
                 case 0x90: str="v0.0"; break;
                 case 0x91: str="v1.0"; break;
                 case 0x92: str="v2.0"; break;

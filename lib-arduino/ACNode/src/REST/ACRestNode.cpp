@@ -21,8 +21,8 @@ void ACNodeRest::pop() {
     _approvalAPI = new ApprovalAPI(_restAPI, machine);
 
     PAIRING_FAILED = machinestate.addState("Pairing Failed",  LED::LED_ERROR, 5*1000, MachineState::OUTOFORDER);
-    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 30*1000, PAIRING_FAILED, MachineState::WAITINGFORCARD);
-    WAIT_FOR_PAIRING = machinestate.addState("Needs to pair",  LED::LED_ERROR, 30*1000, MachineState::OUTOFORDER);
+    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 20*1000, PAIRING_FAILED, MachineState::WAITINGFORCARD);
+    WAIT_FOR_PAIRING = machinestate.addState("Pairing lost",  LED::LED_ERROR, 30*1000, MachineState::OUTOFORDER);
 
     machinestate.addOnChangeCallback(PAIRING_FAILED, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
         if (_approvalAPI->canApprove()) {
@@ -72,27 +72,23 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
 
     if (e && e->ok()) {
         Log.printf("Received OK to %s on %s for %s\n", machine, operation ? operation : "power" , e->name.c_str());
-#if 0
-        JsonDocument payload;
-        payload["machine"] = machine;
-        payload["member"] = e->name;
-        payload["action"] = "power-on";
-        payload["permission"] = true;
-        String *res = jwt_sign(payload);
-        if (res) {
-            _client.publish("ac/jwt", res->c_str());
-            delete res;
-        };
-#endif
+
         if (_lastApproved)
             delete _lastApproved;
         _lastApproved = e;
+        _lastApprovalTime = millis();
         
         if (_approved_callback) {
             Debug.println("Calling appproval callback");
             _approved_callback(machine);
         };
-        
+
+	// Do not send it again if it is already in our list to send.
+        // if (std::find(std::begin(_approvedTagsToSent), std::end( _approvedTagsToSent), t) != std::end( _approvedTagsToSent))
+	{
+        	_approvedTagsToSent.push_back(ApprovalEntryWithTag(e,tag));
+	}
+
         _approve++;
         return;
     };
@@ -133,19 +129,57 @@ void ACNodeRest::sentNotification(String dest, String subject, String msg) {
     _restAPI->sentNotification(sender, dest, subject, msg);
 }
 
+static String epochseconds2iso8601(time_t n) {
+        struct tm * t = gmtime(&n);
+	char buff[10];
+	snprintf(buff,sizeof(buff),"%04d%02d%02d", t->tm_year, 1 + t->tm_mon, t->tm_mday);
+	return String(buff);
+}
 
-#if 0
 void ACNodeRest::loop() {
     super::loop();
 
-    if (_restAPI->state() != RestAPI::FULLY_REGISTERED)
-        return;
-    
-    static unsigned long lst = 0;
-    if (!(lst == 0 || millis() - lst > 3600 * 1000))
-        return;
-    lst = millis();
-    
-    // do stuff regularly ?? (approval will handle its own fetches though)
+    static unsigned lst = 0;
+    if (_approvedTagsToSent.size() && machinestate.isStable() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 500) {
+	ApprovalEntryWithTag et = *(_approvedTagsToSent.begin());
+        _approvedTagsToSent.pop_front();
+
+        _approvalAPI->sendBestEffortTagApproved(et.tag);
+	{
+	        JsonDocument payload;
+	        payload["name"] = et.e.name;
+	        payload["machine"] = machine;
+	        payload["node"] = moi;
+	        payload["userid"] = et.e.uid.toInt();
+	        payload["acl"] = "approved";
+	        payload["cmd"] = "energize";
+
+		// Old style
+		String payloadAsString;
+		serializeJson(payload,payloadAsString);
+		_client.publish("ac/log/master",("JSON="+payloadAsString).c_str());
+	};
+
+	// Signed replacement for public message
+	//
+	{
+	        JsonDocument payload;
+	        payload["iss"] = String(moi) + "/" + String(machine);
+
+	        payload["name"] = et.e.name;
+	        payload["sub"] = String("urn:fdc:makerspaceleiden.nl:20130521:user:") + et.e.uid; // rfc 4198
+
+        	payload["iat"] = time(NULL); // needed for replay protection; see RFC 7519 4.1.6
+
+	        payload["scope"] = "energize";
+	        payload["res"] = true;
+
+	        String res = jwt_sign(payload);
+	        if (res.length()) 
+	            _client.publish("ac/jwt", res.c_str());
+	};
+        
+	lst = millis();
+    };
 }
-#endif
+

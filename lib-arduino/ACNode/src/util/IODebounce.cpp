@@ -2,23 +2,32 @@
 #define SAMPLES_PER_DELAY (4)
 #include <TLog.h>
 
+#if 0
 static void _update(uint32_t arg) {
     IODebounce * c = (IODebounce*)arg;
     c->_ticker_update();
 }
+#endif
 
-IODebounce::IODebounce(int pin, unsigned long delay){
+IODebounce::IODebounce(const char *name, int pin, unsigned long delay) : ACBase(name) {
     _pin = pin;
     _delay = delay;
     _lastChangeTime = 0;
     _analogThreshold = 0;
     _prevStateBtn = _lastStateBtn = rawState();
+#if 0
+    // temporary removed - to see if we can solve the issue
+    // with the broken Wire semaphore concept (see ticketXX)
+    //
     _ticker = new Ticker();
     _ticker->attach_ms(delay/SAMPLES_PER_DELAY,_update,(uint32_t )this);
+#endif
 }
 
 IODebounce::~IODebounce() {
+#if 0
     delete _ticker;
+#endif
 };
 
 void IODebounce::setAnalogThreshold(unsigned short val) {
@@ -68,6 +77,8 @@ void IODebounce::_ticker_update(){
 };
 
 void IODebounce::loop() {
+    _ticker_update();
+
     if (!_hasfired)
         return;
 

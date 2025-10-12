@@ -14,7 +14,7 @@ void InfoDeck::render_pane(bool refresh) {
     _display->print_centred("INFO");
     _display->printf("Node :%s\n",_acnode->moi);
     _display->printf("IPv4 :%s\n", String(_acnode->localIP().toString()).c_str());
-    _display->printf("Via  :%s\n", _acnode->_wired ? "LAN" : "WiFi");
+    _display->printf("Via  :%s\n", _acnode->wired() ? "LAN" : "WiFi");
 #ifdef SYSLOG_HOST
     _display->printf("Syslg:%s\n", SYSLOG_HOST);
 #else

@@ -7,7 +7,6 @@
 #define IODebounce_h
 
 #include "Arduino.h"
-#include "Ticker.h"
 #include <functional>
 
 #include "ExpandedGPIO.h"
@@ -15,10 +14,10 @@
 
 class IODebounce : public ACBase {
   public:
-    IODebounce(int pin, unsigned long delay = 40 /* mSeconds stable */);
+    IODebounce(const char *name = NULL, int pin = -1, unsigned long delay = 40 /* mSeconds stable */);
     ~IODebounce();
 
-    const char * name() { return "IODebounce"; };
+    // const char * name() { return "IODebounce"; };
     
     void setAnalogThreshold(unsigned short val); // Set to 0 to go back to digital again.
 
@@ -50,6 +49,5 @@ class IODebounce : public ACBase {
     ButtonCallback _callBack = NULL;
     digitalReadFunction _digitalRead = &expandedDigitalRead;
     analogReadFunction _analogRead = &expandedAnalogRead;
-    Ticker * _ticker;
 };
 #endif

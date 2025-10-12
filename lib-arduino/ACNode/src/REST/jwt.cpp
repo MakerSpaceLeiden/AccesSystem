@@ -1,6 +1,7 @@
 #include "ACNode.h"
 
 #include "REST/jwt.h"
+#include "REST/selfsign.h"	// for SHA256 hex conversion routine
 
 #include <mbedtls/base64.h>
 #include <mbedtls/dhm.h>
@@ -19,6 +20,9 @@
 #include <mbedtls/x509_crt.h>
 
 #include "util/common-utils.h"
+#include "esp_random.h"
+
+
 
 #define MBOK(x) { \
     if ((ret = (x)) < 0) {\
@@ -91,6 +95,7 @@ bool extract_pubkey_from_cert(const char * cert, const char * public_key, size_t
 exit:
     return false;
 }
+
 char * shortkey(char * pem) {
     int s = 0;
     for(char *p = pem, *q = pem;*p;p++) {
@@ -102,7 +107,7 @@ char * shortkey(char * pem) {
 }
 
 
-String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem )
+String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem,  char * cert_as_pem, unsigned char * cert_sha256, unsigned char * pubkey_sha256 )
 {
     mbedtls_entropy_context entropy_ctx;
     mbedtls_ctr_drbg_context ctr_drbg;
@@ -111,19 +116,50 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem 
     unsigned char * buff, *ptr = buff;
     unsigned char hash[32];
     unsigned char *sig;
-    String * out = NULL;
+    String out;
     JsonDocument hdr;
     String hdrSerialized, plSerialized;
     size_t nHdrSerialized, nPlSerialized;
     int ret;
+    unsigned long t;
 
     hdr["typ"] = "JWT";
     hdr["alg"] = "ES256";
+   
+    if (pubkey_sha256) {
+    	unsigned char tmp[48];
+	MBOK(rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)pubkey_sha256, 32));
+	hdr["kid"] = String((char*)tmp,n);
+    };
 
-    char pubkey[ 2 * strlen(private_key_as_pem)];
-    if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey)))
-        hdr["kid"] = shortkey(pubkey);
+    if (private_key_as_pem) { 
+        char pubkey[ 2 * strlen(private_key_as_pem)];
+        if (extract_pubkey_from_privkey(private_key_as_pem, pubkey, sizeof(pubkey))) {
+           	hdr["jwk"] = shortkey(pubkey);
+        };
+    };
 
+    if(cert_sha256) {
+    	unsigned char tmp[48];
+	MBOK(rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)cert_sha256, 32));
+	// See section 4.1.8 in RFC 7515
+	hdr["x5t#S256"] = String((char*)tmp,n);
+    };
+
+    // https://www.rfc-editor.org/rfc/rfc7515#section-4.1.6:wq
+    if (cert_as_pem) {
+	unsigned char * buff = (unsigned char *)strdup(cert_as_pem);
+	int l = pem2der(buff); // will fit; DER always shorter.
+	unsigned char tmp[ l * 2 ];
+	size_t n;
+
+    	rfc4648_base64_encode(tmp, sizeof(tmp), &n, (const unsigned char*)buff, l);
+	free(buff);
+	
+	// Order; from signing cert up to root.
+	JsonArray certs = hdr["x5c"].to<JsonArray>();
+	certs.add(String(tmp,n));
+    };
     nHdrSerialized = serializeJson(hdr, hdrSerialized);
     nPlSerialized = serializeJson(payload, plSerialized);
     
@@ -131,6 +167,10 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem 
     //
     len = B64L(hdrSerialized.length()) + 1 + B64L(plSerialized.length()) + 1 + B64L(128) + 1;
     ptr = buff = (unsigned char*) malloc(len);
+    if (!buff) {
+        Log.println("jwt malloc failed.");
+	goto exit;
+    };
     
     MBOK(rfc4648_base64_encode(ptr, len + buff - ptr, &n, (const unsigned char*)hdrSerialized.c_str(), hdrSerialized.length()));
     ptr += n;
@@ -156,22 +196,23 @@ String * generateSignedES256JWT(JsonDocument payload, char * private_key_as_pem 
     key_len = mbedtls_pk_get_len(&ctx);
     sig_len = key_len * 2 + 10;
     sig  = (unsigned char *) calloc(1, sig_len);
-    
+   
+    // Sign the hash 
     MBOK(mbedtls_pk_sign(&ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash),
                          sig, &sig_len, mbedtls_ctr_drbg_random, &ctr_drbg));
     sig_len = ecdsa_asn1_to_raw(sig, key_len, sig_len);
     
     *ptr++ = '.'; // Separator payload/signature
-    
+
     MBOK(rfc4648_base64_encode(ptr, len + buff - ptr, &n, sig, sig_len));
     ptr += n;
     
-    out =  new String((char*)buff);
-    free(buff);
+    out = String((char*)buff);
 
     mbedtls_pk_free(&ctx);
     mbedtls_ctr_drbg_free( &ctr_drbg );
     mbedtls_entropy_free( &entropy_ctx );
 exit:
+    free(buff);
     return out;
 }

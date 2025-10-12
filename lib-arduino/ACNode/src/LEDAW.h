@@ -8,7 +8,7 @@
 //
 class LEDAW : public LED {
 public:
-    LEDAW(const byte pin = -1, bool inverted = false) : LED(pin,inverted) {};
+    LEDAW(const char *name, const byte pin = -1, bool inverted = false) : LED(name, pin,inverted) {};
     virtual void _set(bool on);
     void begin();
 };

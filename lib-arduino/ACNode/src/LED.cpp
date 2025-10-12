@@ -8,10 +8,15 @@
 //
 static void flipPin(LED * led) { led->_update(); }
 
-LED::LED(const byte pin, const bool inverted) : _pin(pin) ,_inverted(inverted) {
+LED::LED(const char * name, const byte pin, const bool inverted) : ACBase(name), _pin(pin) ,_inverted(inverted) {
+#if 0
+	// Temporarily removed - we rely on the loop() now
+	// until the Wire/Adafruit issues on the unchecked
+        // Semaphore return flag is fixed.
         if (_pin != -1) {
   	   _ticker = Ticker();
         };
+#endif
 	_lastState = NEVERSET;
 };
 
@@ -42,6 +47,13 @@ void LED::_update() {
   _tock++;
 }
 
+void LED::loop() {
+   if (millis() - _lst < _tsSpeed || _tsSpeed == 0)
+	return;
+   _lst = millis();
+   _update();
+}
+
 void LED::set(led_state_t state) {
   if (_lastState == state)
      return;
@@ -52,26 +64,31 @@ void LED::set(led_state_t state) {
   }
   switch(state) {
     case LED_OFF:
-      _ticker.detach();
+      _tsSpeed = 0;
+  //    _ticker.detach();
       _off();
       break;
     case LED_ON:
-      _ticker.detach();
+  //    _ticker.detach();
       _on();
+      _tsSpeed = 0;
       break;
     case LED_FLASH:
     case LED_IDLE:
     case LED_PENDING:
     case LED_FAST:
-//      _ticker.attach_ms(100, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
+      _tsSpeed = 500;
+//      _ticker.attach_ms(_tsSpeed, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_SLOW:
-//      _ticker.attach_ms(500, &flipPin,  this); // no need to detach - code will disarm and re-use existing timer.
+      _tsSpeed = 500;
+////      _ticker.attach_ms(_tsSpeed, &flipPin,  this); // no need to detach - code will disarm and re-use existing timer.
       break;
     case LED_ERROR:
     case NEVERSET: // include this here - though it should enver happen. 50 hz flash
     default:
-//      _ticker.attach_ms(20, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
+      _tsSpeed = 20;
+////      _ticker.attach_ms(_tsSpeed, &flipPin, this); // no need to detach - code will disarm and re-use existing timer.
       break;
   }
 }

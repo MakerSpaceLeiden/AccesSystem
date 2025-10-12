@@ -4,21 +4,25 @@
 #include <ArduinoJSON.h>
 #include <esp_debug_helpers.h>
 #include "util/part.h"
+#include "esp_task_wdt.h"
+
 
 #ifdef ESP32
 #include <WiFi.h>
 #include <ETH.h>
 #endif
 
-#include <TelnetSerialStream.h>
 #include <WebSerialStream.h>
 // WebSerialStream  webSerialStream = WebSerialStream();
+
+#include <TelnetSerialStream.h>
+// TelnetSerialStream  telnetSerialStream = telnetSerialStream();
 
 #include <MqttlogStream.h>
 
 #ifdef SYSLOG_HOST
 #include <SyslogStream.h>
-SyslogStream syslogStream = SyslogStream();
+// SyslogStream syslogStream = SyslogStream();
 #endif
 
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
@@ -58,7 +62,7 @@ void ACNodeBase::CONSTS() {
     Serial.begin(115200);
     while(!Serial) { delay(10); };
 
-    Serial.printf("\n\n" __DATE__ " - " __TIME__ "\nACNode %p started\n", this);
+    Serial.printf("\n\nBoot started -- " __DATE__ " - " __TIME__ "\n", this);
 };
 
 void ACNodeBase::pop() {
@@ -82,22 +86,22 @@ void ACNodeBase::pop() {
     Debug.setTimestamp(true); 
     Debug.setIdentifier("DBG");
 
-    wh = std::make_shared<WebSerialStream>();
+    const std::shared_ptr<LOGBase> & wh = std::make_shared<TelnetSerialStream>();
     Log.addPrintStream(wh);
     Debug.addPrintStream(wh);
 
-    //const std::shared_ptr<LOGBase> & th = std::make_shared<TelnetSerialStream>(telnetSerialStream);
-    th = std::make_shared<TelnetSerialStream>(String(moi));
+    const std::shared_ptr<LOGBase> & th = std::make_shared<WebSerialStream>();
     Debug.addPrintStream(th);
     Log.addPrintStream(th);
 
 #ifdef SYSLOG_HOST
-  syslogStream.setDestination(SYSLOG_HOST);
-  syslogStream.setRaw(true);
+    const std::shared_ptr<SyslogStream> & syslogStream = std::make_shared<SyslogStream>();
+    syslogStream->setDestination(SYSLOG_HOST);
+    syslogStream->setRaw(true);
 #ifdef SYSLOG_PORT
-  syslogStream.setPort(SYSLOG_PORT);
+    syslogStream->setPort(SYSLOG_PORT);
 #endif
-  Log.addPrintStream(std::make_shared<SyslogStream>(syslogStream));
+    Log.addPrintStream(syslogStream);
 #endif
 };
 
@@ -287,9 +291,16 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
 
     size_t max = MAX_MSG;
-    if (TLog::MAX_LOG_LINE > max)
-       max = TLog::MAX_LOG_LINE;
+
+    if (Log.maxLine() < max) {
+	Log.setMaxLine(max);
+	Debug.setMaxLine(max);
+    };
+
+#ifdef HAS_SIG2
+    // Extra space needed for signature, beat, etc.
     max += 5 + strlen(topic) + 10;
+#endif
 
     if (_client.getBufferSize() < max) {
 	Debug.printf("MQTT: Need to increase MQTT buffer form %lu to %lu\n", _client.getBufferSize(), max);
@@ -323,6 +334,22 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
 
 }
 
+#define __(x) #x
+#define _(x) __(x) 
+const char _sdk[] = \
+       "Arduino/"  _(ESP_ARDUINO_VERSION_MAJOR) "." _(ESP_ARDUINO_VERSION_MINOR) "." _(ESP_ARDUINO_VERSION_PATCH) \
+       ", "
+       "IDF/" _(ESP_IDF_VERSION_MAJOR) "." _(ESP_IDF_VERSION_MINOR) "." _(ESP_IDF_VERSION_PATCH);
+
+const char * getHW(void) {
+    static char res[48];
+    if (!*res) {
+	snprintf(res, sizeof(res)-1,  "Arduino-" ARDUINO_BOARD "/%s.%u",
+    		ESP.getChipModel(), ESP.getChipRevision());
+	res[sizeof(res)] = 0;
+    };
+    return res;
+}
 
 void ACNodeBase::report(JsonObject & out) {
     out[ "node" ] = moi;
@@ -337,11 +364,15 @@ void ACNodeBase::report(JsonObject & out) {
     out[ "net" ] = _wired ? "UTP" : "WiFi";
     char macstr[30]; strncpy(macstr, macAddressString().c_str(),sizeof(macstr));
     out[ "mac" ] = macstr;
+    out[ "board" ] = getHW();
+    out[ "sdk" ] = _sdk;
+    out[ "rom_size_bits" ] = get_rom_size() * 8;
     
     if (_start_beat == 0)
         if (time(NULL) > 1542275849)
             _start_beat = time(NULL) + millis()/1000;
-    
+    out[ "uptime" ] = uptimeInSeconds();
+
     out[ "approve" ] = _approve;
     out[ "deny" ] = _deny;
     out[ "requests" ] = _reqs;    
@@ -354,7 +385,14 @@ void ACNodeBase::report(JsonObject & out) {
     out["coreTemp"]  = coreTemp();
 #endif
     out["heap_free"] = ESP.getFreeHeap();
-    
+   
+    // attempt to track down MQTT issue.
+    //
+    out["mqtt_host"] = mqtt_server;
+    out["mqtt_port"] = mqtt_port;
+    out["mqtt_isUp"] = isUp();
+    out["mqtt_isConnected"] = isConnected();
+ 
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it)
         (*it)->report(out);
@@ -423,7 +461,7 @@ void ACNodeBase::loop() {
     
     for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
         unsigned long s = micros();
-        (*it)->loop();
+	(*it)->loop();
         unsigned long delta = micros() - s;
         
         if ((*it)->micros_in_loop == 0)
@@ -439,9 +477,8 @@ void ACNodeBase::loop() {
         Debug.println("-----");
     };
 #else
-    for (it =_handlers.begin(); it!=_handlers.end(); ++it) {
+    for (it =_handlers.begin(); it!=_handlers.end(); ++it) 
         (*it)->loop();
-    }
 #endif
     WiFiEventLoop();
 
@@ -539,7 +576,7 @@ void ACNodeBase::mqttLoop() {
     bool n = _client.connected();
 
     if (l != n) 
-	Log.printf("MQTT connection change; now %s\n", n ? "up" : "DOWN");
+	Debug.printf("MQTT connection change; now %s\n", n ? "up" : "DOWN");
     l = n;
     
     if (n)
@@ -549,14 +586,14 @@ void ACNodeBase::mqttLoop() {
 }
 
 void ACNodeBase::reconnectMQTT() {
-    static unsigned long last_mqtt_connect_try = 0;
-     if (millis() - last_mqtt_connect_try < 10*1000 || last_mqtt_connect_try)
+    static unsigned long last_mqtt_connect_try = millis();
+     if (millis() - last_mqtt_connect_try < 10*1000)
 	return;
 
     last_mqtt_connect_try = millis();
     _mqtt_reconnects ++;
 
-    Log.printf("MQTT Connecting <%s> to %s:%d (%s)\n",
+    Debug.printf("MQTT Connecting <%s> to %s:%d (%s)\n",
                moi, mqtt_server, mqtt_port,
                state2str(_client.state()));
     
