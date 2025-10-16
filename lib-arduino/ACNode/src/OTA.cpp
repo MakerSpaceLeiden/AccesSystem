@@ -56,7 +56,18 @@ void OTA::begin() {
 }
 
 void OTA::report(JsonObject& report) {
+    size_t l = _ota_password_hash ? strlen(_ota_password_hash) : 0;
+    
     report["ota"] = true;
+    report["ota_hash"] = l ? ((l == 64) ? "sha256" : "md5") : "unset";
+    if (!l)
+	return;
+
+    char hash[] = "XXX...XXX";
+    strncpy(hash, _ota_password_hash, 3);
+    strncpy(hash+6, _ota_password_hash+ l - 3, 3);
+
+    report["ota_pass"] = hash;
 }
 
 void OTA::loop() {
@@ -173,14 +184,6 @@ void OTAWithDisplay::begin() {
                );
 }
 
-void OTAWithDisplay::report(JsonObject& report) {
-    report["ota"] = true;
-}
-
-void OTAWithDisplay::loop() {
-    ArduinoOTA.handle();
-}
-
 void OTADeck::render_pane(bool refresh) {
     if (!refresh)
         return;
@@ -189,5 +192,7 @@ void OTADeck::render_pane(bool refresh) {
     _display->printf("Host: %s\n",ArduinoOTA.getHostname().c_str());
     _display->printf("Port: %d\n",OTA_PORT);
     _display->printf("Slce: %s\n",currentPartition().c_str());
-    _display->printf("Pass: %s\n",_ota->_ota_password_hash ? "hash set" : "UNSET");
+
+    size_t l = _ota_password_hash ? strlen(_ota_password_hash) : 0;
+    _display->printf("Pass: %s\n", l ? (l == 64 ? "sha256" : "md5" ) : "unset"
 };

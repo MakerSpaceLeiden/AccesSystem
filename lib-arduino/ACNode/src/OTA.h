@@ -23,7 +23,7 @@ class OTA: public ACBase
 	const char * _ota_password_hash;
 };
 
-class OTAWithDisplay: public ACBase
+class OTAWithDisplay: public OTA
 {
   public:
     OTAWithDisplay(const char * password, Display *d, const char * hostname);
@@ -35,9 +35,7 @@ class OTAWithDisplay: public ACBase
     typedef std::function<void(void)> THandlerFunction_wipe_secrets;
     void setPreOTASecretWiper(THandlerFunction_wipe_secrets fn) { _pre_secrets_cb = fn; };
 
-    void loop();
     void begin();
-    void report(JsonObject& report);
     
 protected:
     const char * _ota_password_hash, * _hostname;
