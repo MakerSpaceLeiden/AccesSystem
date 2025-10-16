@@ -37,12 +37,16 @@ void ApprovalAPI::readCache() {
         Log.println("Cache malloc failed.");
         return;
     };
+    size_t n = f.read((uint8_t*)tmp,len);
     f.close();
 
-    if ((len ==  f.read((uint8_t*)tmp,len)) && import(tmp,len))
+    if (n != len)
+	Log.printf("Cache file %s read failed: %d/%d!=%d", TAGBINFILE, errno,n,len);
+    else if (import(tmp,len))
 	return;  // Import takes over responsibility for the malloced buffer
+    else 
+    	Log.printf("Cache import %s failed\n");
 
-    Log.println("Cache loading failed");
     free((void*)tmp);
 }
 
@@ -59,6 +63,7 @@ void ApprovalAPI::writeCache() {
         Log.println("Cache writing failed. Deleting corrupted file.");
         SPIFFS.remove(TAGBINFILE);
     }
+    Debug.printf("Wrote tag bin to cache %s\n", TAGBINFILE);
 }
 
 void ApprovalAPI::begin() {

@@ -1,7 +1,7 @@
 #include <ACNode.h>
 #include "ConfigPortal.h"
 #include <EEPROM.h>
-#include <ArduinoJSON.h>
+#include <ArduinoJson.h>
 #include <esp_debug_helpers.h>
 #include "util/part.h"
 #include "esp_task_wdt.h"
@@ -79,6 +79,11 @@ void ACNodeBase::pop() {
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
     strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
+
+    // Set a sensible default - so we have something until
+    // DHCP/ntp kick in.
+    setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",1);
+    tzset();
     
     Log.setTimestamp(true); 
     Log.setIdentifier("LOG");
@@ -206,7 +211,6 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
         (*it)->begin();
     }
 
-    Log.printf("Host details %s (%s)\n", moi, localIP().toString().c_str());
     partition_info(Log); 
 }
 

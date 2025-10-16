@@ -1,7 +1,7 @@
 #ifndef _H_MPN_REST
 #define _H_MPN_REST
 
-#include <ArduinoJSON.h>
+#include <ArduinoJson.h>
 
 typedef enum { NOERROR = 0, ERR_RETRYABLE = -1, ERR_FATAL = -2, ERR_REPAIR = -3, NOERROR_OK = 1 } rest_ret_t;
 
@@ -9,7 +9,7 @@ typedef enum { NOERROR = 0, ERR_RETRYABLE = -1, ERR_FATAL = -2, ERR_REPAIR = -3,
 // URL of an https://github.com/MakerSpaceLeiden/makerspaceleiden-crm instance.
 //
 #ifndef TERMINAL_URL
-#define PAY_URL "https://my.crm.local:443/terminal/api"
+#define TERMINAL_URL "https://my.crm.local:443/terminal/api"
 #endif
 
 #define NONE_PATH "/none"

@@ -63,8 +63,6 @@ void WhiteNodev108::pop() {
 
     _deskCtrl = new DeckController();
     addHandler(_deskCtrl);
-
-    Serial.println("WhiteNodev108::pop()");
 };
 
 // bracketing with a timer to keep some cadence. We should

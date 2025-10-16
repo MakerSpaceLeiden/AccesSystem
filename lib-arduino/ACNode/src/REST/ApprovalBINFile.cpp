@@ -91,17 +91,45 @@ bool ApprovalBINFile::import(const unsigned char * binfile, size_t len) {
         free((void *)binfile);
         return false;
     };
-    Log_printf("Loaded %lu TAGs with ID 0x%08lx, size %lu, version %s, dated %s",
+
+    char buff[30];
+    ctime_r((const time_t *) &datadate,buff);
+    buff[19] = '\0';
+
+    Log_printf("Loaded %lu TAGs with ID 0x%08lx, size %lu, version %s, dated %s\n",
                ntags, identifier, len,
-               version == MSLv2 ? "MSLv2" : "MSLv1",
-               ctime((const time_t *) &datadate)
-               );
+               version == MSLv2 ? "MSLv2" : "MSLv1", buff);
     
     // Swap the file in; take over the malloc/free
     //
     if (blob) free((void*)blob);
     blob = binfile;
     blob_len = len;
+
+#if 0
+    // Reconstruct binary with:
+    //
+    //    pbaste | xxd -r -p > x.bin
+    //    opensl sha256 x.bin
+    //
+    Serial.println("\n-----\n");
+    for(size_t i = 0; i < len; i++) 
+	Serial.printf("%02x%s", blob[i],(i % 32 == 31) ? "\n" : "");
+
+    mbedtls_sha256_context sha_ctx;
+    unsigned char sha256[32];
+    mbedtls_sha256_init(&sha_ctx);
+
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, blob, len);
+    mbedtls_sha256_finish(&sha_ctx, sha256);
+    mbedtls_sha256_free(&sha_ctx);
+
+    Serial.print("\nSHA: ");
+    for(size_t i = 0; i < 32; i++) 
+	Serial.printf("%02x",sha256[i]);
+    Serial.println("\n-----");
+#endif
     return true;
 }
 
@@ -138,10 +166,10 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
     mbedtls_sha256_context sha_ctx;
     mbedtls_sha256_init(&sha_ctx);
     
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, ptr_salt, 32);
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_finish_ret(&sha_ctx, saltedtag);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, ptr_salt, 32);
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
+    mbedtls_sha256_finish(&sha_ctx, saltedtag);
     mbedtls_sha256_free(&sha_ctx);
     
     const unsigned char * ptr = getEntryPtr(saltedtag);
@@ -150,7 +178,7 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
     
     const unsigned char * tagkey = ptr + 32;
     unsigned int idx =  ntohl( *(uint32_t*)(ptr + 64));
-    
+
     if (idx > len_mem - 3 - 16) {
         printf("Corr 0\n");
         return NULL;
@@ -179,10 +207,10 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
     // the key entry
     //
     unsigned char saltkey[32];
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_update_ret(&sha_ctx, ptr_keysalt, 32);
-    mbedtls_sha256_finish_ret(&sha_ctx, saltkey);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
+    mbedtls_sha256_update(&sha_ctx, ptr_keysalt, 32);
+    mbedtls_sha256_finish(&sha_ctx, saltkey);
     
     unsigned char dec[32];
     memcpy((void*)dec,(void*)tagkey,32);
@@ -194,10 +222,10 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
     // bytes as the actual IV.
     //
     unsigned char uiv[32];
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, ptr_ivs, 32);
-    mbedtls_sha256_update_ret(&sha_ctx, ptr + 64, 4); // In network order.
-    mbedtls_sha256_finish_ret(&sha_ctx, uiv);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+    mbedtls_sha256_update(&sha_ctx, ptr_ivs, 32);
+    mbedtls_sha256_update(&sha_ctx, ptr + 64, 4); // In network order.
+    mbedtls_sha256_finish(&sha_ctx, uiv);
     
     unsigned char plaintext[256]; // worst case, avoids a malloc.
     

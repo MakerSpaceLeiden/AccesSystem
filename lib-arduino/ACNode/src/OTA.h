@@ -5,7 +5,7 @@
 #include <ACBase.h>
 #include "Display/Display.h"
 #include "Display/Deck.h"
-#include "Machinestate.h"
+#include "MachineState.h"
 
 #ifndef OTA_PORT
 #define OTA_PORT (3232)
