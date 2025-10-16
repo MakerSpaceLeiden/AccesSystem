@@ -1,5 +1,8 @@
 #include "REST/PaymentAPI.h"
+
 #include <ArduinoJson.h>
+#include <SPIFFS.h>
+
 #include "util/common-utils.h"
 #include "rest.h"
 
@@ -18,6 +21,36 @@
 #define CLAIM_CREATE_URL PAY_URL PAY_PATH CLAIM_CREATE_PATH
 #define CLAIM_UPDATE_URL PAY_URL PAY_PATH CLAIM_UPDATE_PATH
 #define CLAIM_SETTLE_URL PAY_URL PAY_PATH CLAIM_SETTLE_PATH
+
+
+class SHA256Writer {
+public:
+  SHA256Writer() {
+    mbedtls_sha256_init(&_sha_ctx);
+    mbedtls_sha256_starts(&_sha_ctx, 0);
+  };
+  ~SHA256Writer() {
+    mbedtls_sha256_free(&_sha_ctx);
+  };
+  size_t write(uint8_t c) {
+    mbedtls_sha256_update(&_sha_ctx, &c, 1);
+    return 1;
+  }
+  size_t write(const uint8_t *buffer, size_t length) {
+    mbedtls_sha256_update(&_sha_ctx, buffer, length);
+    return length;
+  }
+  const uint8_t * sha256() {
+    if (!_finished)
+	    mbedtls_sha256_finish(&_sha_ctx, _sha256);
+    _finished = true;
+    return (const uint8_t *)_sha256;
+  };
+private:
+    mbedtls_sha256_context _sha_ctx;
+    uint8_t _sha256[32];
+    bool _finished = false;
+};
 
 bool PaymentAPI::pay(const char *tag, double amount, const char *lbl) {
     char buff[512];
@@ -41,13 +74,15 @@ bool PaymentAPI::fetchPricelist() {
 
     Debug.printf("Fetching pricelist at %s\n", url);
     JsonDocument res = _restAPI->get(url);
-    // serializeJson(res, Debug);
  
     if (!res["pricelist"]) {
         Log.println("No pricelist in reply from server");
         return false;
     };
-    
+    return parsePricelist(res, true);
+}
+
+bool PaymentAPI::parsePricelist(JsonDocument &res, bool cache) {
     const char * nme = res["name"];
     if (!nme || !strlen(nme)) {
         Log.println("no station assigned in CRM");
@@ -87,8 +122,56 @@ bool PaymentAPI::fetchPricelist() {
             pricelist->defaultItem =  &(pricelist->items.back());
     };
 
-    Log.printf("Pricelist fetched, %d entries\n", pricelistlen);
+    SHA256Writer sha256Writer;
+    serializeJson(res, sha256Writer);
+
+    if (cache) {
+          if (!memcmp(sha256Writer.sha256(), _sha256, 256/8)) {
+                Log.printf("Pricelist fetched, %d entries -- no changes\n", pricelistlen);
+                return true;
+          };
+
+          Log.printf("Pricelist fetched, %d entries -- was updated, caching\n", pricelistlen);
+      
+          File f = SPIFFS.open(PRICELISTFILE, "w");
+          if (!f) {
+              Log.println("Failed to open product cache file for writing");
+              return true;
+          }
+          int r = serializeJson(res, f);
+          f.close();
+      
+          if (r <= 0) {
+              Log.println("Failed to write product cache file ");
+              return true;
+          }
+    };
+
+    // We also keep the sha256 when we are not caching; as that
+    // is the case when we got it from the cache to begin with,
+    // and we want to avoid writing it out needlesslu.
+    //
+    memcpy(_sha256, sha256Writer.sha256(), sizeof(_sha256));
     return true;
+}
+
+bool PaymentAPI::readCache() {
+    memset(_sha256,0,32);
+    File f = SPIFFS.open(PRICELISTFILE, "r");
+    if (!f) {
+        Log.println("Failed to read product cache file ");
+        return true;
+    };
+    JsonDocument res;
+    DeserializationError r = deserializeJson(res, f);
+    f.close();
+
+    if (r != DeserializationError::Ok) {
+        Log.printf("Failed to parse product cache file: %s\n", r.c_str());
+        return false;
+    };
+
+    return parsePricelist(res, false);
 }
 
 String PaymentAPI::claim(const char * againstUserID,

@@ -34,8 +34,8 @@ public:
 
     void drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col);
 
-    void print_centred(char * title, bool titlelines = true);
-    void print_centered_QR(char * titleOrNull, char * url);
+    void print_centred(const char * title, bool titlelines = true);
+    void print_centered_QR(const char * titleOrNull, char * url);
     void printCmdBar(String left, String right);
     
     uint16_t widthOfString(String str);

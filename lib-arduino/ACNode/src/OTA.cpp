@@ -56,25 +56,35 @@ void OTA::begin() {
 }
 
 void OTA::report(JsonObject& report) {
-    size_t l = _ota_password_hash ? strlen(_ota_password_hash) : 0;
-    
     report["ota"] = true;
-    report["ota_hash"] = l ? ((l == 64) ? "sha256" : "md5") : "unset";
-    if (!l)
-	return;
+    report["ota_hash"] = passwdType();
 
-    char hash[] = "XXX...XXX";
-    strncpy(hash, _ota_password_hash, 3);
-    strncpy(hash+6, _ota_password_hash+ l - 3, 3);
+    size_t l = _ota_password_hash ? strlen(_ota_password_hash) : 0;
+    if (l == 32 || l == 64) {
+        char hash[] = "XXX...XXX";
+        strncpy(hash, _ota_password_hash, 3);
+        strncpy(hash+6, _ota_password_hash+ l - 3, 3);
+        report["ota_pass"] = hash;
+    };
+}
 
-    report["ota_pass"] = hash;
+const char * OTA::passwdType() {
+    size_t l = _ota_password_hash ? strlen(_ota_password_hash) : 0;
+
+    if (l == 0)
+	return "none";
+    if (l == 64)
+	return "sha256";
+    if (l == 32)
+        return "md5";
+    return "plain";
 }
 
 void OTA::loop() {
     ArduinoOTA.handle();
 }
 
-OTAWithDisplay::OTAWithDisplay(const char * password, Display *d, const char * hostname) : _ota_password_hash(password), _display(d), _hostname(hostname) {};
+OTAWithDisplay::OTAWithDisplay(const char * password, Display *d, const char * hostname) : OTA(password), _display(d), _hostname(hostname) {};
 
 void OTAWithDisplay::begin() {
     const char * name = ((_hostname != NULL) && (_hostname[0] != '\0')) ? _hostname : "unset-acnode";
@@ -192,7 +202,4 @@ void OTADeck::render_pane(bool refresh) {
     _display->printf("Host: %s\n",ArduinoOTA.getHostname().c_str());
     _display->printf("Port: %d\n",OTA_PORT);
     _display->printf("Slce: %s\n",currentPartition().c_str());
-
-    size_t l = _ota_password_hash ? strlen(_ota_password_hash) : 0;
-    _display->printf("Pass: %s\n", l ? (l == 64 ? "sha256" : "md5" ) : "unset"
 };

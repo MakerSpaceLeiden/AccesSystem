@@ -39,13 +39,18 @@
 
 #define MACHINE "sumup"
 
+#ifndef SUMUP_URL
+#define SUMUP_URL "http://crm.local:8000/sumup/api/v1/sumup-pay"
+#warning "You propably want to change/set the SUMUP_URL."
+#endif
+
 ACNodeRest node = ACNodeRest(MACHINE);
 
 #ifdef OTA_PASSWD_HASH256
 OTA ota(OTA_PASSWD_HASH256);
 #else
-#ifdef OTA_PASSWD_HASH
-OTA ota(OTA_PASSWD_HASH);
+#ifdef OTA_PASSWD
+OTA ota(OTA_PASSWD);
 #endif
 #endif
 
@@ -115,17 +120,18 @@ void setup() {
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
 
-
   configTime(0, 0, NTP_POOL);
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 0);
   tzset();
 
-#ifdef OTA_PASSWD_HASH
+#if defined(OTA_PASSWD_HASH) || defined(OTA_PASSWD_HASH256)
   node.addHandler(&ota);
 #else
 #error "You propablly do not want to deploy without OTA"
 #endif
-  // Propably should be moved into ACNode as it is so generic.
+
+  // Propably should be moved into ACNode as it is so generic; but for the
+  // pinning. 
   //
   rfid = new RFID_MFRC522(RFID_CS, RFID_RESET, RFID_IRQ, RFID_CLK, RFID_MISO, RFID_MOSI);
   node.addHandler(rfid);

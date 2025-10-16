@@ -25,7 +25,7 @@ bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
         setFont(FONT_SMALL);
         setTextSize(1);
         setTextColor(SH110X_WHITE);
-        print_centred((char*)bootmsg, false);
+        print_centred(bootmsg, false);
     };
     oled_command(SH110X_DISPLAYON);
     display();
@@ -135,7 +135,7 @@ void Display::updateDisplayStateMsg(String msg, int line) {
     display();
 }
 
-void Display::print_centred(char * title, bool titlelines) {
+void Display::print_centred(const char * title, bool titlelines) {
     int16_t x,y;
     uint16_t w,h;
     int16_t cy = getCursorY();
@@ -157,7 +157,7 @@ void Display::print_centred(char * title, bool titlelines) {
 };
 
 static Display * _d;
-void Display::print_centered_QR(char * titleOrNull, char * url) {
+void Display::print_centered_QR(const char * titleOrNull, char * url) {
     _d = this;
     esp_qrcode_config_t qrc = {
         .display_func = ([](esp_qrcode_handle_t qrcode)->void{

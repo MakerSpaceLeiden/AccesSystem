@@ -33,10 +33,13 @@ void RFID::processAndRateLimitCard(unsigned char * bintag, size_t len) {
         strncpy(lasttag, tag, sizeof(lasttag));
         
         if (!_swipe_cb || (_swipe_cb(lasttag) != ACNodeBase::CMD_CLAIMED)) {
-            // Simple approval request; default is to 'energise' the contactor on 'machine'.
-            Debug.printf("Requesting approval %p (%s)\n", _acnodebase,_acnodebase->name());
-            if (_acnodebase)
+            if (_acnodebase) {
+                // Simple approval request; default is to 'energise' the contactor on 'machine'.
+                Debug.printf("Requesting approval %p (%s)\n", _acnodebase,_acnodebase->name());
                 _acnodebase->request_approval(lasttag);
+                return;
+            };
+            Debug.printf("No callbacks to process tag swipe.");
         };
     } else {;
         Debug.println("Ratelimiting repeated swipe - not passed on.");
