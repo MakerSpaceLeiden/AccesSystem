@@ -19,8 +19,8 @@ public:
     SKU();
     SKU(String n, double p, String description) : name(n), price(p), desc(description) {};
     String name;
-    String desc;
     double price;
+    String desc;
 };
 
 class Pricelist {

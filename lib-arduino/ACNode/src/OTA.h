@@ -49,7 +49,7 @@ private:
 
 class OTADeck: public Deck {
 public:
-    OTADeck(ACNodeBase * node, OTAWithDisplay * ota) : Deck(node), _ota(ota)  {};
+    OTADeck(ACNodeBase * node, OTAWithDisplay * ota) : Deck(node), _ota(ota) {};
     virtual void render_pane(bool refresh);
 private:
     const OTAWithDisplay * _ota;

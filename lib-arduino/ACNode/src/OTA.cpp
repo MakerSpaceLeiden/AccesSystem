@@ -5,7 +5,7 @@
 OTA::OTA(const char * password) : _ota_password_hash(password) {};
 
 void OTA::begin() {
-    ArduinoOTA.setHostname((_acnodebase->moi && _acnodebase->moi[0]) ? _acnodebase->moi : "unset-acnode");
+    ArduinoOTA.setHostname((_acnodebase->moi[0]) ? _acnodebase->moi : "unset-acnode");
     
     if (_ota_password_hash)
         ArduinoOTA.setPasswordHash(_ota_password_hash);

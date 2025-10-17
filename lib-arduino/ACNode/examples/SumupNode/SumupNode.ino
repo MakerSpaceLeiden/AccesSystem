@@ -30,6 +30,10 @@
 #include <REST/PaymentAPI.h>
 #include <RFID/RFID_MFRC522.h>
 
+#ifndef ARDUINO_PARTITION_min_spiffs 
+#error "Unexpected partition table; may break OTA"
+#endif
+
 // For olimex
 #include <ETH.h>
 #include <WiredEthernet.h>
@@ -182,7 +186,7 @@ void setup() {
         //
         char buff[256];
         snprintf(buff, sizeof(buff), "userid=%s&amount=%.2f",
-                 node.lastApproved()->uid, it->price);
+                 node.lastApproved()->uid.c_str(), it->price);
 
         if (node._restAPI->rest(SUMUP_URL, String(buff))) {
           Debug.printf("SOLO terminal asking for %.2f payment by %s now.",

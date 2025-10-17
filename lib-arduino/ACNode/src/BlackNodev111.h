@@ -77,7 +77,7 @@ public:
             { OPTO1, "Opto 2", 1, INPUT },
             { OPTO2, "Opto 3", 1, INPUT },
             { OPTO3, "Opto 4", 1, INPUT },
-            { 255, NULL },
+            { 255, 0, NULL },
         };
         iostates = s;
     };

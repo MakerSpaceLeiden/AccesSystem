@@ -43,8 +43,8 @@ public:
     inline unsigned long getLastUpdate() { return last_update; };
 
 private:
+    RestAPI * _restAPI = NULL;
     const char * machine;
-    RestAPI * _restAPI;
     typedef enum update_res { NO_UPDATE_NEEDED, FAIL, NEEDS_UPDATE } update_t;
     
     unsigned long last_update = 0; // millis

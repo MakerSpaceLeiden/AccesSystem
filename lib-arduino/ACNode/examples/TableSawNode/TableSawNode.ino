@@ -25,6 +25,10 @@
 */
 #include <BlueNodev114.h>
 
+#ifndef ARDUINO_PARTITION_min_spiffs 
+#error "Unexpected partition table; may break OTA"
+#endif
+
 #ifndef MACHINE
 #define MACHINE "tablesaw" // tafelcircelzaag
 #endif
@@ -136,7 +140,7 @@ void setup() {
 
 #ifdef ONOFFSWITCH
   expandedPinMode(ONOFFSWITCH, INPUT);
-  onoffSwitchDetect = new IODebounce(ONOFFSWITCH);
+  onoffSwitchDetect = new IODebounce("onoff_switch", ONOFFSWITCH);
   node.addHandler(onoffSwitchDetect);
 
   UNSAFE = node.machinestate.addState("Blocked, switch=ON",
@@ -155,7 +159,7 @@ void setup() {
 #endif
 
   expandedPinMode(INTERLOCK, INPUT);
-  interlockDetect = new IODebounce(INTERLOCK);
+  interlockDetect = new IODebounce("interlock", INTERLOCK);
   node.addHandler(interlockDetect);
 
   interlockDetect->setCallback([](const int newState) {
@@ -183,7 +187,7 @@ void setup() {
   },
                                CHANGE);
 
-  motorCurrent = new IODebounce(MOTOR_CURRENT);
+  motorCurrent = new IODebounce("motor_current", MOTOR_CURRENT);
   motorCurrent->setAnalogThreshold(30);  // Was 600
   node.addHandler(motorCurrent);
 
@@ -209,7 +213,7 @@ void setup() {
   node.setNodeDeck(new MachineDeck(&node));
 
   node.onReport([](JsonObject &report) {
-    char *p = __FILE__;
+    char *p = (char *)__FILE__;
     char *q = rindex(p, '/');
     if (q) p = q;
     report["fw"] = __FILE__ " " __DATE__ " " __TIME__;

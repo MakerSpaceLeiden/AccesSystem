@@ -46,7 +46,7 @@ void Display::setDisplayScreensaver(bool on) {
 void Display::updateDisplay(const char * title, String left, String right, bool rebuildFull) {
     if (0) Debug.printf("updateDisplay(%s,%s,%s,%s)\n",
                  title ? title : "NULL",
-                 left, right, rebuildFull ? "true" : "false");
+                 left.c_str(), right.c_str(), rebuildFull ? "true" : "false");
 
     if (rebuildFull) {
         clearDisplay();
