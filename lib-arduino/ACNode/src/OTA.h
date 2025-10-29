@@ -19,11 +19,12 @@ class OTA: public ACBase
     void loop();
     void begin();
     void report(JsonObject& report);
+    const char * passwdType();
   protected:
-	const char * _ota_password_hash;
+    const char * _ota_password_hash;
 };
 
-class OTAWithDisplay: public ACBase
+class OTAWithDisplay: public OTA
 {
   public:
     OTAWithDisplay(const char * password, Display *d, const char * hostname);
@@ -35,12 +36,10 @@ class OTAWithDisplay: public ACBase
     typedef std::function<void(void)> THandlerFunction_wipe_secrets;
     void setPreOTASecretWiper(THandlerFunction_wipe_secrets fn) { _pre_secrets_cb = fn; };
 
-    void loop();
     void begin();
-    void report(JsonObject& report);
     
-protected:
-    const char * _ota_password_hash, * _hostname;
+private:
+    const char * _hostname;
     Display * _display;
     bool _otaOK = true;
     THandlerFunction_ota_ok _ota_ok_cb = NULL;
@@ -50,7 +49,7 @@ protected:
 
 class OTADeck: public Deck {
 public:
-    OTADeck(ACNodeBase * node, OTAWithDisplay * ota) : Deck(node), _ota(ota)  {};
+    OTADeck(ACNodeBase * node, OTAWithDisplay * ota) : Deck(node), _ota(ota) {};
     virtual void render_pane(bool refresh);
 private:
     const OTAWithDisplay * _ota;

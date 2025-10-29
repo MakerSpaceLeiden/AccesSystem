@@ -19,8 +19,8 @@ public:
     SKU();
     SKU(String n, double p, String description) : name(n), price(p), desc(description) {};
     String name;
-    String desc;
     double price;
+    String desc;
 };
 
 class Pricelist {
@@ -40,6 +40,7 @@ public:
             _ready = true;
         });
     };
+    void begin() { readCache(); };
     void loop();
     void report(JsonObject& report);
 
@@ -81,5 +82,11 @@ private:
     unsigned long _lastPricelist = 0;
     
     String _raw_claim(const char * url, std::vector<String> args);
+
+    bool readCache();
+    void parseCache(JsonDocument *r, bool cache = false);
+    bool parsePricelist(JsonDocument &res, bool cache = false);
+    const char * PRICELISTFILE = "/pricelst.jsn"; // fit in 8.3
+    uint8_t _sha256[32];
 };
 #endif

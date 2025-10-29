@@ -37,6 +37,9 @@ void RFID::processAndRateLimitCard(unsigned char * bintag, size_t len) {
             Debug.printf("Requesting approval\n");
             if (_acnodebase)
                 _acnodebase->request_approval(lasttag);
+                return;
+            };
+            Debug.printf("No callbacks to process tag swipe.");
         };
     } else {;
         Debug.println("Ratelimiting repeated swipe - not passed on.");

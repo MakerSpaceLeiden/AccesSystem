@@ -99,7 +99,7 @@ public:
             { CURR0, "Curr 1" , 1, INPUT },
             { OPTO0, "Opto 1", 1, INPUT  },
             { OPTO1, "Opto 2", 1, INPUT },
-            { 255, NULL },
+            { 255, NULL, 0, 0 },
         };
         iostates = s;
         

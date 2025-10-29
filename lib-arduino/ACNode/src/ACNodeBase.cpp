@@ -62,7 +62,7 @@ void ACNodeBase::CONSTS() {
     Serial.begin(115200);
     while(!Serial) { delay(10); };
 
-    Serial.printf("\n\nBoot started -- " __DATE__ " - " __TIME__ "\n", this);
+    Serial.println("\n\nBoot started -- " __DATE__ " - " __TIME__);
 };
 
 void ACNodeBase::pop() {
@@ -71,9 +71,9 @@ void ACNodeBase::pop() {
     _report_period = REPORT_PERIOD;
     
     moi[0] = 0;
-    if (machine == NULL || machine[0] == 0)
+    if (machine[0] == 0)
         strncpy(machine, String("test-" + chipId() ).c_str(), sizeof(machine));
-    if (moi == NULL || moi[0] == 0)
+    if (moi[0] == 0)
         strncpy(moi,machine,sizeof(moi));
    
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
@@ -162,7 +162,7 @@ String ACNodeBase::chipId() {
     // We can't do 64 bit straight to string.
     uint32_t low = chipid & 0xFFFFFFFF;
     uint32_t high = chipid >> 32;
-    snprintf(buff,sizeof(buff),"%08x%08x", high, low);
+    snprintf(buff,sizeof(buff),"%08lx%08lx", high, low);
     return String(buff+4);
 #else
     uint32_t chipid = ESP.getChipId();
@@ -222,8 +222,10 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     if (!*moi)
         strncpy(moi, machine, sizeof(moi));
     
-    if (strncmp(moi,"test-",5) == 0)
-        snprintf(moi,sizeof(moi),"%s-%s",moi,chipId().c_str());
+    if (strncmp(moi,"test-",5) == 0) {
+        snprintf(moi,sizeof(moi)-1,"%s-%s",moi,chipId().c_str());
+        moi[sizeof(moi)-1] = '\0';
+    };
     
 #if 0
     if (_debug)
@@ -307,7 +309,7 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
 #endif
 
     if (_client.getBufferSize() < max) {
-	Debug.printf("MQTT: Need to increase MQTT buffer form %lu to %lu\n", _client.getBufferSize(), max);
+	Debug.printf("MQTT: Need to increase MQTT buffer form %u to %u\n", _client.getBufferSize(), max);
         if (!_client.setBufferSize(max)) {
             Log.println("WARNING - buffer size could not be increased to a large enough value. All things may go wrong.");
 	};
@@ -320,13 +322,14 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(_client, topic);
     Log.addPrintStream(mh);
 
-    if (moi == NULL || *moi == 0)
+    if (*moi == 0)
         strncpy(moi,"no-mqtt-id",sizeof(moi));
     
     if (mqtt_port ==0)
         mqtt_port = MQTT_DEFAULT_PORT;
 
-    snprintf(mqtt_moi,sizeof(mqtt_moi), "%06x%s", esp_random(),moi);
+    snprintf(mqtt_moi,sizeof(mqtt_moi)-1, "%06lx%s", esp_random(),moi);
+    mqtt_moi[sizeof(mqtt_moi)-1] = '\0';
     Log.printf("MQTT: initialized mqtt://%s@%s:%d/%s\n", mqtt_moi, mqtt_server, mqtt_port, mqtt_topic_prefix);
 
 #ifdef CONFIGAP
@@ -350,7 +353,7 @@ const char * getHW(void) {
     if (!*res) {
 	snprintf(res, sizeof(res)-1,  "Arduino-" ARDUINO_BOARD "/%s.%u",
     		ESP.getChipModel(), ESP.getChipRevision());
-	res[sizeof(res)] = 0;
+	res[sizeof(res)-1] = 0;
     };
     return res;
 }
@@ -474,7 +477,7 @@ void ACNodeBase::loop() {
         (*it)->micros_in_loop = ((*it)->micros_in_loop * 500 + delta)/501;
         
         if (show)
-            Debug.printf("   %12lu %08x %s\n",(*it)->micros_in_loop,(*it), (*it)->name());
+            Debug.printf("   %12lu %s\n",(*it)->micros_in_loop, (*it)->name());
     };
     if (show) {
         lst = millis();
