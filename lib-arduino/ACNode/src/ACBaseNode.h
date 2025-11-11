@@ -51,6 +51,10 @@
 #define MQTT_TOPIC_MASTER "master"
 #endif
 
+#ifndef MQTT_PREXIX
+#define MQTT_PREFIX "ac"
+#endif
+
 #ifndef MQTT_DEFAULT_PORT
 #define MQTT_DEFAULT_PORT (1883)
 #endif

@@ -78,6 +78,7 @@ void ACNodeBase::pop() {
    
     strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
+    strncpy(mqtt_topic_prefix, MQTT_PREFIX, sizeof(mqtt_topic_prefix));
     strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
 
     // Set a sensible default - so we have something until
