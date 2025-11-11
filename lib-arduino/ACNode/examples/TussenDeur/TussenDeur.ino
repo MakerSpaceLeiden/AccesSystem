@@ -27,6 +27,10 @@
 */
 #include <BlackNodev111.h>
 
+#ifndef ARDUINO_ESP32_WROOM_DA
+#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#endif
+
 #define MACHINE          "tussendeur"
 
 #define SOLENOID_GPIO (node.OUT1) // Bottom relay; wired to switch 12v

@@ -74,6 +74,7 @@ public:
     void xdigitalWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xdigitalWrite(pin, val); };
     void xanalogWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xanalogWrite(pin, val); };
     void xpinMode(uint8_t pin, uint8_t mode) { ExpandedGPIO::getInstance().xpinMode(pin,mode); };
+    unsigned int xanalogRead(uint8_t pin) { return ExpandedGPIO::getInstance().xanalogRead(pin); };
 
 #ifdef PROFILE_BASE
     unsigned long micros_in_loop;

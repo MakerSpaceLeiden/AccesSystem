@@ -25,6 +25,10 @@
 */
 #include <BlueNodev114.h>
 
+#ifndef ARDUINO_ESP32_WROOM_DA
+#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#endif
+
 #ifndef ARDUINO_PARTITION_min_spiffs
 #error "Unexpected partition table; may break OTA"
 #endif

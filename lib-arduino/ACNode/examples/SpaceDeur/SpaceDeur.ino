@@ -36,6 +36,10 @@
 #include <AccelStepper.h>  // for the stepper motor.
 #include "esp_task_wdt.h"
 
+#ifndef ARDUINO_ESP32_WROOM_DA
+#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#endif
+
 #define MACHINE "spacedeur"
 BlackNodev111 node = BlackNodev111(MACHINE);
 

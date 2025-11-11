@@ -110,15 +110,21 @@ void WhiteNodev108::begin() {
 
     // All nodes have a build-in RFID reader; so fine to hardcode this.
     //
-    _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
-    addHandler(_reader);
+    if (true) {
+        _reader = new RFID_MFRC522(&Wire, RFID_ADDR, RFID_RESET, RFID_IRQ);
+        addHandler(_reader);
+    };
 
+    // Not all readers have a screen soldered in.
+    //
     if (!_display)
 	_display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
     if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"")) {
         Log.println("LCD/OLED screen found and initialized.");
 	_display->setRotation(2);
-   };
+    } else {
+        Log.println("No LCD/OLED screen found.");
+    };
 
     OTAWithDisplay * ota = new OTAWithDisplay(OTA_PASSWD_HASH, _display, moi);
     ota->setOTAOK([&](){
@@ -141,7 +147,8 @@ void WhiteNodev108::begin() {
     firmwareDeck =  new FirmwareDeck(this);
     _deskCtrl->addDeck( firmwareDeck);
 
-    _deskCtrl->addDeck( new RfidDeck(this, _reader));
+    if (_reader)
+        _deskCtrl->addDeck( new RfidDeck(this, _reader));
     _deskCtrl->addDeck( new OTADeck(this,ota));
     _deskCtrl->addDeck( new MqttDeck(this));
     _deskCtrl->addDeck( new RestDeck(this, _restAPI));
