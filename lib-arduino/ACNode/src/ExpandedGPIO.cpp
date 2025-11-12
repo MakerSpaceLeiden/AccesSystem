@@ -29,6 +29,14 @@ void ExpandedGPIO::addAW9523(unsigned int i2caddr, TwoWire * wire) {
     awp->begin(i2caddr,wire);
     awp->reset(); // all pins in open-drain; output mode
     awp->openDrainPort0(false);
+
+    // Reduce the current to a sensible level.
+    // Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5.
+    //
+    wire->beginTransmission(i2caddr);
+    wire->write(0x11);
+    wire->write(3);
+    wire->endTransmission();
 }
 
 void ExpandedGPIO::xpinMode(uint8_t pin, uint8_t mode) {

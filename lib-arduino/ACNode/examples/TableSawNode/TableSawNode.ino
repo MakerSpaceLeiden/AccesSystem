@@ -25,17 +25,23 @@
 */
 #include <BlueNodev114.h>
 
-#ifndef ARDUINO_PARTITION_min_spiffs 
+#ifndef ARDUINO_ESP32_WROOM_DA
+#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#endif
+
+#ifndef ARDUINO_PARTITION_min_spiffs
 #error "Unexpected partition table; may break OTA"
 #endif
 
 #ifndef MACHINE
-#define MACHINE "tablesaw" // tafelcircelzaag
+#define MACHINE "tablesaw"  // tafelcircelzaag
 #endif
 
 #define INTERLOCK (node.OPTO0)  // Detect voltage on the interlock/safety contactor.
-// #define ONOFFSWITCH   (node.OPTO1) // Detects voltage on the normally-closed circuit of the front switch.
+//#define ONOFFSWITCH (node.OPTO1)    // Detects voltage on the normally-closed circuit of the front switch.
 #define MOTOR_CURRENT (node.CURR0)  // One of the 3-phase wires to the motor runs through this current coil.
+
+#define CURR_TRESHOLD (200)  // for full delta running; not star
 
 // The relay that sits in the safety interlock of
 // the contactor at the back-bottom of the saw.
@@ -101,6 +107,7 @@ class MachineDeck : public Deck {
 public:
   MachineDeck(BlackNodev111 *node)
     : Deck(node){};
+
   void render_pane(bool refresh) {
     _display->clearDisplay();
     _display->print_centred(MACHINE);
@@ -110,7 +117,7 @@ public:
 #endif
 
     _display->printf("Safety/Interlock\n    %s\n",
-                     interlockDetect->state() == LOW ? "ok" : "broken");
+                     interlockDetect->state() == LOW ? "armed" : "locked");
 
     _display->printf("Motor Current/Voltage\n    I=%s V=%s(%s)\n",
                      motorCurrent->state() ? "yes" : "no",
@@ -135,7 +142,7 @@ void setup() {
   RUNNING = node.machinestate.addState("Saw Running", LED::LED_ON,
                                        MachineState::NEVER, MachineState::WAITINGFORCARD, false);
   SHUTTINGDOWN = node.machinestate.addState("Locking machine",
-                                            LED::LED_ON, 60 * 1000, MachineState::WAITINGFORCARD, false);
+                                            LED::LED_ON, 10 * 1000, MachineState::WAITINGFORCARD, false);
 
 
 #ifdef ONOFFSWITCH
@@ -146,6 +153,7 @@ void setup() {
   UNSAFE = node.machinestate.addState("Blocked, switch=ON",
                                       LED::LED_ON,
                                       MachineState::NEVER, MachineState::NEVER, false);
+
   onoffSwitchDetect->setCallback([](const int newState) {
     if (node.machinestate == MachineState::WAITINGFORCARD && newState) {
       Log.println("OnOff switch in the unsafe 'on' position; locking machine");
@@ -188,7 +196,7 @@ void setup() {
                                CHANGE);
 
   motorCurrent = new IODebounce("motor_current", MOTOR_CURRENT);
-  motorCurrent->setAnalogThreshold(30);  // Was 600
+  motorCurrent->setAnalogThreshold(CURR_TRESHOLD);
   node.addHandler(motorCurrent);
 
   motorCurrent->setCallback([](const int newState) {
@@ -205,7 +213,6 @@ void setup() {
   },
                             CHANGE);
 
-
   node.setOTAPasswordHash(ota_password_hash);
   node.set_mqtt_prefix("ac");
   node.set_master("master");
@@ -216,7 +223,9 @@ void setup() {
     char *p = (char *)__FILE__;
     char *q = rindex(p, '/');
     if (q) p = q;
-    report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
+    char buff[128];
+    snprintf(buff, sizeof(buff), "%s " __DATE__ " " __TIME__, p);
+    report["fw"] = buff;
     report["bad_poweroff"] = bad_poweroff;
     report["normal_poweroff"] = normal_poweroff;
     report["idle_poweron"] = idle_poweroff;
@@ -231,8 +240,13 @@ void setup() {
       // the RED/Green on/off button of the safety contactor.
       node.updateDisplay("", "", true);
     };
-    if (current == POWERED)
-      node.updateDisplayStateMsg("RED @back 4 off", 2);
+    if (current == POWERED) {
+      node.updateDisplayStateMsg("POWERED", 1);
+      node.updateDisplayStateMsg("press RED", 2);
+      node.updateDisplayStateMsg("to turn off", 3);
+    };
+    if (current == RUNNING)
+      node.updateDisplayStateMsg("RUNNING", 2);
   });
 
   node.onApproval([](const char *machine) {
@@ -266,9 +280,7 @@ void loop() {
     static unsigned long lst = millis();
     if (millis() - lst > 1000) {
       lst = millis();
-      if (node.machinestate == SHUTTINGDOWN)
-        node.updateDisplayStateMsg("in", 1);
-      else
+      if (node.machinestate != SHUTTINGDOWN)
         node.updateDisplayStateMsg("Prss GREEN @ back", 1);
 
       node.updateDisplayStateMsg(node.machinestate.timeLeftInThisState(), 2);
@@ -296,4 +308,18 @@ void loop() {
                  MOTOR_CURRENT, motorCurrent->raw(), motorCurrent->state() ? "On " : "Off", motorCurrent->rawState(),
                  INTERLOCK, interlockDetect->raw(), interlockDetect->state() ? "On " : "Off", interlockDetect->rawState());
   }
+#if 0
+ {
+    static unsigned long lst = millis();
+    if (millis() - lst > 1 * 1000) {
+      Debug.printf("1: %01d 2: %01d 3: %01d 4: %01d C: %u\n",
+                   expandedDigitalRead(node.OPTO0),
+                   expandedDigitalRead(node.OPTO1),
+                   expandedDigitalRead(node.OPTO2),
+                   expandedDigitalRead(node.OPTO3),
+                   motorCurrent->raw());
+      lst = millis();
+    }
   }
+#endif
+}
