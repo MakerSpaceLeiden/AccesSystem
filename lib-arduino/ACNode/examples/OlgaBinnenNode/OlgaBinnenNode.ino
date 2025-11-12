@@ -31,7 +31,7 @@
 
 #define MACHINE          "olgabinnen"
 
-#define SOLENOID_GPIO (node.OUT1) // Bottom relay; wired to switch 12v
+#define SOLENOID_GPIO (node.OUT0) // Top relay; wired to switch 12v
 #define BUZZ_TIME     (4) // How long to buzz the door open.
 
 // Generate with 'echo -n Password | openssl sha256 or
