@@ -16,22 +16,28 @@
 
   Board: v1.14 / Blue; with screen and a solenoid on OUT0 & 12Volt 
          instead of 220 wired to the green connector. Extra reverse
-         diode over the solenoid; and big 1000uF capacitor.
+         diode over the solenoid; and big 3300uF capacitor.
+
+  Board:   # 10
+  RFID:    Firmware Version: 0x92 = v2.0
+  Chip:    00303468 ESP32-D0WD-V3 r301 #2
+  Wifi     94:51:DC:30:34:68
+  Ethernet 94:51:DC:30:34:6B
 
   Compile settings:
   - ESP32-WROOM-DA Module (or ESP32 Dev) with minial SPIFFs
   Wiring:
-  - https://wiki.makerspaceleiden.nl/mediawiki/index.php/Node_Olga_Binnen
+  - https://wiki.makerspaceleiden.nl/mediawiki/index.php/Node_Olga_Deur
   QR code:
-  - https://wiki.makerspaceleiden.nl/mediawiki/index.php/QR_olgabinnen
+  - https://wiki.makerspaceleiden.nl/mediawiki/index.php/QR_olgadoor
 
 */
 
 #include <BlueNodev114.h>
 
-#define MACHINE          "olgabinnen"
+#define MACHINE          "olgadoor"
 
-#define SOLENOID_GPIO (node.OUT0) // Top relay; wired to switch 12v
+#define SOLENOID_GPIO (node.OUT1) // OUT0 is broken on this board!
 #define BUZZ_TIME     (4) // How long to buzz the door open.
 
 // Generate with 'echo -n Password | openssl sha256 or

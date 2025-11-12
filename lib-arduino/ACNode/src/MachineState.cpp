@@ -144,7 +144,7 @@ void MachineState::begin() {
         _acnodebase->delayedReboot();
     });
     if (_led) _led->set(ledState());
-    Debug.println(__PRETTY_FUNCTION__);
+    // Debug.println(__PRETTY_FUNCTION__);
 };
 
 void MachineState::report(JsonObject& report) {
