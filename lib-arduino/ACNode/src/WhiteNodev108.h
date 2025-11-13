@@ -103,7 +103,7 @@ public:
         };
         iostates = s;
         
-        _ota_md5 = NULL;
+        _ota_hash = NULL;
     };
     virtual const char * name() { return "WhiteNodev108"; }
     typedef std::function<bool(const int)> ButtonCallback;
@@ -112,7 +112,7 @@ public:
     WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_REST);
     ~WhiteNodev108() { Serial.println("Destroy WhiteNode - should never happen"); };
 
-    void setOTAPasswordHash(const char * ota_md5) { _ota_md5 = ota_md5; };
+    void setOTAPasswordHash(const char * ota_hash) { _ota_hash= ota_hash; };
     void begin();
     void loop();
     
@@ -167,7 +167,7 @@ private:
     unsigned long errors = 0;
     const char * _lasterrmsg = NULL;
     
-    const char * _ota_md5;
+    const char * _ota_hash;
     unsigned long _last_buzz = 0;
 #if 0
     const uint8_t * leds() {
