@@ -126,7 +126,7 @@ void WhiteNodev108::begin() {
         Log.println("No LCD/OLED screen found.");
     };
 
-    OTAWithDisplay * ota = new OTAWithDisplay(OTA_PASSWD_HASH, _display, moi);
+    OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
     ota->setOTAOK([&](){
         return machinestate.safeForOTA();
     });
