@@ -392,6 +392,8 @@ void WhiteNodev108::report(JsonObject & report) {
     report["errors"] = errors;
     report["ota"] = true;
 
+    report["headless"] = (_display == NULL) ? true : false;
+
     report["ntp"] = (bool) esp_sntp_enabled();
     report["ntppool"] = "" NTP_POOL "";
     report["ntpstatus"] = sntp_get_sync_status();
