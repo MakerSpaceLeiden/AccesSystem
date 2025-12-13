@@ -40,6 +40,13 @@ enum { NIGHT_LOCK,  // lock in night mode; solenoid cannot open the door
 
 #include <BlueNodev114.h>
 
+#ifndef ARDUINO_PARTITION_min_spiffs 
+#error "Unexpected partition table; may break OTA"
+#endif
+#ifndef ARDUINO_ESP32_WROOM_DA
+#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#endif
+
 #define MACHINE "olgabuiten"
 
 #define DAY_OPEN (node.OUT0)
@@ -139,6 +146,7 @@ void setup() {
     if ((newState) && (doorstate != NIGHT_LOCK))
       Log.println("**** assumption error *** reported locked but not in night state ?!?! ****. Dear humans - investigate !");
   });
+  node.addHandler(doorUnlockDetect);
 
   expandedPinMode(DOOR_OPEN_ALERT, INPUT);
   doorOpenDetect = new IODebounce("DoorOpenAlert", DOOR_OPEN_ALERT);
@@ -153,6 +161,7 @@ void setup() {
       Log.println("Door was closed");
       return;
     };
+  node.addHandler(doorOpenDetect);
 
     if (node.machinestate != MachineState::CHECKINGCARD) {
       Debug.println("Ignoring door open alert - we triggered it.");
@@ -166,6 +175,7 @@ void setup() {
   redButtonDetect = new IODebounce("RedButton", BUTTON_RED);
   redButtonDetect->setDigitalReadFunction(&expandedDigitalRead);
   redButtonDetect->setCallback([](const int newState) {
+    // Button is active high
     if (newState == 0)
       return;
     if (doorstate != NIGHT_LOCK) {
@@ -176,27 +186,31 @@ void setup() {
     node.machinestate = BUZZING;  // as you propably want to exit too.
     doorstate = NIGHT_LOCK;
   });
+  node.addHandler(redButtonDetect);
 
   expandedPinMode(BUTTON_GREEN, INPUT);
   greenButtonDetect = new IODebounce("GreenButton", BUTTON_GREEN);
   greenButtonDetect->setDigitalReadFunction(&expandedDigitalRead);
   greenButtonDetect->setCallback([](const int newState) {
     static unsigned long lastPress = 0;
-    if (newState == 0) {
+    // Button is active high
+    if (newState) {
       lastPress = millis();
       node.machinestate = BUZZING;
       Log.println("Opening door on green button press");
       button_open_count++;
-    } else {
-      if (millis() - lastPress > 2000) {
+      return;
+    };
+    if (millis() - lastPress > 2000) {
         doorstate = UNLOCKED;
         Log.println("Long press on green - activating pass-mode");
         pass_count++;
-      };
-      unlock_count++;
-      Debug.println("Ignoring release of the green button - too short to trigger pass-mode");
+        return;
     };
+    unlock_count++;
+    Debug.println("Ignoring release of the green button - too short to trigger pass-mode");
   });
+  node.addHandler(greenButtonDetect);
 
   node.onApproval([](const char *machine) {
     Log.printf("Engaging the solenoid/buzzer\n");
@@ -223,7 +237,7 @@ void setup() {
     report["count_button_to_passstate"] = pass_count;
   });
 
-  node.begin();
+  node.begin(false /* no OLED screen */);
 
   Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
 }
