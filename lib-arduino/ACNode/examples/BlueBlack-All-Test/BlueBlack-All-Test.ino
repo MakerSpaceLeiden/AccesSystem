@@ -85,6 +85,12 @@ const uint8_t SCREEN_RESET = -1;   //  Not wired up
 
 Adafruit_SH1106G* display;
 
+bool i2c_address_exists(TwoWire& i2cBus, unsigned int address) {
+  bool present = false;
+  i2cBus.beginTransmission(address);
+  return (00 == i2cBus.endTransmission());
+};
+
 String i2cscan(TwoWire& i2cBus) {
   String out;
   int nDevices = 0;
@@ -172,7 +178,6 @@ void setup() {
   String i2c_msg = i2cscan(i2cBus);
   Serial.println(i2c_msg);
 
-
   ExpandedGPIO::getInstance().addAW9523(EXPANDER_ADDR, &i2cBus);
 
   // Reduce the current to a sensible level.
@@ -183,8 +188,8 @@ void setup() {
   i2cBus.write(3);
   i2cBus.endTransmission();
 
-  mfrc522.PCD_Init();                 // Init MFRC522
-  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
+  mfrc522.PCD_Init();  // Init MFRC522
+  // mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
 
   xpinMode(LED_INDICATOR, OUTPUT);
   xdigitalWrite(LED_INDICATOR, 1);
@@ -219,9 +224,8 @@ void setup() {
   xpinMode(OUT0, OUTPUT);
   xpinMode(OUT1, OUTPUT);
 
-
-  display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &i2cBus, SCREEN_RESET, 400000, 100000);
-  if (display) {
+  display = NULL;
+  if (i2c_address_exists(i2cBus, SCREEN_Address) && (display = new Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &i2cBus, SCREEN_RESET, 400000, 100000)) != NULL) {
     Serial.println("We hava found screen");
     display->setRotation(2);
     display->begin(SCREEN_Address, false);
@@ -234,7 +238,7 @@ void setup() {
     display->println(i2c_msg);
     display->display();
   } else {
-    Serial.printf("No screen");
+    Serial.println("No screen found");
   }
 
   String chip_msg = chip();

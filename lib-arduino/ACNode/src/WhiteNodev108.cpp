@@ -52,12 +52,34 @@ super(machine,wired)
     pop();
 };
 
+#ifdef FOO
+static String enum_i2c() {
+    String out = "";
+    for (unsigned char address = 0x01 i = 0 ; address < 0x7f; address++) {
+    	Wire.beginTransmission(address);
+    	switch(Wire.endTransmission()) {
+	case 0:
+                out += String(i++ ? i",0x" : "0x") + String(address,HEX);
+		break;
+	case 2:
+                out += String(i++ ? i",Ex" : "Ex") + String(address,HEX);
+		break;
+	default:
+		break;
+    }
+  }
+  return out;
+}
+#endif
+
 void WhiteNodev108::pop() {
     // Non standard pins for i2c.
     Wire.begin(I2C_SDA, I2C_SCL);
     
     FAULTED =     machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER, MachineState::NEVER, true);
-    SCREENSAVER = machinestate.addState("Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER, MachineState::WAITINGFORCARD, true);
+    SCREENSAVER = machinestate.addState("Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER, 
+	MachineState::WAITINGFORCARD, true);
+
     INFODISPLAY = machinestate.addState("User browsing info pages", LED::LED_OFF, 20 * 1000, MachineState::WAITINGFORCARD);
     POWERED =     machinestate.addState("Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);
 
@@ -91,7 +113,7 @@ void WhiteNodev108::buzzerErr() {
     buzzerOk();
 };
 
-void WhiteNodev108::begin() {
+void WhiteNodev108::begin(bool hasDisplay) {
     buzzer(false);
     xpinMode(BUZZER, OUTPUT);
     xpinMode(OFF_BUTTON, INPUT_PULLUP);
@@ -117,13 +139,19 @@ void WhiteNodev108::begin() {
 
     // Not all readers have a screen soldered in.
     //
-    if (!_display)
-	_display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
+    if (hasDisplay && !_display) {
+	if (i2c_address_exists(Wire, SCREEN_Address)) {
+	   _display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
+        } else {
+           Log.println("ALERT: expected LCD/OLED screen not found.");
+       };
+    };
+    
     if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"")) {
         Log.println("LCD/OLED screen found and initialized.");
 	_display->setRotation(2);
     } else {
-        Log.println("No LCD/OLED screen found.");
+       Log.println("Screen disabled.");
     };
 
     OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
@@ -250,15 +278,17 @@ void WhiteNodev108::begin() {
     addHandler(menuButton);
     //machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-        Debug.printf("WhiteNodev108: Changing state (%d->%d): %s\n", last, current, machinestate.label());
+        Debug.printf("%s: Changing state (%d->%d): %s\n", name(), last, current, machinestate.label());
 
         errorLed->set(machinestate.ledState());
 
         if (last == INFODISPLAY)
             _deskCtrl->close();
-            
-        _display->clearDisplay();
-        _display->setDisplayScreensaver(current == SCREENSAVER);
+        
+	if (_display) {  
+	        _display->clearDisplay();
+	        _display->setDisplayScreensaver(current == SCREENSAVER);
+	};
 
         if (current == FAULTED) {
             updateDisplay("", "", true);
@@ -343,11 +373,13 @@ void WhiteNodev108::begin() {
 }
 
 void WhiteNodev108::updateDisplay(String left, String right, bool rebuildFull) {
-    _display->updateDisplay(machine,left,right,rebuildFull);
+    if (_display)
+	_display->updateDisplay(machine,left,right,rebuildFull);
 };
 
 void WhiteNodev108::updateDisplayStateMsg(String msg,int line) {
-    _display->updateDisplayStateMsg(msg, line);
+    if (_display)
+    	_display->updateDisplayStateMsg(msg, line);
 }
 
 void WhiteNodev108::onSwipe(RFID::THandlerFunction_SwipeCB swipeCB) {
@@ -392,6 +424,8 @@ void WhiteNodev108::report(JsonObject & report) {
     report["errors"] = errors;
     report["ota"] = true;
 
+    report["headless"] = (_display == NULL) ? true : false;
+
     report["ntp"] = (bool) esp_sntp_enabled();
     report["ntppool"] = "" NTP_POOL "";
     report["ntpstatus"] = sntp_get_sync_status();
@@ -432,6 +466,9 @@ void WhiteNodev108::addDeck(Deck * deck) {
 }
 
 void ButtonsDeck::render_pane(bool refresh) {
+    if (_display)
+	return;
+
     if (refresh)
         _display->print_centred("I/O");
     

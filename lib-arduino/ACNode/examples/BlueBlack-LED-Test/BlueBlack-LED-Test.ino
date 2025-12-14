@@ -87,6 +87,12 @@ void setup() {
   xpinMode(LEDE, AW9523_LED_MODE);
   xanalogWrite(LEDE, 0);
 
+  // used on Olga door red-green LEDs
+  xpinMode(IOC, AW9523_LED_MODE);
+  xanalogWrite(IOC, 0);
+  xpinMode(IOE, AW9523_LED_MODE);
+  xanalogWrite(IOE, 0);
+
   xpinMode(OPTO0, INPUT);
   xpinMode(OPTO1, INPUT);
   xpinMode(OPTO2, INPUT);
@@ -96,13 +102,18 @@ void setup() {
   xpinMode(BUTT1, INPUT_PULLUP);
   xpinMode(BUTT2, INPUT_PULLUP);
 
+  // used on Olga door - red/green button
+  xpinMode(IOD, INPUT_PULLUP);
+  xpinMode(IOB, INPUT_PULLUP);
+
   xpinMode(OUT0, OUTPUT);
   xpinMode(OUT1, OUTPUT);
 
   Serial.println("Starting loop() with blinkenlights");
 }
 void loop() {
-  static unsigned int i = 0;i++;
+  static unsigned int i = 0;
+  i++;
 
   {
     static unsigned long lst = 0;
@@ -115,6 +126,9 @@ void loop() {
       xanalogWrite(LEDC, (j == 2) ? 255 : 0);
       xanalogWrite(LEDD, (j == 3) ? 255 : 0);
       xanalogWrite(LEDE, (j == 4) ? 255 : 0);
+      xanalogWrite(IOC, (j == 5) ? 255 : 0);
+      xanalogWrite(IOE, (j == 6) ? 255 : 0);
+      
       xdigitalWrite(LED_INDICATOR, j == 5);
     };
   };
@@ -136,10 +150,13 @@ void loop() {
     static unsigned long lst = 0;
     if (millis() > lst + 1000) {
       lst = millis();
-      Serial.printf("Buttons %d, %d, %d\n",
+      Serial.printf("Buttons %d, %d, %d, %d, %d\n",
                     xdigitalRead(BUTT0),
                     xdigitalRead(BUTT1),
-                    xdigitalRead(BUTT2));
+                    xdigitalRead(BUTT2),
+                    xdigitalRead(IOB),
+                    xdigitalRead(IOD)
+                    );
       Serial.printf("Optos:  %d, %d, %d, %d\n",
                     xdigitalRead(OPTO0),
                     xdigitalRead(OPTO1),

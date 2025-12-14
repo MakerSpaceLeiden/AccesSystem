@@ -43,7 +43,9 @@ public:
 
     void xdigitalWrite(uint8_t pin, uint8_t val);
     void xanalogWrite(uint8_t pin, uint8_t val);
- 
+
+    // void setCurrent(uint8_t pin = -1, uint8_t val);
+
     void debugdump() {
     	if (mcp) {Serial.printf("MCP:"); for (int i = 0; i < 16; i++) { 
 		Serial.print(mcp->digitalRead(i));

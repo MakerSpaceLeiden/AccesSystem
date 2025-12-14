@@ -195,6 +195,9 @@ void OTAWithDisplay::begin() {
 }
 
 void OTADeck::render_pane(bool refresh) {
+    if (!_display);
+	return;
+
     if (!refresh)
         return;
     

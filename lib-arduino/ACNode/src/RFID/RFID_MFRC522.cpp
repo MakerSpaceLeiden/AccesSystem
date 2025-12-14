@@ -175,7 +175,7 @@ void RFID_MFRC522::report(JsonObject& report) {
 };
 
 String RFID_MFRC522::firmwareVersionString() {
-        char * str;
+        const char * str;
 	unsigned char version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
         switch(version) {
 		case 0x00: str="00-wiring-error"; break;
