@@ -46,6 +46,7 @@ const char *doorstate_label[] = {
 
 
 #include <BlueNodev114.h>
+#include <util/cufflink_heartbeat.h>
 
 #ifndef ARDUINO_PARTITION_min_spiffs
 #error "Unexpected partition table; may break OTA"
@@ -250,6 +251,14 @@ void setup() {
     report["count_button_to_passstate"] = pass_count;
   });
 
+  // Increase LED current to 2/4 of max (default is 1/4, Imax=37mA) to
+  // brighten up our button LEDs, potentially at the expensive of the
+  // invisible LEDs inside the unit.
+  //
+  Wire.beginTransmission(0x58);
+  Wire.write(0x11);
+  Wire.write(2); 
+  Wire.endTransmission();
 
   Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
 }
@@ -282,13 +291,17 @@ void loop() {
   // exact opposite - i.e. let the LED not reflect the action you can do
   // with the button - but the state that the button brought the lock into.
   //
-  expandedAnalogWrite(LED_BUTTON_GREEN, green_led ? 0 : 255);
-  expandedAnalogWrite(LED_BUTTON_RED, red_led ? 0 : 255);
+  // We undulate them to make it easy to spot a hung node & to give the
+  // impression of 'action'
+  //
+  expandedAnalogWrite(LED_BUTTON_GREEN, green_led ? hearthbeat() : 0);
+  expandedAnalogWrite(LED_BUTTON_RED, red_led ? hearthbeat() : 0);
 
   if (doorstate != NIGHT_LOCK && !isWorkingHours() && node.machinestate == MachineState::CHECKINGCARD && node.machinestate.secondsInThisState() > 300) {
     Log.println("Detecting end of the working day - switching to night lock ");
     doorstate = NIGHT_LOCK;
   };
+
   if (doorstate == DAY_LOCK && !isWorkingHours() && node.machinestate.secondsInThisState() > 3600) {
     Log.println("Not seen anyone for over an hour; going to night lock as it is outside working hours");
     doorstate = NIGHT_LOCK;
