@@ -360,6 +360,7 @@ const char * getHW(void) {
 }
 
 void ACNodeBase::report(JsonObject & out) {
+    out[ "class" ] = name();
     out[ "node" ] = moi;
     out[ "machine" ] = machine;
     

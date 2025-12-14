@@ -1,6 +1,12 @@
 #include <TLog.h>
 #include <Wire.h>
 
+bool i2c_address_exists(TwoWire& i2cBus, unsigned int address) {
+  bool present = false;
+  i2cBus.beginTransmission(address);
+  return (00 == i2cBus.endTransmission());
+};
+
 void scan_i2c()
 {
   Log.println ();

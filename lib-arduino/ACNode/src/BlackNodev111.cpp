@@ -1,5 +1,3 @@
-#pragma once
-
 #include "BlackNodev111.h"
 #include "util/cufflink_heartbeat.h"
 
@@ -22,7 +20,7 @@ void BlackNodev111::pop() {
     machinestate.setLedState(MachineState::WAITINGFORCARD, LED::LED_OFF);
 };
 
-void BlackNodev111::begin() {
+void BlackNodev111::begin(bool hasDisplay) {
     ExpandedGPIO::getInstance().addAW9523();
     // Reduce the current to a sensible level.
     // Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5.
@@ -81,7 +79,7 @@ void BlackNodev111::begin() {
 	errorLed = new LEDAW("ErrorLedAW", LED_INDICATOR);
     addHandler(errorLed);
 
-    super::begin();
+    super::begin(hasDisplay);
 }
 
 void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {

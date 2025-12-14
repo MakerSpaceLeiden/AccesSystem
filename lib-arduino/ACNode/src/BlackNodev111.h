@@ -17,7 +17,7 @@ public:
     BlackNodev111(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_SIG2);
     BlackNodev111() { Serial.println("Destroy WhiteNode - should never happen"); };
 
-    const char * name() { return "BlackNodev111"; }
+    virtual const char * name() { return "BlackNodev111"; }
     
     // Some extra IO
     uint8_t OPTO2, OPTO3, BUTT2,
@@ -77,11 +77,11 @@ public:
             { OPTO1, "Opto 2", 1, INPUT },
             { OPTO2, "Opto 3", 1, INPUT },
             { OPTO3, "Opto 4", 1, INPUT },
-            { 255, 0, 0, NULL },
+            { 255, NULL, 0, 0 },
         };
         iostates = s;
     };
-    void begin();
+    void begin(bool hasDisplay = true);
     void pop();
     void loop();
     

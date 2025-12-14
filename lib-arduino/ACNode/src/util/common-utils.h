@@ -18,6 +18,8 @@ size_t decode_base64_length(unsigned char * base64str);
 
 extern char * strsepspace(char **p);
 extern void scan_i2c();
+bool i2c_address_exists(TwoWire& i2cBus, unsigned int address);
+
 
 #define B64L(n) ((((4 * n / 3) + 3) & ~3)+1)
 
