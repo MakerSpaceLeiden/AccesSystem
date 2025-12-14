@@ -33,14 +33,21 @@ Lock states
                   terminated by time or by a short red button press.
 */
 
-enum { NIGHT_LOCK,  // lock in night mode; solenoid cannot open the door
-       DAY_LOCK,    // lock in day mode, solenoid off, engaging it opens the door
-       UNLOCKED     // lock in day mode, solenoid engaged
+enum { NIGHT_LOCK = 0,  // lock in night mode; solenoid cannot open the door
+       DAY_LOCK,        // lock in day mode, solenoid off, engaging it opens the door
+       UNLOCKED         // lock in day mode, solenoid engaged
 } doorstate;
+
+const char *doorstate_label[] = {
+  "night lock / nachtslot",
+  "day / dag slot",
+  "pass / doorloop",
+};
+
 
 #include <BlueNodev114.h>
 
-#ifndef ARDUINO_PARTITION_min_spiffs 
+#ifndef ARDUINO_PARTITION_min_spiffs
 #error "Unexpected partition table; may break OTA"
 #endif
 #ifndef ARDUINO_ESP32_WROOM_DA
@@ -107,6 +114,8 @@ bool isWorkingHours() {
 void setup() {
   Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__);
 
+  Serial.printf("Node RED=%x GREEN=%x\n", LED_BUTTON_RED, LED_BUTTON_GREEN);
+
   digitalWrite(DAY_OPEN, LOW);
   pinMode(DAY_OPEN, OUTPUT);
   node.setMonitoredOutput(DAY_OPEN, LOW);
@@ -114,6 +123,16 @@ void setup() {
   digitalWrite(DAY_SOLENOID, LOW);
   pinMode(DAY_SOLENOID, OUTPUT);
   node.setMonitoredOutput(DAY_SOLENOID, LOW);
+
+  // Call this early - we need the extended GPIO set up.
+  //
+  node.begin(false /* no OLED screen */);
+
+  expandedPinMode(LED_BUTTON_RED, AW9523_LED_MODE);
+  expandedAnalogWrite(LED_BUTTON_RED, 255);
+
+  expandedPinMode(LED_BUTTON_GREEN, AW9523_LED_MODE);
+  expandedAnalogWrite(LED_BUTTON_GREEN, 255);
 
   // lock is in day setting - keep the solenoid engaged.
   BRACKET = node.machinestate.addState((const char *)"Stil; buzzing",
@@ -132,12 +151,6 @@ void setup() {
                                        false /* No reporting until we're done with the door. */
   );
 
-  expandedPinMode(LED_BUTTON_RED, AW9523_LED_MODE);
-  expandedAnalogWrite(LED_BUTTON_RED, 0);
-
-  expandedPinMode(LED_BUTTON_GREEN, AW9523_LED_MODE);
-  expandedAnalogWrite(LED_BUTTON_GREEN, 0);
-
   expandedPinMode(DOOR_UNLOCK_ALERT, INPUT);
   doorUnlockDetect = new IODebounce("DoorUnlockAlert", DOOR_UNLOCK_ALERT);
   doorUnlockDetect->setDigitalReadFunction(&expandedDigitalRead);
@@ -154,14 +167,14 @@ void setup() {
   doorOpenDetect->setCallback([](const int newState) {
     if (newState) {
       if (doorstate == NIGHT_LOCK && isWorkingHours()) {
-        Log.println("Door was closed and swithing to day state");
+        Log.println("Door was closed and swithing to day state as it is within working hours");
         doorstate = DAY_LOCK;
         return;
       };
-      Log.println("Door was closed");
+      Log.println("Door was closed; and it is outside workinghours.");
       return;
     };
-  node.addHandler(doorOpenDetect);
+    node.addHandler(doorOpenDetect);
 
     if (node.machinestate != MachineState::CHECKINGCARD) {
       Debug.println("Ignoring door open alert - we triggered it.");
@@ -178,7 +191,7 @@ void setup() {
     // Button is active high
     if (newState == 0)
       return;
-    if (doorstate != NIGHT_LOCK) {
+    if (doorstate == NIGHT_LOCK) {
       Debug.println("Press of red button ignored - lock already in night setting");
       return;
     };
@@ -202,10 +215,10 @@ void setup() {
       return;
     };
     if (millis() - lastPress > 2000) {
-        doorstate = UNLOCKED;
-        Log.println("Long press on green - activating pass-mode");
-        pass_count++;
-        return;
+      doorstate = UNLOCKED;
+      Log.println("Long press on green - activating pass-mode");
+      pass_count++;
+      return;
     };
     unlock_count++;
     Debug.println("Ignoring release of the green button - too short to trigger pass-mode");
@@ -237,24 +250,40 @@ void setup() {
     report["count_button_to_passstate"] = pass_count;
   });
 
-  node.begin(false /* no OLED screen */);
 
   Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
 }
 
 void loop() {
   bool in_open = node.machinestate.state() == BUZZING || node.machinestate.state() == BRACKET;
+  bool motorlock_out = doorstate != NIGHT_LOCK || node.machinestate.state() == BUZZING;
+  bool solenoid_out = in_open || doorstate == UNLOCKED;
 
-  node.setMonitoredOutput(DAY_OPEN, doorstate != NIGHT_LOCK || node.machinestate.state() == BUZZING);
-  node.setMonitoredOutput(DAY_SOLENOID, in_open || doorstate == UNLOCKED);
+  bool green_led = !solenoid_out;
+  bool red_led = (doorstate != NIGHT_LOCK);
+
+#if 1
+  static unsigned long lst = 0;
+  if (millis() - lst > 5000) {
+    lst = millis();
+    Debug.printf("State: %10s(%d) -- M=%d, S=%d, O=%d, R=%s, G=%s\n",
+                 doorstate_label[doorstate],
+                 doorstate, motorlock_out, solenoid_out, in_open,
+                 red_led ? "LIT" : "off",
+                 green_led ? "LIT" : "off");
+  };
+#endif
+
+  node.setMonitoredOutput(DAY_OPEN, motorlock_out);
+  node.setMonitoredOutput(DAY_SOLENOID, solenoid_out);
   node.buzzer(in_open);
 
-  // light the LED when it makes sense to press them. We may need to do the 
+  // light the LED when it makes sense to press them. We may need to do the
   // exact opposite - i.e. let the LED not reflect the action you can do
   // with the button - but the state that the button brought the lock into.
   //
-  expandedAnalogWrite(LED_BUTTON_GREEN, (doorstate != UNLOCKED) ? 0 : 255);
-  expandedAnalogWrite(LED_BUTTON_RED, (doorstate != NIGHT_LOCK) ? 0 : 255);
+  expandedAnalogWrite(LED_BUTTON_GREEN, green_led ? 0 : 255);
+  expandedAnalogWrite(LED_BUTTON_RED, red_led ? 0 : 255);
 
   if (doorstate != NIGHT_LOCK && !isWorkingHours() && node.machinestate == MachineState::CHECKINGCARD && node.machinestate.secondsInThisState() > 300) {
     Log.println("Detecting end of the working day - switching to night lock ");
