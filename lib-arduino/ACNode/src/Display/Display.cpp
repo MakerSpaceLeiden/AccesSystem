@@ -33,6 +33,32 @@ bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
     return r;
 }
 
+void Display::setWebResponder(String urlPrefix, AsyncWebServer * server) {
+    server->on(urlPrefix, HTTP_GET, [this](AsyncWebServerRequest *request) {
+       AsyncResponseStream *response = request->beginResponseStream("image/pbm", SCREEN_WIDTH*SCREEN_HEIGHT/8+32);
+
+       response->printf("P4\n%d %d\n", SCREEN_WIDTH,SCREEN_HEIGHT);
+#if 0
+       response->write(getBuffer(),  SCREEN_WIDTH * SCREEN_HEIGHT / 8);
+#else
+       for(int y = 0; y < SCREEN_HEIGHT; y++) {
+          unsigned char out;
+          for(int x = 0; x < SCREEN_WIDTH; x++) {
+              int i = x % 8;
+              if (!i) 
+                  out = 0;
+	      if (!getPixel(x,y))
+		  out |= (1<<(7-i));
+              if (i == 7)
+                  response->write(out);
+          };
+       };
+#endif
+       request->send(response);
+    });
+};
+
+
 void Display::drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col) {
     drawBitmap((SCREEN_WIDTH-w)/2,(SCREEN_HEIGHT-h)/2,bitmap,w,h,col);
 }

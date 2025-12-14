@@ -110,7 +110,7 @@ public:
     
     WhiteNodev108(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto = PROTO_REST);
     WhiteNodev108(const char * machine = NULL, bool wired = true, acnode_proto_t proto = PROTO_REST);
-    ~WhiteNodev108() { Serial.printf("Destroy %f - should never happen",name()); };
+    ~WhiteNodev108() { Serial.printf("Destroy %s - should never happen",name()); };
 
     void setOTAPasswordHash(const char * ota_hash) { _ota_hash= ota_hash; };
     void begin(bool hasDisplay = true);

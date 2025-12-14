@@ -25,6 +25,7 @@ public:
                        SCREEN_WIDTH(w), SCREEN_HEIGHT(h) {};
                    
     bool begin(uint8_t SCREEN_Address, bool reset = true, const char * bootmsg = NULL);
+    void setWebResponder(String urlPrefix, AsyncWebServer * _webServer);
 
     void setDisplayScreensaver(bool on);
     

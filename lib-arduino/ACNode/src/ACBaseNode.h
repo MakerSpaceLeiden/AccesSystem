@@ -4,10 +4,13 @@
 #ifdef  ESP32
 #  include <ESPmDNS.h>
 #  include <WiFiUdp.h>
+#  include <ESPAsyncWebServer.h>
 #  include "WiredEthernet.h"
 #  include <esp32-hal-gpio.h> // digitalWrite and friends.
 #else
 #  include <ESP8266WiFi.h>
+#  include <WiFiClient.h>
+#  include <ESPAsyncWebServer.h>
 #endif
 
 #include <SPI.h>
@@ -145,7 +148,10 @@ public:
     String chipId();
     
     void delayedReboot();
-    
+   
+    AsyncWebServer * webServer() { return _webServer; };
+    String urlLogPrefix() { return "/"; };
+ 
     // Callbacks.
     typedef std::function<void(acnode_error_t)> THandlerFunction_Error;
     ACNodeBase& onError(THandlerFunction_Error fn)
@@ -235,7 +241,7 @@ private:
     void checkClearEEPromAndCacheButtonPressed(uint8_t button);
     
     const char * state2str(int state);
-    
+    AsyncWebServer * _webServer;
     
 protected:
     THandlerFunction_SimpleCallback _approved_callback, _denied_callback;

@@ -85,7 +85,19 @@ void ACNodeBase::pop() {
     // DHCP/ntp kick in.
     setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",1);
     tzset();
-    
+   
+    _webServer = new AsyncWebServer(80);
+    _webServer->on("/state.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
+         AsyncResponseStream *response = request->beginResponseStream("application/json");
+
+         JsonDocument doc;
+         JsonObject out = doc.to<JsonObject>();
+         report(out);
+
+         serializeJson(out, *response);
+         request->send(response);
+    });
+
     Log.setTimestamp(true); 
     Log.setIdentifier("LOG");
 
@@ -96,7 +108,7 @@ void ACNodeBase::pop() {
     Log.addPrintStream(wh);
     Debug.addPrintStream(wh);
 
-    const std::shared_ptr<LOGBase> & th = std::make_shared<WebSerialStream>();
+    const std::shared_ptr<LOGBase> & th = std::make_shared<WebSerialStream>(webServer(),urlLogPrefix());
     Debug.addPrintStream(th);
     Log.addPrintStream(th);
 
@@ -213,6 +225,7 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
     }
 
     partition_info(Log); 
+    _webServer->begin();
 }
 
 void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button)
