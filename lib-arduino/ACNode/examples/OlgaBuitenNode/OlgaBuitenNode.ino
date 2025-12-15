@@ -33,6 +33,8 @@ Lock states
                   terminated by time or by a short red button press.
 */
 
+bool forced_night = false;
+
 enum { NIGHT_LOCK = 0,  // lock in night mode; solenoid cannot open the door
        DAY_LOCK,        // lock in day mode, solenoid off, engaging it opens the door
        UNLOCKED         // lock in day mode, solenoid engaged
@@ -161,28 +163,42 @@ void setup() {
   doorUnlockDetect->setDigitalReadFunction(&expandedDigitalRead);
   doorUnlockDetect->setCallback([](const int newState) {
     Log.println(newState ? "Door reported unlocked" : "Door reported locked");
-    if ((newState) && (doorstate != NIGHT_LOCK)) {
+
+    if (!newState) {
+      if (!forced_night && doorstate == NIGHT_LOCK && isWorkingHours()) {
+        Log.println("Door was closed and swithing to day state as it is within working hours");
+        doorstate = DAY_LOCK;
+        return;
+      };
+      Log.printf("Door was closed; and %s workinghours.\n",
+                 forced_night ? "it is kept closed after a red button call, even though it is inside" : "it is outside");
+      return;
+    };
+
+    if ((!newState) && (doorstate != NIGHT_LOCK)) {
       Log.println("**** assumption error *** reported locked but not in night state ?!?! ****. Dear humans - investigate !");
       alert_count++;
     };
   });
   node.addHandler(doorUnlockDetect);
 
+#if 0
+  // Check if we need to go to day/night after we completed a door operning cycle.
+  //
+  node.machinestate.addOnChangeCallback(BUZZING, [](machinestate_t oldState, machinestate_t newState) {
+    if (newState != node.machinestate.WAITINGFORCARD)
+      return;
+    if (!forced_night && isWorkingHours() && (doorstate == NIGHT_LOCK)) {
+      Log.println("Switching to day state as it is within working hours");
+      doorstate = DAY_LOCK;
+    };
+  });
+#endif
+
   expandedPinMode(DOOR_OPEN_ALERT, INPUT);
   doorOpenDetect = new IODebounce("DoorOpenAlert", DOOR_OPEN_ALERT);
   doorOpenDetect->setDigitalReadFunction(&expandedDigitalRead);
   doorOpenDetect->setCallback([](const int newState) {
-    if (newState) {
-      if (doorstate == NIGHT_LOCK && isWorkingHours()) {
-        Log.println("Door was closed and swithing to day state as it is within working hours");
-        doorstate = DAY_LOCK;
-        return;
-      };
-      Log.println("Door was closed; and it is outside workinghours.");
-      return;
-    };
-    node.addHandler(doorOpenDetect);
-
     if (node.machinestate != MachineState::CHECKINGCARD) {
       Debug.println("Ignoring door open alert - we triggered it.");
       return;
@@ -190,6 +206,7 @@ void setup() {
     key_open_count++;
     Log.println("Door openened with a key");
   });
+  node.addHandler(doorOpenDetect);
 
   expandedPinMode(BUTTON_RED, INPUT);
   redButtonDetect = new IODebounce("RedButton", BUTTON_RED);
@@ -198,6 +215,8 @@ void setup() {
     // Button is active high
     if (newState == 0)
       return;
+
+    forced_night = true;
     if (doorstate == NIGHT_LOCK) {
       Debug.println("Press of red button ignored - lock already in night setting");
       return;
@@ -225,6 +244,13 @@ void setup() {
       doorstate = UNLOCKED;
       Log.println("Long press on green - activating pass-mode");
       pass_count++;
+      // Pressing the red button will `force' the door closed, even during
+      // working hours until either the end of the working day or until the
+      // Green button is pressed long.
+      if (forced_night) {
+        Log.println("Ending forced night");
+        forced_night = false;
+      };
       return;
     };
     unlock_count++;
@@ -292,9 +318,12 @@ void loop() {
   static unsigned long lst = 0;
   if (millis() - lst > 5000) {
     lst = millis();
-    Debug.printf("State: %10s(%d) -- Motor=%d, Solenoid=%d, Open=%d, RED=%s, GREEN=%s, PASS=%s\n",
+    Debug.printf("State: %10s(%d%s) Now: %s -- Motor=%d, Solenoid=%d, Open=%d, RED=%s, GREEN=%s, PASS=%s\n",
                  doorstate_label[doorstate],
-                 doorstate, motorlock_out, solenoid_out, in_open,
+                 doorstate,
+                 forced_night ? ",F" : "",
+                 isWorkingHours() ? "working-hours" : "night",
+                 motorlock_out, solenoid_out, in_open,
                  red_led ? "LIT" : "off",
                  green_led ? "LIT" : "off",
                  pass_led ? "LIT" : "off");
@@ -305,6 +334,12 @@ void loop() {
   node.setMonitoredOutput(DAY_SOLENOID, solenoid_out);
   node.buzzer(in_open);
 
+  // Pressing the red button will `force' the door closed, even during
+  // working hours until either the end of the working day or until the
+  // Green button is pressed long.
+  if (forced_night && !isWorkingHours())
+    forced_night = false;
+
   // light the LED when it makes sense to press them. We may need to do the
   // exact opposite - i.e. let the LED not reflect the action you can do
   // with the button - but the state that the button brought the lock into.
@@ -312,7 +347,7 @@ void loop() {
   // We undulate them to make it easy to spot a hung node & to give the
   // impression of 'action'
   //
-  expandedAnalogWrite(LED_BUTTON_GREEN, green_led ? hearthbeat() : 0);
+  expandedAnalogWrite(LED_BUTTON_GREEN, green_led ? (forced_night ? 255 : hearthbeat()) : 0);
   expandedAnalogWrite(LED_BUTTON_RED, red_led ? hearthbeat() : 0);
   expandedAnalogWrite(LED_PASSAGE_MODE, pass_led ? hearthbeat() : 0);
 
