@@ -39,11 +39,10 @@ enum { NIGHT_LOCK = 0,  // lock in night mode; solenoid cannot open the door
 } doorstate;
 
 const char *doorstate_label[] = {
-  "night lock / nachtslot",
-  "day / dag slot",
-  "pass / doorloop",
+  "nightlatch-nachtslot",
+  "daylatch-dagslot",
+  "passage-doorloop",
 };
-
 
 #include <BlueNodev114.h>
 #include <util/cufflink_heartbeat.h>
@@ -69,6 +68,8 @@ const char *doorstate_label[] = {
 #define LED_BUTTON_GREEN (node.IOC)
 #define BUTTON_GREEN (node.IOB)  // pull down to ground, active high
 
+#define LED_PASSAGE_MODE (node.IOA)  // not yet wired up.
+
 #define BUZZ_TIME (0.5)  // Pulse to the lock & solenoid
 #define BUZZ2_TIME (5)   // How long we hold the solenoid.
 
@@ -90,7 +91,7 @@ BlueNodev114 node = BlueNodev114(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 MachineState::machinestate_t BUZZING;  // short signal to lock
 MachineState::machinestate_t BRACKET;  // signal to lock sent - engaging solenoid
 
-unsigned long opening_door_count = 0, door_denied_count = 0, key_open_count = 0, button_open_count = 0, unlock_count = 0, pass_count = 0;
+unsigned long opening_door_count = 0, door_denied_count = 0, key_open_count = 0, button_open_count = 0, unlock_count = 0, pass_count = 0, alert_count = 0;
 
 IODebounce *doorOpenDetect, *doorUnlockDetect, *redButtonDetect, *greenButtonDetect;
 
@@ -105,7 +106,7 @@ bool isWorkingHours() {
   if (now < 1765000000)
     return false;  // we have not yet synced with NTP
   struct tm *ts = localtime(&now);
-  if (ts->tm_hour < 8 || ts->tm_hour > 18)
+  if (ts->tm_hour < 8 || ts->tm_hour > 17)
     return false;
   if (ts->tm_wday == 0 /* sunday */)
     return false;
@@ -135,15 +136,18 @@ void setup() {
   expandedPinMode(LED_BUTTON_GREEN, AW9523_LED_MODE);
   expandedAnalogWrite(LED_BUTTON_GREEN, 255);
 
-  // lock is in day setting - keep the solenoid engaged.
-  BRACKET = node.machinestate.addState((const char *)"Stil; buzzing",
+  expandedPinMode(LED_PASSAGE_MODE, AW9523_LED_MODE);
+  expandedAnalogWrite(LED_PASSAGE_MODE, 255);
+
+  // latch is in day setting - keep the solenoid engaged.
+  BRACKET = node.machinestate.addState((const char *)"Still buzzing",
                                        LED::LED_IDLE,
                                        (time_t)(BUZZ2_TIME * 1000),       // stay in this state for BUZZ_TIME seconds
                                        node.machinestate.WAITINGFORCARD,  // then go back to waiting for the next swipe.
                                        false /* no OTA during this */,
                                        false /* No reporting until we're done with the door. */
   );
-  // pulse the lock to day during this time
+  // pulse the latch into day modus during this time
   BUZZING = node.machinestate.addState((const char *)"Buzzing",
                                        LED::LED_IDLE,
                                        (time_t)(BUZZ_TIME * 1000),  // stay in this state for BUZZ_TIME seconds
@@ -157,8 +161,10 @@ void setup() {
   doorUnlockDetect->setDigitalReadFunction(&expandedDigitalRead);
   doorUnlockDetect->setCallback([](const int newState) {
     Log.println(newState ? "Door reported unlocked" : "Door reported locked");
-    if ((newState) && (doorstate != NIGHT_LOCK))
+    if ((newState) && (doorstate != NIGHT_LOCK)) {
       Log.println("**** assumption error *** reported locked but not in night state ?!?! ****. Dear humans - investigate !");
+      alert_count++;
+    };
   });
   node.addHandler(doorUnlockDetect);
 
@@ -227,7 +233,16 @@ void setup() {
   node.addHandler(greenButtonDetect);
 
   node.onApproval([](const char *machine) {
-    Log.printf("Engaging the solenoid/buzzer\n");
+    ApprovalEntry *e = node.lastApproved();
+    const char *name = "not-disclosed";
+
+    if (e && e->shortName)
+      name = e->shortName.c_str();
+    else if (e && e->name)
+      name = e->name.c_str();
+
+    Log.printf("Engaging the solenoid/buzzer for %s\n", name);
+
     node.machinestate = (doorstate == UNLOCKED) ? BRACKET : BUZZING;
     opening_door_count++;
   });
@@ -249,6 +264,7 @@ void setup() {
     report["count_button_open"] = button_open_count;
     report["count_button_unlock"] = unlock_count;
     report["count_button_to_passstate"] = pass_count;
+    report["count_unexpected_alerts"] = alert_count;
   });
 
   // Increase LED current to 2/4 of max (default is 1/4, Imax=37mA) to
@@ -257,7 +273,7 @@ void setup() {
   //
   Wire.beginTransmission(0x58);
   Wire.write(0x11);
-  Wire.write(2); 
+  Wire.write(2);
   Wire.endTransmission();
 
   Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
@@ -270,16 +286,18 @@ void loop() {
 
   bool green_led = !solenoid_out;
   bool red_led = (doorstate != NIGHT_LOCK);
+  bool pass_led = (doorstate == UNLOCKED);
 
 #if 1
   static unsigned long lst = 0;
   if (millis() - lst > 5000) {
     lst = millis();
-    Debug.printf("State: %10s(%d) -- M=%d, S=%d, O=%d, R=%s, G=%s\n",
+    Debug.printf("State: %10s(%d) -- Motor=%d, Solenoid=%d, Open=%d, RED=%s, GREEN=%s, PASS=%s\n",
                  doorstate_label[doorstate],
                  doorstate, motorlock_out, solenoid_out, in_open,
                  red_led ? "LIT" : "off",
-                 green_led ? "LIT" : "off");
+                 green_led ? "LIT" : "off",
+                 pass_led ? "LIT" : "off");
   };
 #endif
 
@@ -296,14 +314,10 @@ void loop() {
   //
   expandedAnalogWrite(LED_BUTTON_GREEN, green_led ? hearthbeat() : 0);
   expandedAnalogWrite(LED_BUTTON_RED, red_led ? hearthbeat() : 0);
+  expandedAnalogWrite(LED_PASSAGE_MODE, pass_led ? hearthbeat() : 0);
 
-  if (doorstate != NIGHT_LOCK && !isWorkingHours() && node.machinestate == MachineState::CHECKINGCARD && node.machinestate.secondsInThisState() > 300) {
-    Log.println("Detecting end of the working day - switching to night lock ");
-    doorstate = NIGHT_LOCK;
-  };
-
-  if (doorstate == DAY_LOCK && !isWorkingHours() && node.machinestate.secondsInThisState() > 3600) {
-    Log.println("Not seen anyone for over an hour; going to night lock as it is outside working hours");
+  if ((doorstate != NIGHT_LOCK) && (!isWorkingHours()) && (node.machinestate == MachineState::CHECKINGCARD) && (node.machinestate.secondsInThisState() > 1800)) {
+    Log.println("Not seen anyone for over half an hour; going to night lock as it is outside working hours");
     doorstate = NIGHT_LOCK;
   };
 
