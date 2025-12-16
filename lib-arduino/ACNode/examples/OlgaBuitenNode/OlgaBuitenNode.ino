@@ -130,7 +130,7 @@ void setup() {
 
   // Call this early - we need the extended GPIO set up.
   //
-  node.begin(false /* no OLED screen */);
+  node.begin(); // false /* no OLED screen */);
 
   expandedPinMode(LED_BUTTON_RED, AW9523_LED_MODE);
   expandedAnalogWrite(LED_BUTTON_RED, 255);

@@ -140,16 +140,18 @@ void WhiteNodev108::begin(bool hasDisplay) {
     // Not all readers have a screen soldered in.
     //
     if (hasDisplay && !_display) {
-	if (i2c_address_exists(Wire, SCREEN_Address)) {
-	   _display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
-        } else {
+	if (!i2c_address_exists(Wire, SCREEN_Address)) {
            Log.println("ALERT: expected LCD/OLED screen not found.");
        };
+       // But try to init it anyway - as we may expose a virtual one
+       // via HTTP.
+       _display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
     };
     
     if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"")) {
         Log.println("LCD/OLED screen found and initialized.");
 	_display->setRotation(2);
+        _display->setWebResponder("/display.pbm", webServer());
     } else {
        Log.println("Screen disabled.");
     };
