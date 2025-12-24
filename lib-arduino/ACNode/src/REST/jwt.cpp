@@ -115,15 +115,13 @@ String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem, 
     mbedtls_ctr_drbg_context ctr_drbg;
     mbedtls_pk_context ctx;
     size_t key_len, sig_len, len, n;
-    unsigned char * buff, *ptr = buff;
+    unsigned char * buff = NULL, *ptr;
     unsigned char hash[32];
     unsigned char *sig;
     String out;
     JsonDocument hdr;
     String hdrSerialized, plSerialized;
-    size_t nHdrSerialized, nPlSerialized;
     int ret;
-    unsigned long t;
 
     hdr["typ"] = "JWT";
     hdr["alg"] = "ES256";
@@ -163,8 +161,8 @@ String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem, 
 	JsonArray certs = hdr["x5c"].to<JsonArray>();
 	certs.add(String(tmp,n));
     };
-    nHdrSerialized = serializeJson(hdr, hdrSerialized);
-    nPlSerialized = serializeJson(payload, plSerialized);
+    serializeJson(hdr, hdrSerialized);
+    serializeJson(payload, plSerialized);
     
     // size including extra base64 stuff, the '.'s and the final signature.
     //
@@ -217,6 +215,6 @@ String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem, 
     mbedtls_ctr_drbg_free( &ctr_drbg );
     mbedtls_entropy_free( &entropy_ctx );
 exit:
-    free(buff);
+    if (buff) free(buff);
     return out;
 }

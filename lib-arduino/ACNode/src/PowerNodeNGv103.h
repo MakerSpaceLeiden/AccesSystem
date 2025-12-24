@@ -1,5 +1,3 @@
-#include "SIG/ACNode.h"
-
 #ifndef _H_POWERNODENG103
 #define _H_POWERNODENG103
 

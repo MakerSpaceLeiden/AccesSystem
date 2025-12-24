@@ -33,13 +33,13 @@ public:
     
     void begin();
     void loop();
-    void report(JsonObject& report);
+    void report(JsonObject report);
 
     void scheduleImmediateUpdate();
     void scheduleForcedReload();
-    void scheduleCardused(String tag);
+    void scheduleCardused(const char * tag);
    
-    void sendBestEffortTagApproved(String tag);
+    void sendBestEffortTagApproved(const char * tag);
     inline unsigned long getLastUpdate() { return last_update; };
 
 private:

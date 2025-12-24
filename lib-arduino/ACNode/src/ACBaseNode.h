@@ -268,7 +268,7 @@ public:
     void add_trusted_node(const char *node);
 #endif
 
-    void addSecurityHandler(ACSecurityHandler *handler);
+//    void addSecurityHandler(ACSecurityHandler *handler);
    
     char * cloak(char *tag);
     void send_helo(char * tokenOrNull = NULL);

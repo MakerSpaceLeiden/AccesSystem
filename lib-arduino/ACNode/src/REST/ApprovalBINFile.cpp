@@ -68,7 +68,7 @@ bool ApprovalBINFile::import(const unsigned char * binfile, size_t len) {
         version = MSLv2;
     else {
         Log_printf("Unknown tagblob version\n");
-    free((void *)binfile);
+        free((void *)binfile);
         return false;
     };
     
@@ -96,7 +96,7 @@ bool ApprovalBINFile::import(const unsigned char * binfile, size_t len) {
     ctime_r((const time_t *) &datadate,buff);
     buff[19] = '\0';
 
-    Log_printf("Loaded %lu TAGs with ID 0x%08lx, size %lu, version %s, dated %s\n",
+    Log_printf("Loaded %u TAGs with ID 0x%08lx, size %u, version %s, dated %s\n",
                ntags, identifier, len,
                version == MSLv2 ? "MSLv2" : "MSLv1", buff);
     
@@ -254,8 +254,12 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
     // Guaranteed to be space for this - from 1 to 16 bytes from the former padding. 
     plaintext[paddedlen - pad] = '\0';
     
-    if (version == MSLv1)
-        return new ApprovalEntry((char*)plaintext, has, needs);
+    if (version == MSLv1) {
+	char buff[ApprovalEntry::MAX_AE_UID];
+        safesnprintf(buff, sizeof(buff), "%d", idx);
+       
+        return new ApprovalEntry(buff, (char*)plaintext, (char*)plaintext, has, needs);
+    }
     
     // For version MSLv2 we have 3 \0 separated fields.
     //

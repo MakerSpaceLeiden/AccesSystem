@@ -55,7 +55,7 @@ void OTA::begin() {
     Debug.println("OTA Enabled");
 }
 
-void OTA::report(JsonObject& report) {
+void OTA::report(JsonObject report) {
     report["ota"] = true;
     report["ota_hash"] = passwdType();
 
@@ -174,7 +174,7 @@ void OTAWithDisplay::begin() {
         if (_otaOK && _display) {
             _display->updateDisplay("OTA","","",true);
             _display->updateDisplayStateMsg("update failed",0);
-            _display->updateDisplayStateMsg(cause,1);
+            _display->updateDisplayStateMsg(cause.c_str(),1);
             _display->updateDisplayProgressbar(0, true);
         };
         
@@ -195,7 +195,7 @@ void OTAWithDisplay::begin() {
 }
 
 void OTADeck::render_pane(bool refresh) {
-    if (!_display);
+    if (!_display)
 	return;
 
     if (!refresh)

@@ -31,8 +31,8 @@ bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg, bo
     return _headless;
 }
 
-void Display::setWebResponder(String urlPrefix, AsyncWebServer * server, bool raw) {
-    server->on(urlPrefix.c_str(), HTTP_GET, [this, raw](AsyncWebServerRequest *request) {
+void Display::setWebResponder(const char *  urlPrefix, AsyncWebServer * server, bool raw) {
+    server->on(urlPrefix, HTTP_GET, [raw,this](AsyncWebServerRequest *request) {
        AsyncResponseStream *response = request->beginResponseStream("image/pbm", SCREEN_WIDTH*SCREEN_HEIGHT/8+32);
 
        response->printf("P4\n%d %d\n", SCREEN_WIDTH,SCREEN_HEIGHT);
@@ -68,10 +68,10 @@ void Display::setDisplayScreensaver(bool on) {
 
 #define getBBX(str,w,h) uint16_t w,h; { int16_t x,y; getTextBounds(str,0,0,&x,&y,&w,&h); }
 
-void Display::updateDisplay(const char * title, String left, String right, bool rebuildFull) {
+void Display::updateDisplay(const char * title, const char * left, const char * right, bool rebuildFull) {
     if (0) Debug.printf("updateDisplay(%s,%s,%s,%s)\n",
                  title ? title : "NULL",
-                 left.c_str(), right.c_str(), rebuildFull ? "true" : "false");
+                 left, right, rebuildFull ? "true" : "false");
 
     if (rebuildFull) {
         clearDisplay();
@@ -88,7 +88,7 @@ void Display::updateDisplay(const char * title, String left, String right, bool 
         };
         
 
-        if (left.length() || right.length()) 
+        if ((left && strlen(left)) || (right && strlen(right)))
 	    printCmdBar(left, right);
 
         // Make normal continued print easier by putting the
@@ -102,7 +102,7 @@ void Display::updateDisplay(const char * title, String left, String right, bool 
     display();
 };
 
-void Display::printCmdBar(String left, String right) {
+void Display::printCmdBar(const char * left, const char * right) {
     const uint16_t WBOX = 128/2 - 4;
     setTextColor(SH110X_BLACK);
 
@@ -115,14 +115,14 @@ void Display::printCmdBar(String left, String right) {
     drawFastHLine(0,SCREEN_HEIGHT-H-5,SCREEN_WIDTH,SH110X_WHITE);
     drawFastHLine(0,SCREEN_HEIGHT-1,SCREEN_WIDTH,SH110X_WHITE);
 
-    if (left.length()) {
+    if (left && strlen(left)) {
           fillRect(0, SCREEN_HEIGHT-H-3, WBOX, H+1, SH110X_WHITE);
           getBBX(left,w,h);
           setCursor((WBOX-w)/2,SCREEN_HEIGHT-H-2);
           println(left);
     };
             
-    if (right.length()) {
+    if (right && strlen(right)) {
           fillRect(SCREEN_WIDTH-WBOX,  SCREEN_HEIGHT-H-3, WBOX, H+1, SH110X_WHITE);
           getBBX(right,w,h);
           setCursor(SCREEN_WIDTH-WBOX+(WBOX-w)/2,SCREEN_HEIGHT-h-2);
@@ -144,7 +144,7 @@ void Display::updateDisplayProgressbar(unsigned int percentage, bool rebuildFull
     display();
 }
 
-void Display::updateDisplayStateMsg(String msg, int line) {
+void Display::updateDisplayStateMsg(const char * msg, int line) {
     int16_t x,y;
     uint16_t w,h;
 

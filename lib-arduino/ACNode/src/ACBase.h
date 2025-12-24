@@ -28,48 +28,25 @@ extern beat_t beat_absdelta(beat_t a, beat_t b);
 //
 #define PROFILE_BASE
 
-class ACRequest {
-public:
-    ACRequest() { topic[0] = payload[0] = rest[0] = 0; };
-    ACRequest(const char * _topic, const char * _payload) {
-        strncpy(topic, _topic, sizeof(topic));
-        strncpy(payload, _payload, sizeof(payload));
-        strncpy(rest, _payload, sizeof(payload));
-    };
-    // raw data as/when received:
-    char topic[MAX_TOKEN_LEN];
-    char payload[MAX_MSG]; 
-
-    // data as extracted from any payload.
-    beat_t beatExtracted;
-    char version[MAX_TOKEN_LEN/8];
-    char beat[MAX_TOKEN_LEN/4];
-    char cmd[MAX_TOKEN_LEN/4];
-    char tag[MAX_TOKEN_LEN];
-    char rest[MAX_MSG];
-
-    char tmp[MAX_MSG];
-};
-
 class ACBase {
 public:
     ACBase(const char * name = NULL) { if (name) _name = strdup(name); };
     ~ACBase() { if (_name) free(_name); }
     virtual const char * name() { return _name ? _name : "ACBase"; }
-    
+
     typedef enum cmd_results { CMD_DECLINE, CMD_CLAIMED } cmd_result_t;
+//    virtual cmd_result_t handle_cmd(ACRequest * req) { return CMD_DECLINE; };
     
     virtual void begin() { _isUp = true; return; };
     virtual void loop() { return; };
     virtual void stop() { return; };
-    virtual void report(JsonObject& report) { return; }
-
-    virtual cmd_result_t handle_cmd(ACRequest * req) { return CMD_DECLINE; };
+    virtual void report(JsonObject report) { return; }
     
     virtual void set_debug(bool debug);
 
     virtual bool isUp() { return _isUp; }
-   // Convenience shorthands
+
+    // Convenience shorthands
     int xdigitalRead(uint8_t pin) { return ExpandedGPIO::getInstance().xdigitalRead(pin); };
     void xdigitalWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xdigitalWrite(pin, val); };
     void xanalogWrite(uint8_t pin, uint8_t val) { ExpandedGPIO::getInstance().xanalogWrite(pin, val); };
@@ -87,6 +64,7 @@ protected:
    char * _name = NULL;
 };
 
+#if 0
 class ACSecurityHandler : public ACBase {
 public:
     virtual const char * name() { return "ACSecurityHandler"; }
@@ -98,4 +76,5 @@ public:
     virtual acauth_results secure(ACRequest * req) { return FAIL; }
     virtual acauth_results cloak(ACRequest * req) { return FAIL; }
 };
+#endif
 #endif

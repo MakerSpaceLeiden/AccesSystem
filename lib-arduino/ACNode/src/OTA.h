@@ -18,7 +18,7 @@ class OTA: public ACBase
     OTA(const char * password);
     void loop();
     void begin();
-    void report(JsonObject& report);
+    void report(JsonObject report);
     const char * passwdType();
   protected:
     const char * _ota_password_hash;
@@ -39,8 +39,8 @@ class OTAWithDisplay: public OTA
     void begin();
     
 private:
-    const char * _hostname;
     Display * _display;
+    const char * _hostname;
     bool _otaOK = true;
     THandlerFunction_ota_ok _ota_ok_cb = NULL;
     THandlerFunction_wipe_secrets _pre_secrets_cb = NULL;

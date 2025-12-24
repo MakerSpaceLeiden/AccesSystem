@@ -30,7 +30,7 @@ void OLED::begin( const uint8_t i2c_addr, TwoWire * i2cbus)
       for (int i = 0; i < NICONS; i++) _icons[i] = NULL;
 }
 
-void OLED::report(JsonObject& report) {
+void OLED::report(JsonObject report) {
      report["oled_text"] = buff; 
     }
 

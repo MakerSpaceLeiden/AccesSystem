@@ -49,7 +49,7 @@ class RFID_MFRC522 : public RFID {
     void loop();
     void reset();
 
- void report(JsonObject& report);
+ void report(JsonObject report);
 
   private:
     MFRC522_SPI * _spiDevice;

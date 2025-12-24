@@ -22,7 +22,7 @@ class RFID : public ACBase {
     void processAndRateLimitCard(unsigned char * buff, size_t len);
     void registerCallback(unsigned char irqpin);
 
-    void report(JsonObject& report);
+    void report(JsonObject report);
 
     typedef std::function<ACBase::cmd_result_t(const char *)> THandlerFunction_SwipeCB;
 

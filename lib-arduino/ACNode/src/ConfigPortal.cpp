@@ -112,7 +112,7 @@ void configPortal() {
     Log.println("We got stuff to save!");
 
     DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
+    JsonObject json = jsonBuffer.createObject();
 
     json["mqtt_server"] = custom_mqtt_server.getValue();
     json["mqtt_port"] = custom_mqtt_port.getValue();
@@ -148,7 +148,7 @@ int configLoad() {
 
   configFile.readBytes(buf.get(), size);
   DynamicJsonBuffer jsonBuffer;
-  JsonObject& json = jsonBuffer.parseObject(buf.get());
+  JsonObject json = jsonBuffer.parseObject(buf.get());
   if (!json.success()) {
     Log.println("JSON invalid");
     return 0;

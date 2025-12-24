@@ -364,12 +364,12 @@ void WhiteNodev108::begin(bool hasDisplay) {
     super::begin(BOARD_NG);
 }
 
-void WhiteNodev108::updateDisplay(String left, String right, bool rebuildFull) {
+void WhiteNodev108::updateDisplay(const char *left, const char *right, bool rebuildFull) {
     if (_display)
 	_display->updateDisplay(machine,left,right,rebuildFull);
 };
 
-void WhiteNodev108::updateDisplayStateMsg(String msg,int line) {
+void WhiteNodev108::updateDisplayStateMsg(const char *msg,int line) {
     if (_display)
     	_display->updateDisplayStateMsg(msg, line);
 }
@@ -388,8 +388,8 @@ void WhiteNodev108::loop() {
         if (
             (machinestate.secondsLeftInThisState() < 45) ||
             (machinestate.secondsInThisState() > SHOW_COUNTDOWN_TIME_AFTER)
-            )
-            updateDisplayStateMsg("Auto off in " + machinestate.timeLeftInThisState(), 2);
+            ) 
+            updateDisplayStateMsg(("Auto off in " + machinestate.timeLeftInThisState()).c_str(), 2);
         
         static unsigned long lst = 0;
         if (machinestate.secondsLeftInThisState() < 30 && millis() - lst > 1000) {
@@ -458,7 +458,7 @@ void WhiteNodev108::addDeck(Deck * deck) {
 }
 
 void ButtonsDeck::render_pane(bool refresh) {
-    if (_display)
+    if (!_display)
 	return;
 
     if (refresh)

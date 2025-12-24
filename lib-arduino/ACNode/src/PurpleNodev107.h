@@ -1,5 +1,3 @@
-#include "SIG/ACNode.h"
-
 #ifndef _H_PURPLE107
 #define _H_PURPLE107
 
