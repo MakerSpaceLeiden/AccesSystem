@@ -176,7 +176,7 @@ private:
     };
 #endif
     
-    void report(JsonObject & out);
+    void report(JsonObject  out);
 };
 
 

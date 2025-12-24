@@ -91,7 +91,6 @@ void ApprovalAPI::loop() {
     if (interval && last_update &&  millis() - last_update < interval)
         return;
     
-    
     update_t t;
     if (interval == 999) {
         Log.println("Executing forced update");
@@ -192,16 +191,16 @@ bool ApprovalAPI::canApprove() {
 
 void ApprovalAPI::sendBestEffortTagApproved(String tag) {
     unsigned char buff[32]; // experting (and ignoring) an simple OK/ERROR or unfound reply
+    size_t len = sizeof(buff);
     unsigned char * p = buff;
 
-    char url[256], argtmp[64];
-    size_t len = sizeof(buff);
+    char url[128], argtmp[64];
 
     snprintf(url,sizeof(url), ACL_URL PATH_RECORDUSE "/%s", _argencode(argtmp,sizeof(argtmp),machine));
     String postarg = "tag=" + tag;
 
     int n = _restAPI->get(url,&len,&p,postarg);
-    Debug.printf("Reporting use: %s\n", n < 0 ? "ERR" : String(p,len));
+    Debug.printf("Reporting use: %s (len %d)\n", n < 0 ? "ERR" : String(p,len), len);
     return;
 }
 

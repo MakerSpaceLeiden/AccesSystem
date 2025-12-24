@@ -4,20 +4,18 @@
 #include "Display/Display.h"
 #include "Display/msl-logo.h"
 
-bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
-#if 0
-    bool r = super::begin(SCREEN_Address,reset);
-    if (!r) {
-        Log.println("Could not initialize the LCD/OLED screen.");
-        return false;
-    }
-#else
-    bool r = true;
+bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg, bool headless) {
+    _headless = headless;
+
+    if (!i2c_address_exists(Wire, SCREEN_Address)) {
+	if (!_headless)
+           Log.println("ALERT: expected LCD/OLED screen not found.");
+         else
+           Debug.println("Headless mode");
+	_headless = true;
+    };
     super::begin(SCREEN_Address,reset);
-#endif
-    // Should we capture that the screen actually works; and make
-    // the methods condition on a 'workie' variable ?
-    //
+
     clearDisplay();
     drawCentredBitmap(msl_logo,msl_logo_width,msl_logo_height,SH110X_WHITE);
     if (bootmsg) {
@@ -30,31 +28,31 @@ bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg) {
     oled_command(SH110X_DISPLAYON);
     display();
 
-    return r;
+    return _headless;
 }
 
-void Display::setWebResponder(String urlPrefix, AsyncWebServer * server) {
-    server->on(urlPrefix, HTTP_GET, [this](AsyncWebServerRequest *request) {
+void Display::setWebResponder(String urlPrefix, AsyncWebServer * server, bool raw) {
+    server->on(urlPrefix.c_str(), HTTP_GET, [this, raw](AsyncWebServerRequest *request) {
        AsyncResponseStream *response = request->beginResponseStream("image/pbm", SCREEN_WIDTH*SCREEN_HEIGHT/8+32);
 
        response->printf("P4\n%d %d\n", SCREEN_WIDTH,SCREEN_HEIGHT);
-#if 0
-       response->write(getBuffer(),  SCREEN_WIDTH * SCREEN_HEIGHT / 8);
-#else
-       for(int y = 0; y < SCREEN_HEIGHT; y++) {
-          unsigned char out;
-          for(int x = 0; x < SCREEN_WIDTH; x++) {
-              int i = x % 8;
-              if (!i) 
-                  out = 0;
-	      if (!getPixel(x,y))
-		  out |= (1<<(7-i));
-              if (i == 7)
-                  response->write(out);
-          };
-       };
-#endif
-       request->send(response);
+       if (raw) {
+       	 response->write(getBuffer(),  SCREEN_WIDTH * SCREEN_HEIGHT / 8);
+       } else {
+          for(int y = 0; y < SCREEN_HEIGHT; y++) {
+             unsigned char out = 0;
+             for(int x = 0; x < SCREEN_WIDTH; x++) {
+                int i = x & 7;
+                if (!i) 
+                    out = 0;
+  	        if (!getPixel(x,y))
+  		    out |= (1<<(7-i));
+                if (i == 7)
+                    response->write(out);
+            };
+         };
+      };
+      request->send(response);
     });
 };
 
@@ -64,7 +62,8 @@ void Display::drawCentredBitmap(const unsigned char * bitmap, unsigned short w, 
 }
 
 void Display::setDisplayScreensaver(bool on) {
-    oled_command(on ? SH110X_DISPLAYOFF : SH110X_DISPLAYON);
+    if (!_headless)
+	    oled_command(on ? SH110X_DISPLAYOFF : SH110X_DISPLAYON);
 }
 
 #define getBBX(str,w,h) uint16_t w,h; { int16_t x,y; getTextBounds(str,0,0,&x,&y,&w,&h); }

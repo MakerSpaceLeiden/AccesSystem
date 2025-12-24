@@ -103,7 +103,7 @@ void setup() {
     machinestate = TRANSIENTERROR;
   });
 
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject  report) {
     report["state"] = state[machinestate].label;
 
     report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);

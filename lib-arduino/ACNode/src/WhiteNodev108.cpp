@@ -137,23 +137,11 @@ void WhiteNodev108::begin(bool hasDisplay) {
         addHandler(_reader);
     };
 
-    // Not all readers have a screen soldered in.
-    //
-    if (hasDisplay && !_display) {
-	if (!i2c_address_exists(Wire, SCREEN_Address)) {
-           Log.println("ALERT: expected LCD/OLED screen not found.");
-       };
-       // But try to init it anyway - as we may expose a virtual one
-       // via HTTP.
-       _display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
-    };
+    _display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
     
-    if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"")) {
-        Log.println("LCD/OLED screen found and initialized.");
+    if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)""), hasDisplay) {
 	_display->setRotation(2);
         _display->setWebResponder("/display.pbm", webServer());
-    } else {
-       Log.println("Screen disabled.");
     };
 
     OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
@@ -193,16 +181,18 @@ void WhiteNodev108::begin(bool hasDisplay) {
 	// 3.x version - signature changes
 	ETH.begin(WN_ETH_PHY_TYPE, WN_ETH_PHY_ADDR, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_POWER, WN_ETH_CLK_MODE);
 #endif
+
+//    Cannot be called this early.
     
+//    esp_sntp_servermode_dhcp(true);
+//    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3",NTP_POOL);
+
+    configTzTime("CET",NTP_POOL);
+
 #if 0
-    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG(NTP_POOL);
-    esp_netif_sntp_init(&config);
-#if 0 // ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(3, 0, 0)
-    esp_sntp_servermode_dhcp(true);
-#endif
-#else
     configTime(0, 0, NTP_POOL);
-    setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
+    //setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
+    setenv("TZ","CET",1);
     tzset();
 #endif
     
@@ -420,7 +410,7 @@ void WhiteNodev108::loop() {
     super::loop();
 }
 
-void WhiteNodev108::report(JsonObject & report) {
+void WhiteNodev108::report(JsonObject  report) {
     report["manual_poweroff"] = manual_poweroff;
     report["idle_poweroff"] = idle_poweroff;
     report["errors"] = errors;

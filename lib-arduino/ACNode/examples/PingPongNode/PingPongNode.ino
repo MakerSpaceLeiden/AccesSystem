@@ -76,7 +76,7 @@ void setup() {
     return ACBase::CMD_DECLINE;
   });
 
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject  report) {
     report["state"] = machinestateName[machinestate];
     report["pings_send"] = pings_send;
     report["pings_recv"] = pings_recv;

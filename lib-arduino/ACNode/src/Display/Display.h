@@ -5,6 +5,8 @@
 #include <Adafruit_SH110X.h>
 #include "Display/fonts.h"
 
+#include "Adafruit_NoOLED.h"
+
 #ifndef ADAFRUIT_GFX_DEGREE_SYMBOL
 // #define ADAFRUIT_GFX_DEGREE_SYMBOL (247)
 #define ADAFRUIT_GFX_DEGREE_SYMBOL (0x5e) // ^
@@ -17,6 +19,7 @@
 class Display : public Adafruit_SH1106G {
 private:
     typedef Adafruit_SH1106G super;
+    bool _headless = false;
 public:
     Display(uint16_t w, uint16_t h, TwoWire *twi = &Wire,
                    int16_t rst_pin = -1, uint32_t preclk = 400000,
@@ -24,8 +27,8 @@ public:
                    : Adafruit_SH1106G(w,h,twi,rst_pin,preclk,postclk),
                        SCREEN_WIDTH(w), SCREEN_HEIGHT(h) {};
                    
-    bool begin(uint8_t SCREEN_Address, bool reset = true, const char * bootmsg = NULL);
-    void setWebResponder(String urlPrefix, AsyncWebServer * _webServer);
+    bool begin(uint8_t SCREEN_Address, bool reset = true, const char * bootmsg = NULL, bool headless = false);
+    void setWebResponder(String urlPrefix, AsyncWebServer * _webServer, bool raw=false);
 
     void setDisplayScreensaver(bool on);
     
@@ -42,6 +45,9 @@ public:
     uint16_t widthOfString(String str);
 
     const unsigned short SCREEN_WIDTH, SCREEN_HEIGHT;
+    inline void display(void) {
+	if (!_headless) super::display();
+    };
 };
 
 

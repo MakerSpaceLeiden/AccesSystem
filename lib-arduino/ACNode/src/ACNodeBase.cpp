@@ -5,7 +5,9 @@
 #include <esp_debug_helpers.h>
 #include "util/part.h"
 #include "esp_task_wdt.h"
+#include "esp_heap_caps.h"
 
+SET_LOOP_TASK_STACK_SIZE(16*1024);
 
 #ifdef ESP32
 #include <WiFi.h>
@@ -13,11 +15,7 @@
 #endif
 
 #include <WebSerialStream.h>
-// WebSerialStream  webSerialStream = WebSerialStream();
-
 #include <TelnetSerialStream.h>
-// TelnetSerialStream  telnetSerialStream = telnetSerialStream();
-
 #include <MqttlogStream.h>
 
 #ifdef SYSLOG_HOST
@@ -50,6 +48,8 @@ void ACNodeBase::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine
 void ACNodeBase::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
 
 static char mqtt_moi[20];
+
+#include "ACNodeBaseStatusPage.h"
 
 void ACNodeBase::CONSTS() {
     if (_acnodebase) {
@@ -97,6 +97,9 @@ void ACNodeBase::pop() {
          serializeJson(out, *response);
          request->send(response);
     });
+    _webServer->on("/state.html",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+         request->send(200, "text/html", (uint8_t *)htmlStatusPageContent, htmlStatusPageContentLength);
+    });
 
     Log.setTimestamp(true); 
     Log.setIdentifier("LOG");
@@ -104,6 +107,7 @@ void ACNodeBase::pop() {
     Debug.setTimestamp(true); 
     Debug.setIdentifier("DBG");
 
+#if 0
     const std::shared_ptr<LOGBase> & wh = std::make_shared<TelnetSerialStream>();
     Log.addPrintStream(wh);
     Debug.addPrintStream(wh);
@@ -121,6 +125,8 @@ void ACNodeBase::pop() {
 #endif
     Log.addPrintStream(syslogStream);
 #endif
+#endif
+
 };
 
 IPAddress ACNodeBase::localIP() {
@@ -312,10 +318,12 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
 
     size_t max = MAX_MSG;
 
+#if 0
     if (Log.maxLine() < max) {
 	Log.setMaxLine(max);
 	Debug.setMaxLine(max);
     };
+#endif
 
 #ifdef HAS_SIG2
     // Extra space needed for signature, beat, etc.
@@ -372,7 +380,7 @@ const char * getHW(void) {
     return res;
 }
 
-void ACNodeBase::report(JsonObject & out) {
+void ACNodeBase::report(JsonObject out) {
     out[ "class" ] = name();
     out[ "node" ] = moi;
     out[ "machine" ] = machine;
@@ -407,6 +415,10 @@ void ACNodeBase::report(JsonObject & out) {
     out["coreTemp"]  = coreTemp();
 #endif
     out["heap_free"] = ESP.getFreeHeap();
+    out["heap_free8"] = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    out["heap_free8_min"] = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+    out["heap_free8_largest"] = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    out["stack_size"] = getArduinoLoopTaskStackSize();
    
     // attempt to track down MQTT issue.
     //
@@ -444,14 +456,39 @@ void ACNodeBase::loop() {
     {	static unsigned long last = 0;
         if (millis() - last > _report_period) {
             last = millis();
+
+            char topic[128];
+	    snprintf(topic, sizeof(topic), "%s/report/%s", mqtt_topic_prefix, moi);
+	    topic[sizeof(topic)-1]='\0';
+
             JsonDocument jsonDoc;
             JsonObject out = jsonDoc.to<JsonObject>();
             report(out);
-            
-            String buff;
-            serializeJson(jsonDoc, buff);
-            //        if (buff.length() > MAX_MSG) buff = buff.substring(0, MAX_MSG);
-            Log.println(buff);
+
+	    struct NullWriter {
+                size_t write(uint8_t c) { return 1; };
+                size_t write(const uint8_t *buffer, size_t length) { return length; };
+            } _nullwriter;
+            size_t len = serializeJson(jsonDoc, _nullwriter);
+
+	    // We really want to avoid creating another copy of this 2k payload; as
+	    // it fragments the stack. So we use a custom writer and a leaner interface
+            // that does not make its own copy.
+            //
+            if (_client.beginPublish(topic, len, false)) {
+	        struct PubSubWriter {
+		    PubSubClient * _ptr;
+                    size_t write(uint8_t c) { return _ptr->write(c); };
+                    size_t write(const uint8_t *buffer, size_t length) { return _ptr->write(buffer,length); };
+                } _pswriter = { ._ptr = &_client };
+                size_t actual = serializeJson(jsonDoc, _pswriter); 
+		Debug.println();
+                _client.endPublish();
+		if (actual != len)
+			Log.printf("Only wrote %d bytes of a %d report to mqtt#%s", actual, len, topic);
+            } else {
+		Log.printf("Could not write report of %d bytres to mqtt#%s", len, topic);
+	    };
         }
     }
     // XX to hook into a callback of the ethernet/wifi
@@ -532,7 +569,6 @@ void ACNodeBase::delayedReboot() {
     warn_counter ++;
 }
 
-
 String since(unsigned long up) {
     String unit = "s";
     if (!up)
@@ -551,7 +587,7 @@ String ACNodeBase::uptime() {
 };
 
 const char * ACNodeBase::state2str(int state) {
-#if __ATMEL_8BIT
+#ifdef __ATMEL_8BIT
     static char buff[10]; snprintf(buff, sizeof(buff), "Error: %d", state);
     return buff;
 #else

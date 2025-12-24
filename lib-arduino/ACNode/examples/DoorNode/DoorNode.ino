@@ -112,7 +112,7 @@ void setup() {
     door_denied_count ++;
   });
 
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject  report) {
     report["state"] = state[machinestate].label;
     report["opening_door_count"] = opening_door_count;
     report["door_denied_count"] = door_denied_count;

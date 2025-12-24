@@ -93,7 +93,7 @@ public:
     // it from a C callback in the mqtt subsystem.
     //
     void process(const char * topic, const char * payload);
-    void report(JsonObject & report);
+    void report(JsonObject  report);
 
     void checkClearEEPromAndCacheButtonPressed(uint8_t button);
 private:

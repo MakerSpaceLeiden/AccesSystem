@@ -370,7 +370,7 @@ _return_request_approval:
         return;
 }
 
-void ACNodeSIG::report(JsonObject & out) {
+void ACNodeSIG::report(JsonObject  out) {
     if (_start_beat == 0)
         if (beatCounter > 50000)
             _start_beat =beatCounter +  millis()/1000;

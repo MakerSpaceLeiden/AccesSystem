@@ -110,7 +110,7 @@ void setup() {
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  node.onReport([](JsonObject & report) {
+  node.onReport([](JsonObject  report) {
     char tmp[256];
     snprintf(tmp, sizeof(tmp), "%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__, __TIME__);
     report["fw"] = tmp;

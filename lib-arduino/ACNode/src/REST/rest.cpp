@@ -6,6 +6,7 @@
 #include <Preferences.h>
 
 #include <nvs_flash.h>
+#include <esp_heap_caps.h>
 
 #include "mbedtls/md.h"
 #include "mbedtls/base64.h"
@@ -51,6 +52,8 @@ const char * stationname = "unset";
 
 const unsigned short KS_VERSION = 0x100;
 
+static WiFiClientSecure client;
+static HTTPClient https;
 
 static const char * h2s(int i) {
     switch(i) {
@@ -160,8 +163,6 @@ void wipekeys() {
 }
 
 rest_ret_t fetchCA(const char * terminalName) {
-    WiFiClientSecure client;
-    HTTPClient https;
     rest_ret_t ret = ERR_FATAL;
     
     const mbedtls_x509_crt *peer ;
@@ -206,9 +207,7 @@ exit:
 }
 
 rest_ret_t registerDevice(const char * terminalName) {
-    WiFiClientSecure client;
     const mbedtls_x509_crt *peer ;
-    HTTPClient https;
     int httpCode;
     unsigned char tmp[128], buff[1024], sha256[256 / 8];
     bool ok = false;
@@ -299,9 +298,7 @@ exit:
 };
 
 rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
-    WiFiClientSecure client;
     const mbedtls_x509_crt *peer ;
-    HTTPClient https;
     int httpCode;
     unsigned char tmp[128], buff[1024], sha256[256 / 8];
     bool ok = false;
@@ -463,11 +460,7 @@ exit:
 };
 
 size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret, String encodedpostargs) {
-    WiFiClientSecure client;
     unsigned char sha256[32];
-    JsonDocument res;
-    HTTPClient https;
-    DeserializationError error;
     int len = 0;
     size_t l = 0;
     unsigned char * buff = NULL;
@@ -475,9 +468,9 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
 
     *ret = ERR_FATAL;
     
-    client.setCACert(ca_root);
-    client.setCertificate(client_cert_as_pem);
-    client.setPrivateKey(client_key_as_pem);
+    client.setCACert(ca_root); 
+    client.setCertificate(client_cert_as_pem); 
+    client.setPrivateKey(client_key_as_pem); 
     
     if (!https.begin(client, url)) {
         Log.println("setup fail");
@@ -563,7 +556,8 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
             buff = *buffp;
         
         if (buff == NULL) {
-            Log.printf("raw_rest: malloc(%lu) failed\n",max);
+            Log.printf("raw_rest: malloc(%lu) failed, free: %lu, min %lu, largest %lu\n",max, 
+		heap_caps_get_free_size(MALLOC_CAP_8BIT), heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
             *ret = ERR_FATAL;
             goto exit;
         }
@@ -640,12 +634,10 @@ exit:
 }
 
 JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * retp, String encodedpostargs) {
-    JsonDocument res;
-    DeserializationError error;
-    
     unsigned char * buff = NULL; //
     size_t len = 32 * 1024; // Capped; set to zero to uncap.
     size_t n = raw_rest(terminalName,url,&len,&buff,retp, encodedpostargs);
+    JsonDocument res;
     
     if (*retp != NOERROR)
         goto exit;
@@ -655,11 +647,13 @@ JsonDocument raw_rest(const char * terminalName, const char *url, rest_ret_t * r
         *retp = ERR_FATAL;
         goto exit;
     };
-    
-    error = deserializeJson(res, (const char *)buff, n);
-    if (error) {
-        Log.printf("raw_rest: Deserialize of JSON failed: %s\n", error.c_str());
-        *retp = ERR_RETRYABLE;
+  
+    { 
+       DeserializationError error = deserializeJson(res, (const char *)buff, n);
+       if (error) {
+           Log.printf("raw_rest: Deserialize of JSON failed: %s\n", error.c_str());
+           *retp = ERR_RETRYABLE;
+       };
     };
 exit:
     if (buff) free(buff);

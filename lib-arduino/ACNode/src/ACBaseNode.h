@@ -176,7 +176,7 @@ public:
     ACNodeBase& onDenied(THandlerFunction_SimpleCallback fn)
     { _denied_callback = fn; return *this; };
     
-    typedef std::function<void(JsonObject &report)> THandlerFunction_Report;
+    typedef std::function<void(JsonObject report)> THandlerFunction_Report;
     void onReport(THandlerFunction_Report fn)
     { _report_callback = fn; return; };
     
@@ -200,7 +200,7 @@ public:
         Log.printf("%s: Not IMPLEMENTED\n", __PRETTY_FUNCTION__);
     }
 
-    void report(JsonObject & report);
+    void report(JsonObject  report);
    
     PubSubClient _client = PubSubClient(_espClient);
     char mqtt_topic_prefix[MAX_NAME];
