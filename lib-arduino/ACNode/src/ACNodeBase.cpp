@@ -6,8 +6,9 @@
 #include "util/part.h"
 #include "esp_task_wdt.h"
 #include "esp_heap_caps.h"
+#include "esp_sntp.h"
 
-SET_LOOP_TASK_STACK_SIZE(16*1024);
+SET_LOOP_TASK_STACK_SIZE(12*1024);
 
 #ifdef ESP32
 #include <WiFi.h>
@@ -252,7 +253,8 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
         debugFlash();
 #endif
     checkClearEEPromAndCacheButtonPressed(clear_button);
-   
+  
+    esp_sntp_servermode_dhcp(1);  
 #ifdef ESP32
     // if (_wired)
     if (true)
