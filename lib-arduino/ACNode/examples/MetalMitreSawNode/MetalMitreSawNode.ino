@@ -130,7 +130,7 @@ void setup() {
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  node.onReport([](JsonObject &report) {
+  node.onReport([](JsonObject report) {
     report["bad_poweroff"] = bad_poweroff;
     report["normal_poweroff"] = normal_poweroff;
     report["no_coolant_longruns"] = no_coolant;

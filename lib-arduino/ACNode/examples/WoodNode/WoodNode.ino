@@ -105,7 +105,7 @@ void setup() {
     Log.printf("Error %d\n", err);
     machinestate = WAITINGFORCARD;
   });
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject  report) {
     report["state"] = state[machinestate].label;
   });
   currentSensor.onCurrentOn([](void) {

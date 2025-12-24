@@ -296,7 +296,7 @@ void setup() {
     node.setNodeDeck(&gasDeck);
     node.setNodeDeck(&machineDeck);
     
-    node.onReport([](JsonObject & report) {
+    node.onReport([](JsonObject  report) {
         char * p = __FILE__;
         char * q = rindex(p,'/');
         if (q) p = q;

@@ -120,7 +120,7 @@ void setup() {
     return ACBase::CMD_DECLINE;
   });
 
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject  report) {
     report["button_poweron"] = button_poweron;
     report["button_poweroff"] = button_poweroff;
 

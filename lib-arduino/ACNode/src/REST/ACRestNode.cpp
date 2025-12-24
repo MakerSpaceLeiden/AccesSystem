@@ -144,7 +144,10 @@ void ACNodeRest::loop() {
 	ApprovalEntryWithTag et = *(_approvedTagsToSent.begin());
         _approvedTagsToSent.pop_front();
 
+	// HTTP
         _approvalAPI->sendBestEffortTagApproved(et.tag);
+
+	// MQTT old style
 	{
 	        JsonDocument payload;
 	        payload["name"] = et.e.name;
@@ -160,8 +163,8 @@ void ACNodeRest::loop() {
 		_client.publish("ac/log/master",("JSON="+payloadAsString).c_str());
 	};
 
-	// Signed replacement for public message
-	//
+	// MQTT new style
+        // Signed replacement for public message
 	{
 	        JsonDocument payload;
 	        payload["iss"] = String(moi) + "/" + String(machine);
@@ -181,5 +184,18 @@ void ACNodeRest::loop() {
         
 	lst = millis();
     };
-}
 
+    // Check if we need to reboot -- we do this every 3rd day; between 3am and 7am
+    // in the morning if we've been idle for at 60 minutes.
+    //
+    time_t now = time(NULL);
+    struct tm * t = localtime(&now);
+    if ((t->tm_yday % 3 == 0) &&
+        (t->tm_hour >= 3) &&  (t->tm_hour <= 7) &&
+        machinestate.safeForOTA() &&
+        (machinestate.secondsInThisState() > 3600) && 
+        (uptimeInSeconds() > 5*3600)) {
+              Log.println("Automatic 3rd day nightly reboot initiated");
+              machinestate = MachineState::REBOOT;
+    }
+}

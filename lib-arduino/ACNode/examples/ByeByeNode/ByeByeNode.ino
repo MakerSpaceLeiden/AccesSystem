@@ -102,7 +102,7 @@ void setup() {
     machinestate = REJECTED;
   });
 
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject  report) {
     report["swipeouts"] = swipeouts_count;
   });
 

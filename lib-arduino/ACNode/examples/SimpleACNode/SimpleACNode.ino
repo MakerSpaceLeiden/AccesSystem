@@ -186,7 +186,7 @@ void setup() {
     Debug.printf("Button 2 changed to %d\n", state);
   });
 
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject  report) {
     report["state"] = state[machinestate].label;
 
     report["powered_time"] = powered_total + ((machinestate == POWERED) ? ((millis() - powered_last) / 1000) : 0);

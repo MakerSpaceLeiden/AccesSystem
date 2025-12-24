@@ -212,7 +212,7 @@ void setup() {
   node.set_mqtt_prefix("ac");
   node.set_master("master");
 
-  node.onReport([](JsonObject &report) {
+  node.onReport([](JsonObject report) {
     report["WhCounter"] = whCounter;
     report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
   });

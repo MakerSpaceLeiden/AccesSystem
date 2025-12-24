@@ -90,7 +90,7 @@ void setup() {
 
   node.setOTAPasswordHash(ota_password_hash);
 
-  node.onReport([](JsonObject &report) {
+  node.onReport([](JsonObject report) {
     char tmp[256];
     snprintf(tmp, sizeof(tmp), "%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__, __TIME__);
     report["fw"] = tmp;

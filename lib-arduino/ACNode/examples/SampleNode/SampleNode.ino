@@ -89,7 +89,7 @@ void setup() {
     machinestate = MachineState::WAITINGFORCARD;
   });
 
-  node.onReport([](JsonObject  & report) {
+  node.onReport([](JsonObject  report) {
     report["button_count"] = button_count;
   });
 
