@@ -135,7 +135,6 @@ public:
     void addDeck(Deck * deck);
     Deck * currentDeck() { return _deskCtrl->current(); };
 
-    const char * urlLogPrefix() { return "/log"; };
 protected:
     LED * errorLed = NULL;
     void pop();

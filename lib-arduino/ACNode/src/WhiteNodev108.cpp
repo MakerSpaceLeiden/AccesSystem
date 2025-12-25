@@ -144,9 +144,8 @@ void WhiteNodev108::begin(bool hasDisplay) {
     if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)""), hasDisplay) {
 	_display->setRotation(2);
         _display->setWebResponder("/display.pbm", webServer());
-        webServer()->on("/display.html",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+        webServer()->on("/display",  HTTP_GET, [this](AsyncWebServerRequest *request) {
              request->send(200, "text/html", (uint8_t *)htmlDisplayPageContent, htmlDisplayPageContentLength);
-		Log.println("Sending display page");
         });
     };
  

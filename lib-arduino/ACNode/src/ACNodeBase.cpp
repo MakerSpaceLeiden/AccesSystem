@@ -50,7 +50,7 @@ void ACNodeBase::set_moi(const char *p)  { safestrncpy(moi,p, sizeof(moi)); };
 void ACNodeBase::set_machine(const char *p)  { safestrncpy(machine,p, sizeof(machine)); };
 void ACNodeBase::set_master(const char *p)  { safestrncpy(master,p, sizeof(master)); };
 
-static char mqtt_moi[20];
+static char mqtt_moi[24];
 
 #include "ACNodeBaseStatusPage.h"
 
@@ -112,7 +112,7 @@ void ACNodeBase::pop() {
          serializeJson(out, *response);
          request->send(response);
     });
-    _webServer->on("/state.html",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+    _webServer->on("/state",  HTTP_GET, [this](AsyncWebServerRequest *request) {
          request->send(200, "text/html", (uint8_t *)htmlStatusPageContent, htmlStatusPageContentLength);
     });
 
@@ -126,7 +126,7 @@ void ACNodeBase::pop() {
     Log.addPrintStream(wh);
     Debug.addPrintStream(wh);
 
-    const std::shared_ptr<LOGBase> & th = std::make_shared<WebSerialStream>(webServer(),urlLogPrefix());
+    const std::shared_ptr<LOGBase> & th = std::make_shared<WebSerialStream>(webServer(),"/log");
     Debug.addPrintStream(th);
     Log.addPrintStream(th);
 
@@ -325,6 +325,9 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     Log.println("MDNS Responder started");
     MDNS.begin(moi);
 
+    if (mqtt_port ==0)
+        mqtt_port = MQTT_DEFAULT_PORT;
+
     _client.setServer(mqtt_server, mqtt_port);
 
     char topic[256];
@@ -354,17 +357,13 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     // It is safe to start logging early - as these won't emit anyting until
     // the network is known to be up.
     //
-//    mqttlogStream = new MqttStream(&_client, topic);    
     const std::shared_ptr<LOGBase> & mh = std::make_shared<MqttStream>(_client, topic);
     Log.addPrintStream(mh);
 
     if (*moi == 0)
         safestrncpy(moi,"no-mqtt-id",sizeof(moi));
-    
-    if (mqtt_port ==0)
-        mqtt_port = MQTT_DEFAULT_PORT;
+    safesnprintf(mqtt_moi,sizeof(mqtt_moi), "%06lx-%s", esp_random(),moi);
 
-    safesnprintf(mqtt_moi,sizeof(mqtt_moi), "%06lx%s", esp_random(),moi);
     Log.printf("MQTT: initialized mqtt://%s@%s:%d/%s\n", mqtt_moi, mqtt_server, mqtt_port, mqtt_topic_prefix);
 
 #ifdef CONFIGAP
@@ -438,7 +437,7 @@ void ACNodeBase::report(JsonObject out) {
     out["mqtt_port"] = mqtt_port;
     out["mqtt_isUp"] = isUp();
     out["mqtt_isConnected"] = isConnected();
- 
+
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it)
         (*it)->report(out);

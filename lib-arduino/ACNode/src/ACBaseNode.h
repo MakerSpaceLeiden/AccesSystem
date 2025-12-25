@@ -150,7 +150,6 @@ public:
     void delayedReboot();
    
     AsyncWebServer * webServer() { return _webServer; };
-    String urlLogPrefix() { return "/"; };
  
     // Callbacks.
     typedef std::function<void(acnode_error_t)> THandlerFunction_Error;
