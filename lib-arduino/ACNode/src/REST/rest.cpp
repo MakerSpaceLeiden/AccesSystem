@@ -124,7 +124,7 @@ rest_ret_t setupAuth(const char * terminalName) {
             Log.println("Sign/DER error. Aborting");
             return ERR_RETRYABLE;
         };
-        Log.printf("Not yet paired. Need working network for this\n", version);
+        Log.printf("Not yet paired. Need working network for this\n");
     } else {
         Log.printf("Using existing keys (keystore version 0x%03x), fully configured\n", version);
         paired = true;
@@ -166,8 +166,6 @@ rest_ret_t fetchCA(const char * terminalName) {
     rest_ret_t ret = ERR_FATAL;
     
     const mbedtls_x509_crt *peer ;
-    bool ok = false;
-    
     updateDisplay_progressText("fetching CA");
     
     // Sadly required - due to a limitation in the current SSL stack we must
@@ -197,7 +195,6 @@ rest_ret_t fetchCA(const char * terminalName) {
     ca_root = der2pem("CERTIFICATE", peer->raw.p, peer->raw.len);
     
     updateDisplay_progressText("CA Cert fetched");
-    ok = true;
     ret = NOERROR;
     
 exit:
@@ -210,7 +207,6 @@ rest_ret_t registerDevice(const char * terminalName) {
     const mbedtls_x509_crt *peer ;
     int httpCode;
     unsigned char tmp[128], buff[1024], sha256[256 / 8];
-    bool ok = false;
     rest_ret_t ret = ERR_FATAL;
     
     client.setCACert(ca_root);
@@ -276,7 +272,7 @@ rest_ret_t registerDevice(const char * terminalName) {
 	char tmp[65];
         sha256toHEX(sha256_client, tmp);
 	fingerprint_from_pem(client_cert_as_pem, sha256_client);
-        Log.printf("Register device failed (there is already terminal with the name <%s> and this fingerprint paired in the CRM).\n", 
+        Log.printf("Register device failed (there is already terminal with the name %s and fingerprint %s paired in the CRM).\n", 
 		terminalName, sha256toHEX(sha256_client, tmp));
         ret = ERR_FATAL;
         goto exit;
@@ -301,7 +297,6 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     const mbedtls_x509_crt *peer ;
     int httpCode;
     unsigned char tmp[128], buff[1024], sha256[256 / 8];
-    bool ok = false;
     rest_ret_t ret = ERR_FATAL;
     
     client.setCACert(ca_root);
@@ -450,7 +445,6 @@ rest_ret_t registerDeviceSwipe(const char * terminalName, const char * tag) {
     }
     
     Log.println("We are fully paired - we've proven to each other we know the secret & there is no MITM.");
-    ok = true;
     
     ret = NOERROR;
 exit:
@@ -522,13 +516,13 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     
     
     if (httpCode == HTTP_CODE_NOT_FOUND) {
-        Log.printf("raw_rest: not-found: %s(%d): %s\n", https.errorToString(httpCode), httpCode, https.getString().c_str());
+        Log.printf("raw_rest: not-found: %s(%d): %s\n", https.errorToString(httpCode).c_str(), httpCode, https.getString().c_str());
         *ret = ERR_RETRYABLE;
         goto exit;
     };
     
     if (httpCode != HTTP_CODE_OK) {
-        Log.printf("raw_rest: failed: %s(%d):  %s\n", https.errorToString(httpCode), httpCode, https.getString().c_str());
+        Log.printf("raw_rest: failed: %s(%d):  %s\n", https.errorToString(httpCode).c_str(), httpCode, https.getString().c_str());
         *ret = ERR_RETRYABLE;
         goto exit;
     };
@@ -556,7 +550,7 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
             buff = *buffp;
         
         if (buff == NULL) {
-            Log.printf("raw_rest: malloc(%lu) failed, free: %lu, min %lu, largest %lu\n",max, 
+            Log.printf("raw_rest: malloc(%u) failed, free: %u, min %u, largest %u\n",max, 
 		heap_caps_get_free_size(MALLOC_CAP_8BIT), heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
             *ret = ERR_FATAL;
             goto exit;

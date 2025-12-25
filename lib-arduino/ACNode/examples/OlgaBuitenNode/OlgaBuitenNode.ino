@@ -100,8 +100,6 @@ unsigned long opening_door_count = 0, door_denied_count = 0, key_open_count = 0,
 
 IODebounce *doorOpenDetect, *doorUnlockDetect, *redButtonDetect, *greenButtonDetect;
 
-static const size_t ihf = ESP.getFreeHeap();
-
 // we're not yet including a holiday schedule or anyting like that yet.
 // will add some rest API to the CRM for this at some point.
 //
@@ -296,15 +294,7 @@ void setup() {
   node.addHandler(greenButtonDetect);
 
   node.onApproval([](const char *machine) {
-    ApprovalEntry *e = node.lastApproved();
-    const char *name = "not-disclosed";
-
-    if (e && e->shortName)
-      name = e->shortName.c_str();
-    else if (e && e->name)
-      name = e->name.c_str();
-
-    Log.printf("Engaging the solenoid/buzzer for %s\n", name);
+    Log.printf("Engaging the solenoid/buzzer for %s\n", node.lastApproved()->name);
 
     node.machinestate = (doorstate == UNLOCKED) ? BRACKET : BUZZING;
     opening_door_count++;
@@ -321,6 +311,7 @@ void setup() {
     char tmp[256];
     snprintf(tmp, sizeof(tmp), "%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__, __TIME__);
     report["fw"] = tmp;
+
     report["count_open"] = opening_door_count;
     report["count_key_open"] = key_open_count;
     report["count_denied"] = door_denied_count;
@@ -328,7 +319,6 @@ void setup() {
     report["count_button_unlock"] = unlock_count;
     report["count_button_to_passstate"] = pass_count;
     report["count_unexpected_alerts"] = alert_count;
-    report["heap_free_ihf"] = ihf;
   });
 
   // Increase LED current to 2/4 of max (default is 1/4, Imax=37mA) to

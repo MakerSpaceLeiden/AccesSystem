@@ -53,11 +53,8 @@ private:
 };
 
 bool PaymentAPI::pay(const char *tag, double amount, const char *lbl) {
-    char buff[512];
     char desc[256];
-    char tmp[256];
-    
-    snprintf(desc, sizeof(desc), "%s. Paid at %s", lbl, _restAPI->stationname());
+    safesnprintf(desc, sizeof(desc), "%s. Paid at %s", lbl, _restAPI->stationname().c_str());
     
     JsonDocument res = _restAPI->get(PAY_URL PAY_PATH,encodeargs({
         "node", String(_restAPI->stationname()),
@@ -246,7 +243,7 @@ void PaymentAPI::loop() {
     	fetchPricelist();
 }
 
-void PaymentAPI::report(JsonObject& report) {
+void PaymentAPI::report(JsonObject report) {
     report["payment"] = ready();
     report["pricelist"] = pricelist ? pricelist->items.size() : 0;
     if (pricelist)

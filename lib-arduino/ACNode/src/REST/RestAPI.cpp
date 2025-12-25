@@ -21,6 +21,8 @@ void RestAPI::begin() {
         case ERR_FATAL:
             md = WIFI_FAIL_REBOOT;
             break;
+        case ERR_REPAIR:
+            break;
     };
 }
 
@@ -64,7 +66,7 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
             paired = false;
             md = WAITING_FOR_NTP;
             break;
-        case RETRYABLE_FAIL:
+        case ERR_RETRYABLE:
             md = WAITING_FOR_NTP;
             break;
     }
@@ -80,7 +82,7 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
 
 bool RestAPI::rest(const char *url,String encodedpostargs) {
     rest_ret_t ret = ERR_FATAL;
-    size_t n = raw_rest(_terminalName,url,NULL,NULL,&ret,encodedpostargs);
+    raw_rest(_terminalName,url,NULL,NULL,&ret,encodedpostargs);
     return ret == NOERROR;
 }
 
@@ -100,7 +102,7 @@ JsonDocument RestAPI::get(const char *url,String encodedpostargs) {
             paired = false;
             md = WAITING_FOR_NTP;
             break;
-        case RETRYABLE_FAIL:
+        case ERR_RETRYABLE:
             md = WAITING_FOR_NTP;
             break;
     }
@@ -191,6 +193,13 @@ void RestAPI::loop()
                     md = WAIT_FOR_REGISTER_SWIPE;
                     _pair_cb();
                     break;
+                case ERR_RETRYABLE:
+		    Debug.println("Retry registerDevice");
+		    break;
+                case ERR_FATAL:
+                case ERR_REPAIR:
+                    md = WAITING_FOR_NTP;
+                    break;
             }
             break;
         case WAIT_FOR_REGISTER_SWIPE:
@@ -260,7 +269,7 @@ void RestAPI::loop()
 
 extern unsigned char sha256_client[32]; // cheat
 
-void RestAPI::report(JsonObject& report) {
+void RestAPI::report(JsonObject report) {
     report["rest"] = ready();
     report["rest_label"] = getStatLabel();
 

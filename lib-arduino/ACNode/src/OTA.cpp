@@ -2,23 +2,35 @@
 #include <OTA.h>
 #include "util/part.h"
 
-OTA::OTA(const char * password) : _ota_password_hash(password) {};
+OTA::OTA(const char * password) : _ota_password_hash(password) {
+    if (!_ota_password_hash) {
+        Log.println("**** WARNING -- NO OTA PASSWORD SET *****");
+	return;
+    };
+
+    ArduinoOTA.setPasswordHash(_ota_password_hash);
+
+    size_t l = strlen(_ota_password_hash);
+
+    if (l != 32 && l != 64) {
+            safestrcpy(_ota_masked_password_hash,"****");
+	    return;
+    };
+
+    strncpy(_ota_masked_password_hash, _ota_password_hash, 3);
+    strncpy(_ota_masked_password_hash+3, "...", 3);
+    strncpy(_ota_masked_password_hash+6, _ota_password_hash+ l - 3, 3);
+} 
 
 void OTA::begin() {
     ArduinoOTA.setHostname((_acnodebase->moi[0]) ? _acnodebase->moi : "unset-acnode");
-    
-    if (_ota_password_hash)
-        ArduinoOTA.setPasswordHash(_ota_password_hash);
-    else
-        Log.println("**** WARNING -- NO OTA PASSWORD SET *****");
     
     ArduinoOTA.onStart([]() {
         if (strstr(_acnodebase->moi,"test"))
             Log.println("OTA process started (trusting though - not wiping private keys).");
         else {
             Log.println("OTA process started -- wiping private keys.");
-            extern void wipe_eeprom();
-            wipe_eeprom();
+            // wipe_eeprom();
             Log.println("Keys wiped. Do not forget to reset the TOFU on the server.");
         };
         Serial.print("Progress: 0%");
@@ -55,17 +67,10 @@ void OTA::begin() {
     Debug.println("OTA Enabled");
 }
 
-void OTA::report(JsonObject& report) {
+void OTA::report(JsonObject report) {
     report["ota"] = true;
     report["ota_hash"] = passwdType();
-
-    size_t l = _ota_password_hash ? strlen(_ota_password_hash) : 0;
-    if (l == 32 || l == 64) {
-        char hash[] = "XXX...XXX";
-        strncpy(hash, _ota_password_hash, 3);
-        strncpy(hash+6, _ota_password_hash+ l - 3, 3);
-        report["ota_pass"] = hash;
-    };
+    report["ota_pass"] = _ota_masked_password_hash;
 }
 
 const char * OTA::passwdType() {
@@ -89,11 +94,6 @@ OTAWithDisplay::OTAWithDisplay(const char * password, Display *d, const char * h
 void OTAWithDisplay::begin() {
     const char * name = ((_hostname != NULL) && (_hostname[0] != '\0')) ? _hostname : "unset-acnode";
     ArduinoOTA.setHostname(name);
-
-    if (_ota_password_hash)
-        ArduinoOTA.setPasswordHash(_ota_password_hash);
-    else
-        Log.println("**** WARNING -- NO OTA PASSWORD SET *****");
 
     ArduinoOTA.onStart([&]() {
         if (_ota_ok_cb && !_ota_ok_cb()) {
@@ -174,7 +174,7 @@ void OTAWithDisplay::begin() {
         if (_otaOK && _display) {
             _display->updateDisplay("OTA","","",true);
             _display->updateDisplayStateMsg("update failed",0);
-            _display->updateDisplayStateMsg(cause,1);
+            _display->updateDisplayStateMsg(cause.c_str(),1);
             _display->updateDisplayProgressbar(0, true);
         };
         
@@ -195,7 +195,7 @@ void OTAWithDisplay::begin() {
 }
 
 void OTADeck::render_pane(bool refresh) {
-    if (!_display);
+    if (!_display)
 	return;
 
     if (!refresh)

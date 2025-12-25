@@ -118,8 +118,8 @@ public:
     
     void onSwipe(RFID::THandlerFunction_SwipeCB fn);
         
-    void updateDisplay(String left, String right, bool rebuildFull = false);
-    void updateDisplayStateMsg(String msg,int line = 1);
+    void updateDisplay(const char *left, const char *right, bool rebuildFull = false);
+    void updateDisplayStateMsg(const char *msg,int line = 1);
     
     void setOffCallback(ButtonCallback callback,int mode = CHANGE);
     void setMenuCallback(ButtonCallback callback,int mode = CHANGE);
@@ -134,7 +134,8 @@ public:
     void setNodeDeck(Deck * deck);
     void addDeck(Deck * deck);
     Deck * currentDeck() { return _deskCtrl->current(); };
-    
+
+    const char * urlLogPrefix() { return "/log"; };
 protected:
     LED * errorLed = NULL;
     void pop();

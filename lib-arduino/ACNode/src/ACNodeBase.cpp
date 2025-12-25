@@ -6,8 +6,9 @@
 #include "util/part.h"
 #include "esp_task_wdt.h"
 #include "esp_heap_caps.h"
+#include "esp_sntp.h"
 
-SET_LOOP_TASK_STACK_SIZE(16*1024);
+SET_LOOP_TASK_STACK_SIZE(12*1024);
 
 #ifdef ESP32
 #include <WiFi.h>
@@ -23,6 +24,8 @@ SET_LOOP_TASK_STACK_SIZE(16*1024);
 // SyslogStream syslogStream = SyslogStream();
 #endif
 
+#include "WhiteNodeIndexPage.h"
+
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
 float loopRate = 0;
@@ -35,17 +38,17 @@ float loopRate = 0;
 ACNodeBase *_acnodebase = NULL;
 
 void ACNodeBase::set_mqtt_host(const char *p) {
-    strncpy(mqtt_server,p, sizeof(mqtt_server));
+    safestrncpy(mqtt_server,p, sizeof(mqtt_server));
 };
 void ACNodeBase::set_mqtt_port(uint16_t p)  { mqtt_port = p; };
 
 void ACNodeBase::set_mqtt_prefix(const char *p)  {
-    strncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix));
+    safestrncpy(mqtt_topic_prefix,p, sizeof(mqtt_topic_prefix));
 }
-void ACNodeBase::set_mqtt_log(const char *p)  { strncpy(logpath,p, sizeof(logpath)); };
-void ACNodeBase::set_moi(const char *p)  { strncpy(moi,p, sizeof(moi)); };
-void ACNodeBase::set_machine(const char *p)  { strncpy(machine,p, sizeof(machine)); };
-void ACNodeBase::set_master(const char *p)  { strncpy(master,p, sizeof(master)); };
+void ACNodeBase::set_mqtt_log(const char *p)  { safestrncpy(logpath,p, sizeof(logpath)); };
+void ACNodeBase::set_moi(const char *p)  { safestrncpy(moi,p, sizeof(moi)); };
+void ACNodeBase::set_machine(const char *p)  { safestrncpy(machine,p, sizeof(machine)); };
+void ACNodeBase::set_master(const char *p)  { safestrncpy(master,p, sizeof(master)); };
 
 static char mqtt_moi[20];
 
@@ -66,20 +69,20 @@ void ACNodeBase::CONSTS() {
 };
 
 void ACNodeBase::pop() {
-    strncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
+    safestrncpy(mqtt_server, MQTT_SERVER, sizeof(mqtt_server));
     mqtt_port = MQTT_DEFAULT_PORT;
     _report_period = REPORT_PERIOD;
     
     moi[0] = 0;
     if (machine[0] == 0)
-        strncpy(machine, String("test-" + chipId() ).c_str(), sizeof(machine));
+        safestrncpy(machine, String("test-" + chipId() ).c_str(), sizeof(machine));
     if (moi[0] == 0)
-        strncpy(moi,machine,sizeof(moi));
+        safestrncpy(moi,machine,sizeof(moi));
    
-    strncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
-    strncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
-    strncpy(mqtt_topic_prefix, MQTT_PREFIX, sizeof(mqtt_topic_prefix));
-    strncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
+    safestrncpy(mqtt_topic_prefix, MQTT_TOPIC_PREFIX, sizeof(mqtt_topic_prefix));
+    safestrncpy(master, MQTT_TOPIC_MASTER, sizeof(master));
+    safestrncpy(mqtt_topic_prefix, MQTT_PREFIX, sizeof(mqtt_topic_prefix));
+    safestrncpy(logpath, MQTT_TOPIC_LOG, sizeof(logpath));
 
     // Set a sensible default - so we have something until
     // DHCP/ntp kick in.
@@ -87,6 +90,18 @@ void ACNodeBase::pop() {
     tzset();
    
     _webServer = new AsyncWebServer(80);
+    _webServer->on("/",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+         request->send(200, "text/html", 
+		(uint8_t *)htmlIndexPageContent, htmlIndexPageContentLength,
+		[this](const String &var) -> String {
+                    time_t now = time(NULL);
+		    if (var == "NODE") 
+		      return moi;
+		    if (var == "TIME") 
+		      return ctime(&now);
+    		    return emptyString;
+		});
+    });
     _webServer->on("/state.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
          AsyncResponseStream *response = request->beginResponseStream("application/json");
 
@@ -107,7 +122,6 @@ void ACNodeBase::pop() {
     Debug.setTimestamp(true); 
     Debug.setIdentifier("DBG");
 
-#if 0
     const std::shared_ptr<LOGBase> & wh = std::make_shared<TelnetSerialStream>();
     Log.addPrintStream(wh);
     Debug.addPrintStream(wh);
@@ -124,7 +138,6 @@ void ACNodeBase::pop() {
     syslogStream->setPort(SYSLOG_PORT);
 #endif
     Log.addPrintStream(syslogStream);
-#endif
 #endif
 
 };
@@ -160,7 +173,7 @@ ACNodeBase::ACNodeBase(const char * m, bool wired) :
 _ssid(NULL), _ssid_passwd(NULL), _wired(wired)
 {
     if (m && *m)
-        strncpy(machine,m, sizeof(machine));
+        safestrncpy(machine,m, sizeof(machine));
     CONSTS();
     pop();
 }
@@ -169,7 +182,7 @@ ACNodeBase::ACNodeBase(const char *m, const char * ssid , const char * ssid_pass
 _ssid(ssid), _ssid_passwd(ssid_passwd), _wired(false)
 {
     if (m && *m)
-        strncpy(machine,m, sizeof(machine));
+        safestrncpy(machine,m, sizeof(machine));
     CONSTS();
     pop();
 }
@@ -181,11 +194,11 @@ String ACNodeBase::chipId() {
     // We can't do 64 bit straight to string.
     uint32_t low = chipid & 0xFFFFFFFF;
     uint32_t high = chipid >> 32;
-    snprintf(buff,sizeof(buff),"%08lx%08lx", high, low);
+    safesnprintf(buff,sizeof(buff),"%08lx%08lx", high, low);
     return String(buff+4);
 #else
     uint32_t chipid = ESP.getChipId();
-    snprintf(buff,sizeof(buff),"%08x",chipid);
+    safesnprintf(buff,sizeof(buff),"%08x",chipid);
     return String(buff);
 #endif
 };
@@ -237,14 +250,14 @@ void ACNodeBase::_complete_begin(uint8_t clear_button) {
 void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t clear_button)
 {
     if (!*machine)
-        strncpy(machine, "unset-machine-name", sizeof(machine));
+        safestrncpy(machine, "unset-machine-name", sizeof(machine));
     
     if (!*moi)
-        strncpy(moi, machine, sizeof(moi));
+        safestrncpy(moi, machine, sizeof(moi));
     
     if (strncmp(moi,"test-",5) == 0) {
-        snprintf(moi,sizeof(moi)-1,"%s-%s",moi,chipId().c_str());
-        moi[sizeof(moi)-1] = '\0';
+        char * p = moi + strlen(moi);
+        safesnprintf(p,sizeof(moi)-strlen(moi),"-%s",chipId().c_str());
     };
     
 #if 0
@@ -252,7 +265,8 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
         debugFlash();
 #endif
     checkClearEEPromAndCacheButtonPressed(clear_button);
-   
+  
+    esp_sntp_servermode_dhcp(1);  
 #ifdef ESP32
     // if (_wired)
     if (true)
@@ -314,7 +328,7 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     _client.setServer(mqtt_server, mqtt_port);
 
     char topic[256];
-    snprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
+    safesnprintf(topic, sizeof(topic), "%s/%s/%s", mqtt_topic_prefix, logpath, moi);
 
     size_t max = MAX_MSG;
 
@@ -345,13 +359,12 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     Log.addPrintStream(mh);
 
     if (*moi == 0)
-        strncpy(moi,"no-mqtt-id",sizeof(moi));
+        safestrncpy(moi,"no-mqtt-id",sizeof(moi));
     
     if (mqtt_port ==0)
         mqtt_port = MQTT_DEFAULT_PORT;
 
-    snprintf(mqtt_moi,sizeof(mqtt_moi)-1, "%06lx%s", esp_random(),moi);
-    mqtt_moi[sizeof(mqtt_moi)-1] = '\0';
+    safesnprintf(mqtt_moi,sizeof(mqtt_moi), "%06lx%s", esp_random(),moi);
     Log.printf("MQTT: initialized mqtt://%s@%s:%d/%s\n", mqtt_moi, mqtt_server, mqtt_port, mqtt_topic_prefix);
 
 #ifdef CONFIGAP
@@ -373,9 +386,8 @@ const char _sdk[] = \
 const char * getHW(void) {
     static char res[48];
     if (!*res) {
-	snprintf(res, sizeof(res)-1,  "Arduino-" ARDUINO_BOARD "/%s.%u",
+	safesnprintf(res, sizeof(res),  "Arduino-" ARDUINO_BOARD "/%s.%u",
     		ESP.getChipModel(), ESP.getChipRevision());
-	res[sizeof(res)-1] = 0;
     };
     return res;
 }
@@ -387,12 +399,12 @@ void ACNodeBase::report(JsonObject out) {
     
     out[ "maxMqtt" ] = MAX_MSG;
     
-    char chipstr[30]; strncpy(chipstr,chipId().c_str(),sizeof(chipstr));
+    char chipstr[30]; safestrncpy(chipstr,chipId().c_str(),sizeof(chipstr));
     out[ "id" ] = chipstr;
-    char ipstr[30]; strncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
+    char ipstr[30]; safestrncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
     out[ "ip" ] = ipstr;
     out[ "net" ] = _wired ? "UTP" : "WiFi";
-    char macstr[30]; strncpy(macstr, macAddressString().c_str(),sizeof(macstr));
+    char macstr[30]; safestrncpy(macstr, macAddressString().c_str(),sizeof(macstr));
     out[ "mac" ] = macstr;
     out[ "board" ] = getHW();
     out[ "sdk" ] = _sdk;
@@ -458,8 +470,7 @@ void ACNodeBase::loop() {
             last = millis();
 
             char topic[128];
-	    snprintf(topic, sizeof(topic), "%s/report/%s", mqtt_topic_prefix, moi);
-	    topic[sizeof(topic)-1]='\0';
+	    safesnprintf(topic, sizeof(topic), "%s/report/%s", mqtt_topic_prefix, moi);
 
             JsonDocument jsonDoc;
             JsonObject out = jsonDoc.to<JsonObject>();
@@ -560,8 +571,8 @@ void ACNodeBase::delayedReboot() {
         ESP.restart();
     };
     
-    char buff[255];
-    snprintf(buff,MAX_MSG,"Countdown to forced reboot: %d", 5 - warn_counter);
+    char buff[48];
+    safesnprintf(buff,sizeof(buff),"Countdown to forced reboot: %d", 5 - warn_counter);
     
     Log.println(buff);
     
@@ -588,7 +599,7 @@ String ACNodeBase::uptime() {
 
 const char * ACNodeBase::state2str(int state) {
 #ifdef __ATMEL_8BIT
-    static char buff[10]; snprintf(buff, sizeof(buff), "Error: %d", state);
+    static char buff[10]; safesnprintf(buff, sizeof(buff), "Error: %d", state);
     return buff;
 #else
     switch (state) {

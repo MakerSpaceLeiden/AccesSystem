@@ -28,21 +28,21 @@ public:
                        SCREEN_WIDTH(w), SCREEN_HEIGHT(h) {};
                    
     bool begin(uint8_t SCREEN_Address, bool reset = true, const char * bootmsg = NULL, bool headless = false);
-    void setWebResponder(String urlPrefix, AsyncWebServer * _webServer, bool raw=false);
+    void setWebResponder(const char * urlPrefix, AsyncWebServer * _webServer, bool raw = false);
 
     void setDisplayScreensaver(bool on);
     
-    void updateDisplay(const char * title, String left, String right, bool rebuildFull = false);
-    void updateDisplayStateMsg(String msg,int line = 0);
+    void updateDisplay(const char * title, const char *left, const char * right, bool rebuildFull = false);
+    void updateDisplayStateMsg(const char * msg,int line = 0);
     void updateDisplayProgressbar(unsigned int percentage, bool rebuildFull = false);
 
     void drawCentredBitmap(const unsigned char * bitmap, unsigned short w, unsigned short h, unsigned char col);
 
     void print_centred(const char * title, bool titlelines = true);
     void print_centered_QR(const char * titleOrNull, char * url);
-    void printCmdBar(String left, String right);
+    void printCmdBar(const char * left, const char * right);
     
-    uint16_t widthOfString(String str);
+    uint16_t widthOfString(const char * str);
 
     const unsigned short SCREEN_WIDTH, SCREEN_HEIGHT;
     inline void display(void) {

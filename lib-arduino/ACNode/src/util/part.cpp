@@ -19,7 +19,7 @@ static void partloop(Print &out, const char * label, esp_partition_type_t part_t
       while (iterator) {
          next_partition = esp_partition_get(iterator);
          if (next_partition != NULL) {
-            out.printf("%5s %2x addr: 0x%06x; size: 0x%06x; label: %s%s%s%s\n", 
+            out.printf("%5s %2x addr: 0x%06lx; size: 0x%06lx; label: %s%s%s%s\n", 
 		label, part_type, next_partition->address, next_partition->size, next_partition->label,
 		(next_partition == running) ? " RUNNING" : "",
 		(next_partition == boot) ? " BOOT" : "",
@@ -39,9 +39,7 @@ void partition_info(Print &out) {
    
 String currentPartition() {
 	const esp_partition_t * running = esp_ota_get_running_partition();
-	if (running  && running->label)
-		return String(running->label);
-	return String("Unset");
+	return running ?  String(running->label) : String("Unset");
 }
 
 size_t get_rom_size() {

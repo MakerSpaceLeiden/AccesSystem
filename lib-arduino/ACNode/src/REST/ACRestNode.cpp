@@ -21,7 +21,7 @@ void ACNodeRest::pop() {
     _approvalAPI = new ApprovalAPI(_restAPI, machine);
 
     PAIRING_FAILED = machinestate.addState("Pairing Failed",  LED::LED_ERROR, 5*1000, MachineState::OUTOFORDER);
-    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 20*1000, PAIRING_FAILED, MachineState::WAITINGFORCARD);
+    PAIRING = machinestate.addState("Pairing",  LED::LED_ERROR, 20*1000, PAIRING_FAILED);
     WAIT_FOR_PAIRING = machinestate.addState("Pairing lost",  LED::LED_ERROR, 30*1000, MachineState::OUTOFORDER);
 
     machinestate.addOnChangeCallback(PAIRING_FAILED, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
@@ -68,10 +68,10 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
     ApprovalEntry * e = _approvalAPI->getEntry(tag);
 
     if (e) Debug.printf("User: %s, (has=%x & needs=%x) = %x ==> %d (%s)\n",
-                 e->name.c_str(),e->has, e->needs,e->has & e->needs, (e->has & e->needs) == e->needs, e->status() );
+                 e->name,e->has, e->needs,e->has & e->needs, (e->has & e->needs) == e->needs, e->status() );
 
     if (e && e->ok()) {
-        Log.printf("Received OK to %s on %s for %s\n", machine, operation ? operation : "power" , e->name.c_str());
+        Log.printf("Received OK to %s on %s for %s\n", machine, operation ? operation : "power" , e->name);
 
         if (_lastApproved)
             delete _lastApproved;
@@ -85,16 +85,15 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
 
 	// Do not send it again if it is already in our list to send.
         // if (std::find(std::begin(_approvedTagsToSent), std::end( _approvedTagsToSent), t) != std::end( _approvedTagsToSent))
-	{
-        	_approvedTagsToSent.push_back(ApprovalEntryWithTag(e,tag));
-	}
+	if (_approvedTagsToSentQueued < MAX_QUEUED)
+        	_approvedTagsToSent[_approvedTagsToSentQueued++] = ApprovalEntryWithTag(e,tag);
 
         _approve++;
         return;
     };
     
     if (e) {
-        Log.printf("Received a DENIED to power on %s for %s: %s\n", machine, e->name.c_str(), e->status());
+        Log.printf("Received a DENIED to power on %s for %s: %s\n", machine, e->name, e->status());
     } else {
         Log.println("Unknown tag. Denied.");
     };
@@ -140,9 +139,8 @@ void ACNodeRest::loop() {
     super::loop();
 
     static unsigned lst = 0;
-    if (_approvedTagsToSent.size() && machinestate.isStable() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 500) {
-	ApprovalEntryWithTag et = *(_approvedTagsToSent.begin());
-        _approvedTagsToSent.pop_front();
+    if (_approvedTagsToSentQueued && machinestate.isStable() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 500) {
+	ApprovalEntryWithTag et = _approvedTagsToSent[--_approvedTagsToSentQueued];
 
 	// HTTP
         _approvalAPI->sendBestEffortTagApproved(et.tag);
@@ -153,7 +151,7 @@ void ACNodeRest::loop() {
 	        payload["name"] = et.e.name;
 	        payload["machine"] = machine;
 	        payload["node"] = moi;
-	        payload["userid"] = et.e.uid.toInt();
+	        payload["userid"] = et.e.uid;
 	        payload["acl"] = "approved";
 	        payload["cmd"] = "energize";
 
@@ -166,11 +164,16 @@ void ACNodeRest::loop() {
 	// MQTT new style
         // Signed replacement for public message
 	{
+		char buff[64];
+		safesnprintf(buff, sizeof(buff),"%s/%s", moi, machine);
+
 	        JsonDocument payload;
-	        payload["iss"] = String(moi) + "/" + String(machine);
+	        payload["iss"] = buff;
 
 	        payload["name"] = et.e.name;
-	        payload["sub"] = String("urn:fdc:makerspaceleiden.nl:20130521:user:") + et.e.uid; // rfc 4198
+
+                snprintf(buff, sizeof(buff),"urn:fdc:makerspaceleiden.nl:20130521:user:%s", et.e.uid); // rfc 4198
+	        payload["sub"] = buff;
 
         	payload["iat"] = time(NULL); // needed for replay protection; see RFC 7519 4.1.6
 

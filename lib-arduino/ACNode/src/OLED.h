@@ -55,7 +55,7 @@ class OLED : public ACBase {
 	TwoWire * i2cbus= &Wire
     );
 
-    void report(JsonObject& report);
+    void report(JsonObject report);
 
     void setSpeed(int speed);
     void setIcon(int slot, const unsigned char *icon);

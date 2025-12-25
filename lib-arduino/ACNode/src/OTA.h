@@ -14,21 +14,23 @@
 class OTA: public ACBase
 {
   public:
-    virtual const char * name() { return "OTA"; };
     OTA(const char * password);
+    virtual const char * name() { return "OTA"; };
+
     void loop();
     void begin();
-    void report(JsonObject& report);
+    void report(JsonObject report);
     const char * passwdType();
   protected:
-    const char * _ota_password_hash;
+    const char * _ota_password_hash = NULL;
+    char _ota_masked_password_hash[10] = "not-set";
 };
 
 class OTAWithDisplay: public OTA
 {
   public:
     OTAWithDisplay(const char * password, Display *d, const char * hostname);
-    virtual const char * name() { return "OTAwithDisplay"; };
+    virtual const char * name() { return "OTAWithDisplay"; };
 
     typedef std::function<bool(void)> THandlerFunction_ota_ok;
     void setOTAOK(THandlerFunction_ota_ok fn) { _ota_ok_cb = fn; };
@@ -37,10 +39,9 @@ class OTAWithDisplay: public OTA
     void setPreOTASecretWiper(THandlerFunction_wipe_secrets fn) { _pre_secrets_cb = fn; };
 
     void begin();
-    
 private:
-    const char * _hostname;
     Display * _display;
+    const char * _hostname;
     bool _otaOK = true;
     THandlerFunction_ota_ok _ota_ok_cb = NULL;
     THandlerFunction_wipe_secrets _pre_secrets_cb = NULL;
@@ -55,5 +56,3 @@ private:
     const OTAWithDisplay * _ota;
 };
 #endif
-
-

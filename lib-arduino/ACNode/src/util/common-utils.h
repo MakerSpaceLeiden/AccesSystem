@@ -43,13 +43,19 @@ bool i2c_address_exists(TwoWire& i2cBus, unsigned int address);
                 Debug.printf("Malformed/missing " err ": %s\n", p ? p : "<NULL>" ); \
                 return errorOnReturn; \
         }; 
-#endif
 
 
 #ifdef ESP32
 extern double coreTemp();
 #endif
 
+#define safesnprintf(buff,len, format, ...) { snprintf(buff,len,format, __VA_ARGS__); buff[len-1]='\0'; }
+
+#define safestrcpy(dst,src) { strncpy(dst,src,sizeof(dst)); dst[sizeof(dst)-1]='\0'; }
+#define safestrncpy(dst,src,n) { strncpy(dst,src,n); dst[n-1]='\0'; }
+
 char *_argencode(char *dst, size_t n, const char *src);
 char * sha256toHEX(unsigned char sha256[256 / 8], char buff[256 / 4 + 1]);
 String encodeargs(std::vector<String> pairs, bool skipEmpty);
+
+#endif

@@ -45,7 +45,7 @@ void ApprovalAPI::readCache() {
     else if (import(tmp,len))
 	return;  // Import takes over responsibility for the malloced buffer
     else 
-    	Log.printf("Cache import %s failed\n");
+    	Log.printf("Cache import %s failed\n", TAGBINFILE);
 
     free((void*)tmp);
 }
@@ -106,7 +106,7 @@ void ApprovalAPI::loop() {
             break;
         case NO_UPDATE_NEEDED:
             Debug.println("No TagDB update needed");
-            interval =  (3600  + (esp_random() & 0xFF -128)) * 1000; 
+            interval =  (3600  + ((esp_random() & 0xFF) -128)) * 1000; 
             break;
         case NEEDS_UPDATE:
             updateTagDB();
@@ -135,9 +135,9 @@ ApprovalAPI::update_t ApprovalAPI::needsUpdate() {
     cntr = atoi((char *)buff);
 
     if  (getIdentifier()== cntr) 
-	    Log.printf("TagDB identifier: %08x: no changes\n", cntr);
+	    Log.printf("TagDB identifier: %08lx: no changes\n", cntr);
     else
-	    Log.printf("TagDB identifier: %08x: CHANGED (previous: %08x)\n", cntr, getIdentifier());
+	    Log.printf("TagDB identifier: %08lx: CHANGED (previous: %08lx)\n", cntr, getIdentifier());
  
     last_update = millis();
     
@@ -172,7 +172,7 @@ exit:
     return;
 }
 
-void ApprovalAPI::report(JsonObject& report) {
+void ApprovalAPI::report(JsonObject report) {
     report["bintag_id"] = getIdentifier();
     report["bintag_ntags"] = getNumberOfTags();
     char buff[32] = "never";
@@ -182,14 +182,14 @@ void ApprovalAPI::report(JsonObject& report) {
         strncpy(buff, ctime((const time_t *) &datadate),sizeof(buff)-1);
         buff[24]='\0'; // strip \n
     };
-    report["bintag_date"] = String(buff);
+    report["bintag_date"] = buff;
 };
 
 bool ApprovalAPI::canApprove() {
     return blob ? true : false;
 }
 
-void ApprovalAPI::sendBestEffortTagApproved(String tag) {
+void ApprovalAPI::sendBestEffortTagApproved(const char * tag) {
     unsigned char buff[32]; // experting (and ignoring) an simple OK/ERROR or unfound reply
     size_t len = sizeof(buff);
     unsigned char * p = buff;
@@ -197,10 +197,11 @@ void ApprovalAPI::sendBestEffortTagApproved(String tag) {
     char url[128], argtmp[64];
 
     snprintf(url,sizeof(url), ACL_URL PATH_RECORDUSE "/%s", _argencode(argtmp,sizeof(argtmp),machine));
-    String postarg = "tag=" + tag;
+    snprintf(argtmp, sizeof(argtmp), "tag=%s", tag);
 
-    int n = _restAPI->get(url,&len,&p,postarg);
-    Debug.printf("Reporting use: %s (len %d)\n", n < 0 ? "ERR" : String(p,len), len);
+    int n = _restAPI->get(url,&len,&p,argtmp);
+    if (n >= 0) p[len] = '\0';
+    Debug.printf("Reporting use: %s (%d)\n", (n < 0) ? "ERR" : (char *)p, len);
     return;
 }
 
@@ -213,7 +214,7 @@ void ApprovalDeck::render_pane(bool refresh) {
         _display->printf("not ready");
         return;
     };
-    _display->printf("ID   :%08x %s\n",
+    _display->printf("ID   :%08lx %s\n",
                      _approvalAPI->getIdentifier(),
                      _approvalAPI->versionStr());
     
@@ -226,9 +227,9 @@ void ApprovalDeck::render_pane(bool refresh) {
     strftime(ts,sizeof(ts),"%H:%M:%S",t);
     _display->printf("Dated:%s\n",ds);
     _display->printf("      %sZ\n",ts);
-    _display->printf("Age  :%s\n",since(age));
-    _display->printf("Check:%s %s\n", _approvalAPI->getLastUpdate()?
-                     since((millis() - _approvalAPI->getLastUpdate())/1000) : "never",
-		     _approvalAPI->getLastUpdate()? "ago" : "");
+    _display->printf("Age  :%s\n",since(age).c_str());
+    _display->printf("Check:%s %s\n", (_approvalAPI->getLastUpdate()) ?
+                     since((millis() - _approvalAPI->getLastUpdate())/1000).c_str() : "never",
+		    (_approvalAPI->getLastUpdate()) ? "ago" : "");
     _display->printCmdBar("UPDATE","NEXT");
 };

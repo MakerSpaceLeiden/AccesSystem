@@ -42,7 +42,7 @@ public:
     };
     void begin() { readCache(); };
     void loop();
-    void report(JsonObject& report);
+    void report(JsonObject report);
 
     typedef std::function<void(void)> THandlerFunction_NotifyReady;
     Pricelist * pricelist = NULL;

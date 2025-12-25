@@ -148,7 +148,7 @@ void MachineState::begin() {
     // Debug.println(__PRETTY_FUNCTION__);
 };
 
-void MachineState::report(JsonObject& report) {
+void MachineState::report(JsonObject report) {
     report["state"] = label();
     JsonObject tis = report["seconds_in_state"].add<JsonObject>();
     for(int i = 0; i <= 255;i ++)

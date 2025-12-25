@@ -6,6 +6,8 @@
 #include <sys/types.h>
 #include <assert.h>
 
+#include "util/common-utils.h"
+
 typedef unsigned char acl_t;
 #define ACL_MASK_ACTIVE      (1)     // required to operate  / is set to active (see below APPROVE)
 #define ACL_MASK_PERMIT      (2)     // requires instruction / has been given instruction
@@ -27,13 +29,24 @@ typedef unsigned char acl_t;
 
 class ApprovalEntry {
 public:
-    ApprovalEntry(String name, acl_t has, acl_t needs)
-        : name(name), shortName(name), has(has),needs(needs) {};
-    ApprovalEntry(String uid, String name, String shortName, acl_t has, acl_t needs)
-        : name(name),  shortName(shortName), uid(uid), has(has),needs(needs) {};
+    static const unsigned char MAX_AE_SHORTNAME = 12;
+    static const unsigned char MAX_AE_NAME = 32;
+    static const unsigned char MAX_AE_UID = 8;
 
-    String name, shortName, uid;
-    acl_t has, needs;
+    ApprovalEntry() {};
+    ApprovalEntry(const char * _uid, const char * _name, const char * _shortName, acl_t _has, acl_t _needs) {
+        safestrncpy(uid, _uid, MAX_AE_UID); 
+        safestrncpy(name, _name, MAX_AE_SHORTNAME); 
+        safestrncpy(shortName, _shortName, MAX_AE_SHORTNAME); 
+        has = _has;
+	needs = _needs;
+    };
+
+    char name[MAX_AE_NAME] = "\0";
+    char shortName[MAX_AE_SHORTNAME] = "\0";
+    char uid[MAX_AE_UID] = "\0";
+    acl_t has =0, needs = 0;
+
     bool ok() { return (has & needs) == needs; };
 
     const char * status() {
@@ -57,4 +70,3 @@ public:
     };
 };
 #endif
-
