@@ -24,6 +24,8 @@ SET_LOOP_TASK_STACK_SIZE(12*1024);
 // SyslogStream syslogStream = SyslogStream();
 #endif
 
+#include "WhiteNodeIndexPage.h"
+
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
 float loopRate = 0;
@@ -88,6 +90,18 @@ void ACNodeBase::pop() {
     tzset();
    
     _webServer = new AsyncWebServer(80);
+    _webServer->on("/",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+         request->send(200, "text/html", 
+		(uint8_t *)htmlIndexPageContent, htmlIndexPageContentLength,
+		[this](const String &var) -> String {
+                    time_t now = time(NULL);
+		    if (var == "NODE") 
+		      return moi;
+		    if (var == "TIME") 
+		      return ctime(&now);
+    		    return emptyString;
+		});
+    });
     _webServer->on("/state.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
          AsyncResponseStream *response = request->beginResponseStream("application/json");
 
@@ -108,7 +122,6 @@ void ACNodeBase::pop() {
     Debug.setTimestamp(true); 
     Debug.setIdentifier("DBG");
 
-#if 0
     const std::shared_ptr<LOGBase> & wh = std::make_shared<TelnetSerialStream>();
     Log.addPrintStream(wh);
     Debug.addPrintStream(wh);
@@ -125,7 +138,6 @@ void ACNodeBase::pop() {
     syslogStream->setPort(SYSLOG_PORT);
 #endif
     Log.addPrintStream(syslogStream);
-#endif
 #endif
 
 };
