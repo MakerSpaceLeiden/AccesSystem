@@ -52,7 +52,7 @@ MachineState::machinestate_t BUZZING; // Extra, hardware specific states
 
 unsigned long opening_door_count  = 0, door_denied_count = 0;
 
-void setup() {
+void setup() {  
   Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__ );
 
   digitalWrite(SOLENOID_GPIO, LOW);

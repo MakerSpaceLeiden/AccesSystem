@@ -153,8 +153,6 @@ bool isDaytime() {
 void setup() {
   Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__);
 
-  Serial.printf("Node RED=%x GREEN=%x\n", LED_BUTTON_RED, LED_BUTTON_GREEN);
-
   digitalWrite(DAY_OPEN, LOW);
   pinMode(DAY_OPEN, OUTPUT);
   node.setMonitoredOutput(DAY_OPEN, LOW);
@@ -223,9 +221,9 @@ void setup() {
     // check during the buzzing if we need to leave the in day state post our opening.
     //
     if ((newState == BUZZING) && !forced_night && isWorkingHours() && (doorstate == NIGHT_LOCK)) {
-        Log.println("Switching to day state as it is within working hours");
-        doorstate = DAY_LOCK;
-      };
+      Log.println("Switching to day state as it is within working hours");
+      doorstate = DAY_LOCK;
+    };
   });
 
   expandedPinMode(DOOR_OPEN_ALERT, INPUT);

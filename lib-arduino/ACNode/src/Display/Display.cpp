@@ -28,7 +28,7 @@ bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg, bo
     oled_command(SH110X_DISPLAYON);
     display();
 
-    return _headless;
+    return true;
 }
 
 void Display::setWebResponder(const char *  urlPrefix, AsyncWebServer * server, bool raw) {
