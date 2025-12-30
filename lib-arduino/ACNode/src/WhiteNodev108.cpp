@@ -1,4 +1,4 @@
-SCREENSAVER#include "WhiteNodev108.h"
+#include "WhiteNodev108.h"
 
 #include <esp_sntp.h>
 #include <lwip/ip_addr.h>
@@ -141,7 +141,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
 
     _display = new Display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, SCREEN_RESET);
     
-    if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)""), !hasDisplay) {
+    if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"")) {
 	_display->setRotation(2);
         _display->setWebResponder("/display.pbm", webServer());
         webServer()->on("/display",  HTTP_GET, [this](AsyncWebServerRequest *request) {

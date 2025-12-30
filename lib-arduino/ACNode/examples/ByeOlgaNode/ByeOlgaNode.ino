@@ -68,9 +68,9 @@ void setup() {
     const char *name = NULL;
 
     if (e && e->shortName)
-      name = e->shortName.c_str();
+      name = e->shortName;
     else if (e && e->name)
-      name = e->name.c_str();
+      name = e->name;
 
     node.updateDisplayStateMsg(name, 2);
     Log.printf("Saying bye to %s\n", name);
