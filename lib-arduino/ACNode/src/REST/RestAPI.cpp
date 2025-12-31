@@ -56,17 +56,21 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
     switch(ret) {
         case NOERROR_OK:
         case NOERROR:
+	    rest_ok++;
             return n;
             break;
         case ERR_FATAL:
+	    rest_err++;
             if (md < FULLY_REGISTERED) 
 		md = WIFI_FAIL_REBOOT;
             break;
         case ERR_REPAIR:
+	    rest_retryable++;
             paired = false;
             md = WAITING_FOR_NTP;
             break;
         case ERR_RETRYABLE:
+	    rest_retryable++;
             md = WAITING_FOR_NTP;
             break;
     }
@@ -83,6 +87,7 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
 bool RestAPI::rest(const char *url,String encodedpostargs) {
     rest_ret_t ret = ERR_FATAL;
     raw_rest(_terminalName,url,NULL,NULL,&ret,encodedpostargs);
+    if (ret == NOERROR) rest_ok++; else rest_err++;
     return ret == NOERROR;
 }
 
@@ -93,16 +98,20 @@ JsonDocument RestAPI::get(const char *url,String encodedpostargs) {
     switch(ret) {
         case NOERROR_OK:
         case NOERROR:
+	    rest_ok++;
             return out;
             break;
         case ERR_FATAL:
             if (md < FULLY_REGISTERED) md = WIFI_FAIL_REBOOT;
+            rest_err++;
             break;
         case ERR_REPAIR:
+            rest_retryable++;
             paired = false;
             md = WAITING_FOR_NTP;
             break;
         case ERR_RETRYABLE:
+            rest_retryable++;
             md = WAITING_FOR_NTP;
             break;
     }
@@ -123,8 +132,10 @@ void RestAPI::sentNotification(String sender, String dest, String subject, Strin
     raw_rest(_terminalName,TERMINAL_URL NOTIFY_API_PATH,NULL,NULL,&ret,payload);
     
     if (ret != NOERROR_OK) {
+        rest_err++;
         Log.printf("Sending of message %s to %s failed\n", subject.c_str(), dest.c_str());
     } else {
+	rest_ok++;
         Debug.printf("Message %s to %s sent\n", subject.c_str(), dest.c_str());
     };
     // it is best effort - so we're not reporting any errors; nor are we queueing
@@ -175,9 +186,12 @@ void RestAPI::loop()
             // display.showString("check");
             JsonDocument out = raw_rest(_terminalName, TERMINAL_URL REGISTER_PATH, &ret);
             if (ret == NOERROR_OK) {
+		rest_ok++;
                 Debug.println("Registered & paired up ok");
                 md = FULLY_REGISTERED;
-            };
+            } else {
+               rest_err++;
+	    };
         };
             break;
         case REGISTER:
@@ -270,12 +284,19 @@ void RestAPI::loop()
 extern unsigned char sha256_client[32]; // cheat
 
 void RestAPI::report(JsonObject report) {
-    report["rest"] = ready();
-    report["rest_label"] = getStatLabel();
+    JsonObject r = report["rest"].add<JsonObject>();
+
+    r["ready"] = ready();
+    r["state"] = getStatLabel();
+
+    JsonObject s = r["stats"].add<JsonObject>();
+    s["transient"] = rest_retryable;
+    s["ok" ] = rest_ok;
+    s["fatal" ] = rest_err;
 
     char tmp[128 + 1];
     sha256toHEX(sha256_client, tmp);
-    report["rest_sha256"] = tmp;
+    r["rest_sha256"] = tmp;
 };   
 
 void RestDeck::render_pane(bool refresh) {

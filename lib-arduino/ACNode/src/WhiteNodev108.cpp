@@ -79,7 +79,7 @@ void WhiteNodev108::pop() {
     Wire.begin(I2C_SDA, I2C_SCL);
     
     FAULTED =     machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER, MachineState::NEVER, true);
-    SCREENSAVER = machinestate.addState("Waiting for card, screen dark", LED::LED_OFF, MachineState::NEVER, 
+    SCREENSAVER = machinestate.addState("waiting for card", LED::LED_OFF, MachineState::NEVER, 
 	MachineState::WAITINGFORCARD, true);
 
     INFODISPLAY = machinestate.addState("User browsing info pages", LED::LED_OFF, 20 * 1000, MachineState::WAITINGFORCARD);
@@ -147,7 +147,8 @@ void WhiteNodev108::begin(bool hasDisplay) {
         webServer()->on("/display",  HTTP_GET, [this](AsyncWebServerRequest *request) {
              request->send(200, "text/html", (uint8_t *)htmlDisplayPageContent, htmlDisplayPageContentLength);
         });
-    };
+    } else 
+	Log.println("OLED screen - count not init.");
 
     OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
     ota->setOTAOK([&](){
@@ -188,19 +189,14 @@ void WhiteNodev108::begin(bool hasDisplay) {
 #endif
 
 //    Cannot be called this early.
-    
+//
 //    esp_sntp_servermode_dhcp(true);
 //    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3",NTP_POOL);
 
     configTzTime("CET",NTP_POOL);
-
-#if 0
-    configTime(0, 0, NTP_POOL);
-    //setenv("TZ","CET-1CEST,M3.5.0,M10.5.0/3",0);
-    setenv("TZ","CET",1);
+    setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
     tzset();
-#endif
-    
+
     offButton = new IODebounce("OffButton", OFF_BUTTON);
     offButton->setCallback([&](const int newState) {
         Debug.printf("OFF button %s\n",newState ? "released" : "pressed");
@@ -416,22 +412,29 @@ void WhiteNodev108::loop() {
 }
 
 void WhiteNodev108::report(JsonObject  report) {
-    report["manual_poweroff"] = manual_poweroff;
-    report["idle_poweroff"] = idle_poweroff;
-    report["errors"] = errors;
-    report["ota"] = true;
+    JsonObject m = report["machine"].add<JsonObject>();
+    m["manual_poweroff"] = manual_poweroff;
+    m["errors"] = errors;
 
-    report["headless"] = (_display == NULL) ? true : false;
+    JsonObject otr = report["display"].add<JsonObject>();
+    otr["ota"] = true;
+    otr["idle_poweroff"] = idle_poweroff;
+    otr["headless"] = (_display == NULL) ? true : false;
 
-    report["ntp"] = (bool) esp_sntp_enabled();
-    report["ntppool"] = "" NTP_POOL "";
-    report["ntpstatus"] = sntp_get_sync_status();
+    JsonObject ntp= report["time"].add<JsonObject>();
 
-    char buff[27];
-    time_t t = time(NULL);
-    strncpy(buff,ctime(&t),sizeof(buff));
-    buff[24]='\0'; // strip \n
-    report["ntpdate"] = buff;
+    ntp["ntp"] = (bool) esp_sntp_enabled();
+    ntp["ntppool"] = "" NTP_POOL "";
+    ntp["ntpstatus"] = sntp_get_sync_status();
+
+    time_t now = time(NULL);
+    ntp["ctime"] = ctime(&now);
+    ntp["gmtime"] = asctime(gmtime(&now));
+    ntp["localtime"] = asctime(localtime(&now));
+
+    struct tm ts;
+    if (getLocalTime(&ts))
+       ntp["Time"] = asctime(&ts);
 
     super::report(report);
 }

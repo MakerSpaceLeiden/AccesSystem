@@ -83,6 +83,7 @@ protected:
     // Historic side effect - fetching the pricelist also sets station name; so 
     // allow this. This saves a https roundtrip during startup.
     friend class PaymentAPI;
+    unsigned long rest_retryable = 0, rest_ok = 0, rest_err = 0;
 };
 
 class RestDeck : public Deck {

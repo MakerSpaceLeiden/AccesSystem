@@ -169,9 +169,11 @@ void RFID_MFRC522::loop() {
 }
 
 void RFID_MFRC522::report(JsonObject report) {
-	report["mfrc522_failed_version_tests"] = rfid_vfail;
-	report["mfrc522_failed_self_tests"] = rfid_tfail;
-	report["mfrc522_ok_self_tests"] = rfid_tests;
+    JsonObject out = report["rfid"].add<JsonObject>();
+    out["mfrc522_failed_version_tests"] = rfid_vfail;
+    out["mfrc522_failed_self_tests"] = rfid_tfail;
+    out["mfrc522_ok_self_tests"] = rfid_tests;
+    super::report(out);
 };
 
 String RFID_MFRC522::firmwareVersionString() {

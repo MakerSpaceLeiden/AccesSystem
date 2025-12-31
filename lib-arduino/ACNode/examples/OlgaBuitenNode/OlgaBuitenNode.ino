@@ -38,15 +38,16 @@ Lock states
 //
 bool forced_night = false;
 
-enum { NIGHT_LOCK = 0,  // lock in night mode; solenoid cannot open the door
-       DAY_LOCK,        // lock in day mode, solenoid off, engaging it opens the door
-       UNLOCKED         // lock in day mode, solenoid engaged
-} doorstate;
+typedef enum { NIGHT_LOCK = 0,  // lock in night mode; solenoid cannot open the door
+               DAY_LOCK,        // lock in day mode, solenoid off, engaging it opens the door
+               UNLOCKED         // lock in day mode, solenoid engaged
+} doorstate_t;
+doorstate_t doorstate = NIGHT_LOCK, last_doorstate = UNLOCKED;
 
 const char *doorstate_label[] = {
-  "nightlatch-nachtslot",
-  "daylatch-dagslot",
-  "passage-doorloop",
+  "nightlatch",
+  "daylatch",
+  "passage",
 };
 
 #include <BlueNodev114.h>
@@ -118,11 +119,11 @@ bool isWorkingHours() {
   }
   // Serial.println(&ts, "C %A, %B %d %Y %H:%M:%S zone %Z %z ");
 
-  if (ts.tm_hour < 8 || ts.tm_hour > 17)
+  if (ts.tm_hour < 8 || ts.tm_hour > 17 || (ts.tm_hour > 16 && ts.tm_min > 30))
+    return false;       // 9 am to 16:30 local time
+  if (ts.tm_wday == 6)  // Saturday
     return false;
-  if (ts.tm_wday == 6)
-    return false;
-  if (ts.tm_wday == 0 /* sunday */)
+  if (ts.tm_wday == 0 /* Sunday */)
     return false;
   return true;
 };
@@ -139,14 +140,17 @@ bool isDaytime() {
   }
   // Serial.println(&ts, "C %A, %B %d %Y %H:%M:%S zone %Z %z ");
 
-  if (ts.tm_hour < 9 || ts.tm_hour > 17)
-    return false;
+  if (ts.tm_hour < 8 || ts.tm_hour > 18 || (ts.tm_hour > 17 && ts.tm_min > 30))
+    return false;  // outside 9 am to 17:30 local time
+
   // saturday
   if (ts.tm_wday == 6 && (ts.tm_hour < 10 || ts.tm_hour > 15))
-    return false;
+    return false;  // Saturday - before 10 or after 15:00
+
   /* sunday */
   if (ts.tm_wday == 0 && (ts.tm_hour < 12 || ts.tm_hour > 15))
-    return false;
+    return false;  // Sunday - before 12 or after 15:00
+
   return true;
 }
 
@@ -163,6 +167,7 @@ void setup() {
 
   // Call this early - we need the extended GPIO set up.
   //
+  node.setOTAPasswordHash(ota_password_hash);
   node.begin(false /* no OLED screen */);
 
   expandedPinMode(LED_BUTTON_RED, AW9523_LED_MODE);
@@ -249,14 +254,27 @@ void setup() {
     if (newState == 0)
       return;
 
-    forced_night = true;
-    if (doorstate == NIGHT_LOCK) {
-      Debug.println("Press of red button ignored - lock already in night setting");
-      return;
+    switch (doorstate) {
+      case NIGHT_LOCK:
+        Debug.println("Press of red button ignored - lock already in night setting");
+        return;
+        break;
+      case DAY_LOCK:
+        if (forced_night) {
+          forced_night = false;
+          Log.println("Press of red button - disabling forced night lock & back to day lock");
+        } else {
+          forced_night = true;
+          Log.println("Press of red button furing the day - ending day & enabling the night lock");
+          doorstate = NIGHT_LOCK;
+        }
+        break;
+      case UNLOCKED:
+        Log.println("Press of red button - disabling passage");
+        doorstate = isWorkingHours() ? DAY_LOCK : NIGHT_LOCK;
+        break;
     };
-    Log.println("Press of red button, night lock after next close");
     node.machinestate = BUZZING;  // as you propably want to exit too.
-    doorstate = NIGHT_LOCK;
   });
   node.addHandler(redButtonDetect);
 
@@ -275,6 +293,7 @@ void setup() {
     };
     if (millis() - lastPress > 2000) {
       doorstate = UNLOCKED;
+
       Log.println("Long press on green - activating pass-mode");
       pass_count++;
       // Pressing the red button will `force' the door closed, even during
@@ -303,20 +322,21 @@ void setup() {
     door_denied_count++;
   });
 
-  node.setOTAPasswordHash(ota_password_hash);
 
   node.onReport([](JsonObject report) {
     char tmp[256];
     snprintf(tmp, sizeof(tmp), "%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__, __TIME__);
     report["fw"] = tmp;
 
-    report["count_open"] = opening_door_count;
-    report["count_key_open"] = key_open_count;
-    report["count_denied"] = door_denied_count;
-    report["count_button_open"] = button_open_count;
-    report["count_button_unlock"] = unlock_count;
-    report["count_button_to_passstate"] = pass_count;
-    report["count_unexpected_alerts"] = alert_count;
+    JsonObject stats = report["counts"].add<JsonObject>();
+
+    stats["count_open"] = opening_door_count;
+    stats["count_key_open"] = key_open_count;
+    stats["count_denied"] = door_denied_count;
+    stats["count_button_open"] = button_open_count;
+    stats["count_button_unlock"] = unlock_count;
+    stats["count_button_to_passstate"] = pass_count;
+    stats["count_unexpected_alerts"] = alert_count;
   });
 
   // Increase LED current to 2/4 of max (default is 1/4, Imax=37mA) to
@@ -331,7 +351,7 @@ void setup() {
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
   tzset();
 
-  Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
+  Log.printf("Booted: %s " __DATE__ " " __TIME__ "\n", FILE2FIRMWARE(__FILE__));
 }
 
 void loop() {
@@ -347,15 +367,30 @@ void loop() {
   static unsigned long lst = 0;
   if (millis() - lst > 10 * 1000) {
     lst = millis();
-    Debug.printf("State: %10s(%d%s) Now: %s -- Motor=%d, Solenoid=%d, Open=%d, RED=%s, GREEN=%s, PASS=%s\n",
-                 doorstate_label[doorstate],
+
+    Debug.printf("State: %10s",
+                 doorstate_label[doorstate]);
+    Debug.printf(" (%d%s)",
                  doorstate,
-                 forced_night ? ",F" : "",
-                 isWorkingHours() ? "working-hours" : "night",
-                 motorlock_out, solenoid_out, in_open,
+                 forced_night ? ",Forced" : "");
+    Debug.printf("[%s]",
+                 node.machinestate.label());
+    Debug.printf(", %u seconds",
+                 0 + node.machinestate.secondsInThisState());
+    Debug.printf(" - %s/%s -- Motor=%d, Solenoid=%d, Open=%d",
+                 isWorkingHours() ? "working-hours" : "outside-working-hours",
+                 isDaytime() ? "daytime" : "nighttime",
+                 motorlock_out, solenoid_out, in_open);
+    Debug.printf(", RED=%s, GREEN=%s, PASS=%s, ",
                  red_led ? "LIT" : "off",
                  green_led ? "LIT" : "off",
                  pass_led ? "LIT" : "off");
+
+    struct tm ts;
+    if (!getLocalTime(&ts))
+      Log.println("Failed to obtain local time");
+    else
+      Debug.println(&ts, "Localtime=%A, %B %d %Y %H:%M:%S zone %Z %z");
   };
 #endif
 
@@ -376,13 +411,27 @@ void loop() {
   // We undulate them to make it easy to spot a hung node & to give the
   // impression of 'action'
   //
-  expandedAnalogWrite(LED_BUTTON_GREEN, green_led ? (forced_night ? 255 : hearthbeat()) : 0);
+  expandedAnalogWrite(LED_BUTTON_GREEN, green_led ? (((doorstate == NIGHT_LOCK) || forced_night) ? 255 : hearthbeat()) : 0);
   expandedAnalogWrite(LED_BUTTON_RED, red_led ? hearthbeat() : 0);
   expandedAnalogWrite(LED_PASSAGE_MODE, pass_led ? hearthbeat() : 0);
 
   if ((doorstate != NIGHT_LOCK) && (!isWorkingHours()) && (node.machinestate.backgroundTaskOk()) && (node.machinestate.secondsInThisState() > 1800)) {
     Log.println("Not seen anyone for over half an hour; going to night lock as it is outside working hours");
     doorstate = NIGHT_LOCK;
+  };
+  {
+    static unsigned long lst = millis();
+
+    if (millis() - lst > 1000 || last_doorstate != doorstate) {
+      node.updateDisplayStateMsg(doorstate_label[doorstate], 2);
+      lst = millis();
+      last_doorstate = doorstate;
+    }
+  };
+
+  if (forced_night && (doorstate == NIGHT_LOCK) && !isDaytime() && (node.machinestate.secondsInThisState() > 1800)) {
+    forced_night = false;
+    Log.println("On night lock; disabling forced night as it is now night.");
   };
 
   node.loop();
