@@ -68,9 +68,10 @@ void OTA::begin() {
 }
 
 void OTA::report(JsonObject report) {
-    report["ota"] = true;
-    report["ota_hash"] = passwdType();
-    report["ota_pass"] = _ota_masked_password_hash;
+    JsonObject ota = report["ota"].add<JsonObject>();
+    ota["enabled"] = true;
+    ota["ota_hash"] = passwdType();
+    ota["ota_pass"] = _ota_masked_password_hash;
 }
 
 const char * OTA::passwdType() {

@@ -37,7 +37,8 @@
 
 #define MACHINE          "olgadoor"
 
-#define SOLENOID_GPIO (node.OUT1) // OUT0 is broken on this board!
+#define SOLENOID1_GPIO (node.OUT0)
+#define SOLENOID2_GPIO (node.OUT1)
 #define BUZZ_TIME     (4) // How long to buzz the door open.
 
 // Generate with 'echo -n Password | openssl sha256 or
@@ -61,9 +62,13 @@ unsigned long opening_door_count  = 0, door_denied_count = 0;
 void setup() {
   Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__ );
 
-  digitalWrite(SOLENOID_GPIO, LOW);
-  pinMode(SOLENOID_GPIO, OUTPUT);
-  node.setMonitoredOutput(SOLENOID_GPIO, LOW);
+  digitalWrite(SOLENOID1_GPIO, LOW);
+  pinMode(SOLENOID1_GPIO, OUTPUT);
+  node.setMonitoredOutput(SOLENOID1_GPIO, LOW);
+
+  digitalWrite(SOLENOID2_GPIO, LOW);
+  pinMode(SOLENOID2_GPIO, OUTPUT);
+  node.setMonitoredOutput(SOLENOID2_GPIO, LOW);
 
   // Add the states needed for this node.
   //
@@ -107,7 +112,8 @@ void loop() {
   // of the lock on when we are in buzzing mode. Buzzing mode has a
   // timeout of BUZZ_TIME - after which we return back to WAITINGFORCARD.
   //
-  node.setMonitoredOutput(SOLENOID_GPIO, (node.machinestate.state() == BUZZING));
+  node.setMonitoredOutput(SOLENOID1_GPIO, (node.machinestate.state() == BUZZING));
+  node.setMonitoredOutput(SOLENOID2_GPIO, (node.machinestate.state() == BUZZING));
 
   // And also buzz during this time
   //

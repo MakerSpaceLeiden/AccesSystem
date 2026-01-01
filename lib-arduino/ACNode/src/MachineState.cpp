@@ -149,8 +149,9 @@ void MachineState::begin() {
 };
 
 void MachineState::report(JsonObject report) {
-    report["state"] = label();
-    JsonObject tis = report["seconds_in_state"].add<JsonObject>();
+    JsonObject s = report["state"].add<JsonObject>();
+    s["state"] = label();
+    JsonObject tis = s["seconds_in_state"].add<JsonObject>();
     for(int i = 0; i <= 255;i ++)
         if (_state2stateStruct[i])
             tis[ _state2stateStruct[i]->label ] = _state2stateStruct[i]->timeInState + ((i == machinestate) ? (millis() - laststatechange) : 0)/1000;

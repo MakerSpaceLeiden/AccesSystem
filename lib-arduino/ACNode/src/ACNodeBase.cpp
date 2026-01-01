@@ -392,51 +392,59 @@ const char * getHW(void) {
 }
 
 void ACNodeBase::report(JsonObject out) {
-    out[ "class" ] = name();
     out[ "node" ] = moi;
     out[ "machine" ] = machine;
     
-    out[ "maxMqtt" ] = MAX_MSG;
-    
+    JsonObject hw = out["hardware"].add<JsonObject>();
     char chipstr[30]; safestrncpy(chipstr,chipId().c_str(),sizeof(chipstr));
-    out[ "id" ] = chipstr;
+    hw[ "id" ] = chipstr;
+    hw["loop_rate"] = loopRate;
+#ifdef ESP32
+    hw["coreTemp"]  = coreTemp();
+#endif
+    hw[ "uptime" ] = uptimeInSeconds();
+
     char ipstr[30]; safestrncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
-    out[ "ip" ] = ipstr;
-    out[ "net" ] = _wired ? "UTP" : "WiFi";
+    JsonObject n= out["net"].add<JsonObject>();
+
+    n[ "ip" ] = ipstr;
+    n[ "type" ] = _wired ? "UTP" : "WiFi";
     char macstr[30]; safestrncpy(macstr, macAddressString().c_str(),sizeof(macstr));
-    out[ "mac" ] = macstr;
-    out[ "board" ] = getHW();
-    out[ "sdk" ] = _sdk;
-    out[ "rom_size_bits" ] = get_rom_size() * 8;
+    n[ "mac" ] = macstr;
+
+    JsonObject fw = out["build"].add<JsonObject>();
+    fw[ "class" ] = name();
+    fw[ "board" ] = getHW();
+    fw[ "sdk" ] = _sdk;
+    fw[ "rom_size_bits" ] = get_rom_size() * 8;
+    fw[ "compiled" ] = __DATE__ " " __TIME__;
     
     if (_start_beat == 0)
         if (time(NULL) > 1542275849)
             _start_beat = time(NULL) + millis()/1000;
-    out[ "uptime" ] = uptimeInSeconds();
 
-    out[ "approve" ] = _approve;
-    out[ "deny" ] = _deny;
-    out[ "requests" ] = _reqs;    
-    out[ "mqtt_reconnects" ] = _mqtt_reconnects;
-   
-    out[ "compiled" ] = __DATE__ " " __TIME__;
+    JsonObject c = out["tags"].add<JsonObject>();
+    c[ "approve" ] = _approve;
+    c[ "deny" ] = _deny;
+    c[ "requests" ] = _reqs;    
  
-    out["loop_rate"] = loopRate;
-#ifdef ESP32
-    out["coreTemp"]  = coreTemp();
-#endif
-    out["heap_free"] = ESP.getFreeHeap();
-    out["heap_free8"] = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    out["heap_free8_min"] = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
-    out["heap_free8_largest"] = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-    out["stack_size"] = getArduinoLoopTaskStackSize();
+    JsonObject heap = out["memory"].add<JsonObject>();
+
+    heap["heap_free"] = ESP.getFreeHeap();
+    heap["heap_free8"] = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    heap["heap_free8_min"] = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
+    heap["heap_free8_largest"] = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    heap["stack_size"] = getArduinoLoopTaskStackSize();
    
     // attempt to track down MQTT issue.
     //
-    out["mqtt_host"] = mqtt_server;
-    out["mqtt_port"] = mqtt_port;
-    out["mqtt_isUp"] = isUp();
-    out["mqtt_isConnected"] = isConnected();
+    JsonObject mq = out["mqtt"].add<JsonObject>();
+    mq["mqtt_host"] = mqtt_server;
+    mq["mqtt_port"] = mqtt_port;
+    mq["mqtt_isUp"] = isUp();
+    mq["mqtt_isConnected"] = isConnected();
+    mq[ "maxMqtt" ] = MAX_MSG;
+    mq[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it)

@@ -33,6 +33,7 @@
 #endif
 
 class RFID_MFRC522 : public RFID {
+typedef RFID super;
   public:
     virtual const char * name() { return "RFID-MFRC522"; }
     

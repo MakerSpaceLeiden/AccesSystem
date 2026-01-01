@@ -173,16 +173,18 @@ exit:
 }
 
 void ApprovalAPI::report(JsonObject report) {
-    report["bintag_id"] = getIdentifier();
-    report["bintag_ntags"] = getNumberOfTags();
+ JsonObject r = report["bintags"].add<JsonObject>();
+
     char buff[32] = "never";
-    
     if (getDataDate()) {
         time_t datadate = getDataDate();
         strncpy(buff, ctime((const time_t *) &datadate),sizeof(buff)-1);
         buff[24]='\0'; // strip \n
     };
-    report["bintag_date"] = buff;
+
+    r["bintag_date"] = buff;
+    r["id"] = getIdentifier();
+    r["ntags"] = getNumberOfTags();
 };
 
 bool ApprovalAPI::canApprove() {
