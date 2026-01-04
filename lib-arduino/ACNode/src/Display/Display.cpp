@@ -1,8 +1,10 @@
 #include <qrcode.h> // Part of the ESP32 package
 #include <esp_debug_helpers.h>
+#include <miniz.h>
 
 #include "Display/Display.h"
 #include "Display/msl-logo.h"
+
 
 bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg, bool headless) {
     _headless = headless;
@@ -33,6 +35,19 @@ bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg, bo
 
 void Display::setWebResponder(const char *  urlPrefix, AsyncWebServer * server, bool raw) {
     server->on(urlPrefix, HTTP_GET, [raw,this](AsyncWebServerRequest *request) {
+#if 0
+       	size_t len;
+       	uint8_t *png = tdefl_write_image_to_png_file_in_memory(getBuffer(),SCREEN_WIDTH, SCREEN_HEIGHT, 1, &len);
+       	if (len && png) {
+	        AsyncResponseStream *response = request->beginResponseStream("image/png", len);
+       		response->write(png, len);
+      		request->send(response);
+	} else {
+  		request->send(500, "text/plain", "Failed to generate the PNG");
+	};
+	if (png)
+	       mz_free(png);
+#else
        AsyncResponseStream *response = request->beginResponseStream("image/pbm", SCREEN_WIDTH*SCREEN_HEIGHT/8+32);
 
        response->printf("P4\n%d %d\n", SCREEN_WIDTH,SCREEN_HEIGHT);
@@ -53,6 +68,7 @@ void Display::setWebResponder(const char *  urlPrefix, AsyncWebServer * server, 
          };
       };
       request->send(response);
+#endif
     });
 };
 
