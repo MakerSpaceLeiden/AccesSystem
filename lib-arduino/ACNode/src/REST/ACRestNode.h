@@ -17,7 +17,7 @@ public:
 		safestrcpy(tag, _tag);
     };
     ApprovalEntry e;
-    char tag[RFID_MAX_TAG_LEN] = "\0";
+    char tag[RFID_MAX_TAG_LEN*4+2] = "\0";
 };
 
 class ACNodeRest : public ACNodeBase {
