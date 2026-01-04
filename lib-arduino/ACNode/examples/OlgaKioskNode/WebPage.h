@@ -36,7 +36,7 @@ static const char webPage[] PROGMEM = R"(
 
      function onload(event) { 
         info = document.getElementById('info')
-        info.innerHTML = 'connecting';
+        info.innerHTML = 'searching for tag reader';
         initWebSocket(); 
      }
 

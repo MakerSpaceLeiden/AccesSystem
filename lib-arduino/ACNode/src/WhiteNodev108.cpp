@@ -78,9 +78,10 @@ void WhiteNodev108::pop() {
     // Non standard pins for i2c.
     Wire.begin(I2C_SDA, I2C_SCL);
     
-    FAULTED =     machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER, MachineState::NEVER, true);
+    FAULTED =     machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER, 
+	MachineState::NEVER, true, true);
     SCREENSAVER = machinestate.addState("waiting for card", LED::LED_OFF, MachineState::NEVER, 
-	MachineState::WAITINGFORCARD, true);
+	MachineState::WAITINGFORCARD, true, true);
 
     INFODISPLAY = machinestate.addState("User browsing info pages", LED::LED_OFF, 20 * 1000, MachineState::WAITINGFORCARD);
     POWERED =     machinestate.addState("Powered but idle", LED::LED_ON, MAX_IDLE_TIME * 1000, MachineState::WAITINGFORCARD);

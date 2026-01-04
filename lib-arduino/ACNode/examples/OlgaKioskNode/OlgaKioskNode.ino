@@ -49,6 +49,12 @@ Board used
 #error "This node is wifi connected and needs a wifi password"
 #endif
 
+#ifndef PATH_SAML
+#define PATH_SAML "/terminal/api/v3/session"
+#endif
+
+static const char url[] = ACL_URL PATH_SAML;
+
 #include <ACNode.h>
 #include <OTA.h>
 #include <REST/ACRestNode.h>
@@ -89,6 +95,8 @@ ACNodeRest node(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 #include "WebPage.h"
 
+String lastTag = "";
+
 void setup() {
   Serial.begin(115200);
   delay(500);
@@ -101,6 +109,7 @@ void setup() {
   reader = new RFID_MFRC522(&i2cBus, MFRC_I2C_ADDDR, MFRC_NRSTPD, MFRC_IRQ);
   reader->onSwipe([](const char *tag) -> ACBase::cmd_result_t {
     Debug.printf("Swipe detected %s\n", "***-**-****-**");
+    lastTag = String(tag);
 
     ACBase::cmd_result_t ret = node._restAPI->handleTagSwipe(tag);
     if (ret != ACBase::CMD_DECLINE)
@@ -114,20 +123,27 @@ void setup() {
 
   node.onApproval([](const char *machine) {
     centeredText("OK", ST77XX_DARKGREEN);
-    // bad idea unless we have some other security implemented or some max/count - i.e. we're giving everyone currently subscribed the Kerberos ticket.
-    ws.textAll("OK");
+    ws.textAll("redirecting");
+
+    JsonDocument saml = node._restAPI->get(url, "tag=" + lastTag);
+
+    // Really bad idea unless we have some other security implemented or some max/count - i.e. we're giving everyone currently subscribed the Kerberos ticket.
+    if (!(saml["uri"].isNull()))
+      ws.textAll(String(saml["uri"]));
+    else
+      ws.textAll("Failed");
+
+    lastTag = "";
   });
 
   node.onDenied([](const char *machine) {
     centeredText("???", ST77XX_RED);
     ws.textAll("Denied");
+    lastTag = "";
   });
 
   node.machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-    tft.setFont(NULL);
-    tft.setCursor(0, 0);
-    tft.setTextColor(ST77XX_BLACK);
-    tft.print(node.machinestate.label());
+    updateStatusBar(node.machinestate.label());
   });
 
   node.machinestate.addOnChangeCallback(MachineState::WAITINGFORCARD, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {

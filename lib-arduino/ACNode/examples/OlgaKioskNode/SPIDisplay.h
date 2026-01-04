@@ -27,6 +27,13 @@ void setupDisplay() {
   tft.setFont(&FreeSansBold18pt7b);
 }
 
+void updateStatusBar(const char* str) {
+  tft.setFont(NULL);
+  tft.setCursor(0, 0);
+  tft.setTextColor(ST77XX_BLACK);
+  tft.print(str);
+}
+
 void updateProgressBar(float p) {
   unsigned short l = tft.width() - 48 - 4;
   unsigned short w = l * p;
