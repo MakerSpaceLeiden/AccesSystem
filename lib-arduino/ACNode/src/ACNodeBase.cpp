@@ -8,7 +8,7 @@
 #include "esp_heap_caps.h"
 #include "esp_sntp.h"
 
-SET_LOOP_TASK_STACK_SIZE(12*1024);
+SET_LOOP_TASK_STACK_SIZE(16*1024);
 
 #ifdef ESP32
 #include <WiFi.h>

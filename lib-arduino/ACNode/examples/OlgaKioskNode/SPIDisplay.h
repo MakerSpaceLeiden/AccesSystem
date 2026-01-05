@@ -4,6 +4,7 @@
 #include <Adafruit_I2CDevice.h>
 #include <Adafruit_ST7789.h>  // Hardware-specific library for ST7789
 #include <Fonts/FreeSansBold18pt7b.h>
+#include <Fonts/FreeSans12pt7b.h>
 
 
 #ifndef ST77XX_DARKGREEN
@@ -50,7 +51,7 @@ void printCentered(const char* string) {
   int16_t x1, y1;
   uint16_t w, h;
   tft.getTextBounds(string, 0, 0, &x1, &y1, &w, &h);
-  tft.setCursor((tft.width() - w) / 2, (tft.height()) / 2 + h / 2 - 8);
+  tft.setCursor((tft.width() - w) / 2, (tft.height()) / 2 + h / 2 - 4);
   tft.print(string);
   Debug.printf("TFT: %s\n", string);
 }
@@ -77,6 +78,8 @@ void tocker() {
 }
 
 void bottomStatusLine() {
+  return;
+
   static char buff[60] = "";
   static unsigned long lst = 0;
   if ((millis() - lst) < 1000)
@@ -85,7 +88,7 @@ void bottomStatusLine() {
 
   static time_t st = 0;
   time_t now = time(NULL);
-  char* p = (char*)"--:--:--";
+  char* p = (char*)"--:--";
   unsigned int h = millis() / 1000;
   char u = 's';
 
@@ -94,7 +97,7 @@ void bottomStatusLine() {
     // "Thu Nov  4 09:47:43\n\0" -> 09:47\0
     p = ctime(&now);
     p += 11;
-    p[strlen(p) - 6] = 0;  // remove CRL/LF
+    p[strlen(p) - 9] = 0;  // remove CRL/LF and seconds.
     if (!st) st = now - h;
     h = now - st;
     if (h > 300) {
@@ -122,7 +125,13 @@ void bottomStatusLine() {
   // to avoid too much flicker.
   //
   static char newbuff[60];
-  snprintf(newbuff, sizeof(newbuff), "http://%s     %3u%c    %s", WiFi.localIP().toString().c_str(), h, u, p);
+  size_t fql = strlen(WiFi.localIP().toString().c_str());
+
+  char s[16] = "               ";
+  if (fql<15)
+    s[15-fql] = '\0';
+
+  snprintf(newbuff, sizeof(newbuff), "http://%s/login%s %3u%c %s", WiFi.localIP().toString().c_str(), s, h, u, p);
 
   tft.setFont(NULL);
   uint16_t y = tft.height() - 9;
