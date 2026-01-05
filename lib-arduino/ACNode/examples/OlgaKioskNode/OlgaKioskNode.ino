@@ -57,7 +57,10 @@ static const char url[] = TERMINAL_URL PATH_SAML;
 #include <ACNode.h>
 #include <OTA.h>
 #include <REST/ACRestNode.h>
+#include <esp_sntp.h>
 
+// Extra RED led above reader
+const uint8_t LED_INDICATOR = 5;
 
 // i2c wired RFID reader
 #include <RFID/RFID_MFRC522.h>
@@ -77,6 +80,9 @@ const uint8_t OLED_DC_RS = 18;
 const uint8_t OLED_CS = 0;  // Was 2
 #include "SPIDisplay.h"
 
+/* grayish -- https://barth-dev.de/online/rgb565-color-picker/ */
+const uint16_t GRAYISH = 0xAD55;
+
 
 #ifndef OTA_PASSWD_HASH256
 // Generate with 'echo -n Password | openssl sha256 or
@@ -92,6 +98,12 @@ const uint8_t OLED_CS = 0;  // Was 2
 const char ota_password_hash[] = OTA_PASSWD_HASH256;
 ACNodeRest node(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
+
+// Logging in is quite slow - so we have a special state for this.
+//
+MachineState::machinestate_t LOGGINGIN;
+#define LOGINDELAY (10 /* seconds*/)
+
 #include "WebPage.h"
 
 String lastTag = "";
@@ -101,6 +113,20 @@ void setup() {
   delay(500);
 
   Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__);
+
+  pinMode(LED_INDICATOR, OUTPUT);
+  digitalWrite(LED_INDICATOR, LOW);
+
+  setupDisplay();
+  centeredText("wait", GRAYISH);
+
+  LOGGINGIN = node.machinestate.addState((const char *)"Logging in",
+                                         LED::LED_IDLE,
+                                         (time_t)(LOGINDELAY * 1000),
+                                         node.machinestate.WAITINGFORCARD,  // then go back to waiting for the next swipe.
+                                         false /* no OTA during this */,
+                                         false /* No reporting until we're done with the door. */
+  );
 
   if (!i2cBus.begin())
     Serial.println("Could not start wire(i2cBus)");
@@ -114,7 +140,8 @@ void setup() {
     if (node.machinestate == MachineState::WAITINGFORCARD)
       node.machinestate = MachineState::CHECKINGCARD;
     lastTag = String(tag);
-    
+
+    digitalWrite(LED_INDICATOR, HIGH);
     ws.textAll("logging in");
 
     return ret;
@@ -123,6 +150,8 @@ void setup() {
 
   node.onApproval([](const char *machine) {
     centeredText("OK", ST77XX_DARKGREEN);
+    digitalWrite(LED_INDICATOR, HIGH);
+
     JsonDocument saml = node._restAPI->get(url, "tag=" + lastTag);
 
     // Really bad idea unless we have some other security implemented or some max/count - i.e. we're giving everyone currently subscribed the Kerberos ticket.
@@ -131,8 +160,11 @@ void setup() {
     else
       ws.textAll("Failed");
 
+    node.machinestate = LOGGINGIN;
     lastTag = "";
   });
+
+
 
   node.onDenied([](const char *machine) {
     centeredText("???", ST77XX_RED);
@@ -145,7 +177,7 @@ void setup() {
   });
 
   node.machinestate.addOnChangeCallback(MachineState::WAITINGFORCARD, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {
-    centeredText("login", 0x8888 /* grayish */);
+    centeredText("login", GRAYISH);
   });
 
 
@@ -166,7 +198,6 @@ void setup() {
 
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
       if (len == 4 && strncmp((char *)data, "PING", 4) == 0) {
-        Debug.println("Returning WS Ack to ping");
         client->text("ACK");
       };
     };
@@ -177,9 +208,12 @@ void setup() {
   });
   node.webServer()->addHandler(&ws);
 
+
   node.begin();
 
-  setupDisplay();
+  esp_sntp_servermode_dhcp(true);
+  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+  tzset();
 
   Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
 }
@@ -187,6 +221,11 @@ void setup() {
 void loop() {
   node.loop();
   loopDisplay();
+
+  digitalWrite(LED_INDICATOR, (node.machinestate == MachineState::WAITINGFORCARD) ? 0 : ((uint8_t)(millis() / 200)) & 1);
+
+  if (node.machinestate == LOGGINGIN)
+    return;
 
   static unsigned long lst = 0;
   if (millis() - lst < 2000)

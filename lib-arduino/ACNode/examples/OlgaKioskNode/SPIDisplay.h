@@ -22,6 +22,9 @@ void setupDisplay() {
   tft.fillScreen(ST77XX_WHITE);
   tft.setTextColor(ST77XX_BLACK);
   tft.setTextWrap(true);
+  tft.setFont(NULL);
+  tft.setCursor(0,0);
+
   tft.print("Started: " __DATE__ " " __TIME__ "\n");
 
   tft.setFont(&FreeSansBold18pt7b);
@@ -47,7 +50,7 @@ void printCentered(const char* string) {
   int16_t x1, y1;
   uint16_t w, h;
   tft.getTextBounds(string, 0, 0, &x1, &y1, &w, &h);
-  tft.setCursor((tft.width() - w) / 2, (tft.height()) / 2 + h / 2);
+  tft.setCursor((tft.width() - w) / 2, (tft.height()) / 2 + h / 2 - 8);
   tft.print(string);
   Debug.printf("TFT: %s\n", string);
 }

@@ -57,8 +57,7 @@ static const char webPage[] PROGMEM = R"(
             return;
          };
          if (event.data.startsWith('http')) {
-            console.log("Redirecting to log in user");
-            window.location.replace(event.data);
+            window.location.replace(event.data); // blocks back (as opposed to href)
             info.innerHTML = 'logging in...';
             return;
          };
@@ -77,6 +76,7 @@ static const char webPage[] PROGMEM = R"(
 </script>
 </html>
 )";
+
 size_t webPageLength = sizeof(webPage);
 
 AsyncWebSocket ws("/ws/tagreader"); // hardcoded -- Keep URL aligned with above javascript
