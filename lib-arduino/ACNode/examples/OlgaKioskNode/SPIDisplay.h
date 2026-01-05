@@ -74,6 +74,7 @@ void tocker() {
 }
 
 void bottomStatusLine() {
+  static char buff[60] = "";
   static unsigned long lst = 0;
   if ((millis() - lst) < 1000)
     return;
@@ -111,22 +112,35 @@ void bottomStatusLine() {
     };
   };
 
-  char buff[60] = "";
 
-  tft.fillRect(0, tft.height() - 8 - 1, tft.width(), 8, ST77XX_WHITE);
+  // tft.fillRect(0, tft.height() - 8 - 1, tft.width(), 8, ST77XX_WHITE);
+
+  // This type of display is very slow to redraw; so we do it char by char
+  // to avoid too much flicker.
+  //
+  static char newbuff[60];
+  snprintf(newbuff, sizeof(newbuff), "http://%s     %3u%c    %s", WiFi.localIP().toString().c_str(), h, u, p);
 
   tft.setFont(NULL);
+  uint16_t y = tft.height() - 9;
+  uint16_t x = 2;
+  for (int i = 0; i < strlen(buff) && i < strlen(newbuff) && x < tft.width(); i++) {
+    // if (buff[i] != newbuff[i])
+    {
+      // wipe old (or we could use the XOR trick here ??)
+      tft.setCursor(x, y);
+      tft.setTextColor(ST77XX_WHITE);
+      tft.print(buff[i]);
 
-  tft.setCursor(2, tft.height() - 9);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.print(buff);
-
-  snprintf(buff, sizeof(buff), "http://%s     %3u%c    %s", WiFi.localIP().toString().c_str(), h, u, p);
-
-
-  tft.setCursor(2, tft.height() - 9);
-  tft.setTextColor(ST77XX_BLACK);
-  tft.print(buff);
+      // paint new
+      tft.setCursor(x, y);
+      tft.setTextColor(ST77XX_BLACK);
+      tft.print(newbuff[i]);
+    };
+    // next char - fixed width font.
+    x += 6;
+  }
+  strncpy(buff, newbuff, sizeof(buff));
 }
 
 void loopDisplay() {

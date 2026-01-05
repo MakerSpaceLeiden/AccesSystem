@@ -51,11 +51,20 @@ static const char webPage[] PROGMEM = R"(
 
      function onMessage(event) {
          resetKeepAlive();
-         console.log(event);
-         if (event.data)
-            info.innerHTML = event.data;
-         else 
-           info.innerHTML = '<nope>';
+         if (!event.data) {
+            console.log(event);
+            info.innerHTML = '???';
+            return;
+         };
+         if (event.data.startsWith('http')) {
+            console.log("Redirecting to log in user");
+            window.location.replace(event.data);
+            info.innerHTML = 'logging in...';
+            return;
+         };
+
+         info.innerHTML = event.data;
+         return; 
      }
      function initWebSocket() {
          websocket = new WebSocket(gateway);

@@ -50,10 +50,9 @@ Board used
 #endif
 
 #ifndef PATH_SAML
-#define PATH_SAML "/terminal/api/v3/session"
+#define PATH_SAML "/v3/session"
 #endif
-
-static const char url[] = ACL_URL PATH_SAML;
+static const char url[] = TERMINAL_URL PATH_SAML;
 
 #include <ACNode.h>
 #include <OTA.h>
@@ -108,28 +107,27 @@ void setup() {
 
   reader = new RFID_MFRC522(&i2cBus, MFRC_I2C_ADDDR, MFRC_NRSTPD, MFRC_IRQ);
   reader->onSwipe([](const char *tag) -> ACBase::cmd_result_t {
-    Debug.printf("Swipe detected %s\n", "***-**-****-**");
-    lastTag = String(tag);
-
     ACBase::cmd_result_t ret = node._restAPI->handleTagSwipe(tag);
     if (ret != ACBase::CMD_DECLINE)
       return ret;
 
     if (node.machinestate == MachineState::WAITINGFORCARD)
       node.machinestate = MachineState::CHECKINGCARD;
+    lastTag = String(tag);
+    
+    ws.textAll("logging in");
+
     return ret;
   });
   node.addHandler(reader);
 
   node.onApproval([](const char *machine) {
     centeredText("OK", ST77XX_DARKGREEN);
-    ws.textAll("redirecting");
-
     JsonDocument saml = node._restAPI->get(url, "tag=" + lastTag);
 
     // Really bad idea unless we have some other security implemented or some max/count - i.e. we're giving everyone currently subscribed the Kerberos ticket.
-    if (!(saml["uri"].isNull()))
-      ws.textAll(String(saml["uri"]));
+    if (!(saml["url"].isNull()))
+      ws.textAll(String(saml["url"]));
     else
       ws.textAll("Failed");
 
