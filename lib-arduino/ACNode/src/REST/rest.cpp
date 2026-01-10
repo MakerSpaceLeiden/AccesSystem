@@ -521,7 +521,7 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
         goto exit;
     };
     
-    if (httpCode != HTTP_CODE_OK) {
+    if (httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_CREATED) {
         Log.printf("raw_rest: failed: %s(%d):  %s\n", https.errorToString(httpCode).c_str(), httpCode, https.getString().c_str());
         *ret = ERR_RETRYABLE;
         goto exit;

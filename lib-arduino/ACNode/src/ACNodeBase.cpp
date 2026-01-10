@@ -266,7 +266,6 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
 #endif
     checkClearEEPromAndCacheButtonPressed(clear_button);
   
-    esp_sntp_servermode_dhcp(1);  
 #ifdef ESP32
     // if (_wired)
     if (true)
@@ -306,6 +305,7 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
             Log.println("**** WARNING - No Wifi Details/no network");
 #endif
         };
+    esp_sntp_servermode_dhcp(1);  
     
     const int del = 3; // seconds.
     unsigned long start = millis();
