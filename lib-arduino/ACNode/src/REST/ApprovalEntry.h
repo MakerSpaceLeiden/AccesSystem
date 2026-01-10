@@ -36,7 +36,7 @@ public:
     ApprovalEntry() {};
     ApprovalEntry(const char * _uid, const char * _name, const char * _shortName, acl_t _has, acl_t _needs) {
         safestrncpy(uid, _uid, MAX_AE_UID); 
-        safestrncpy(name, _name, MAX_AE_SHORTNAME); 
+        safestrncpy(name, _name, MAX_AE_NAME); 
         safestrncpy(shortName, _shortName, MAX_AE_SHORTNAME); 
         has = _has;
 	needs = _needs;
