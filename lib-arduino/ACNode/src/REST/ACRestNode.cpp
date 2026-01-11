@@ -128,12 +128,14 @@ void ACNodeRest::sentNotification(String dest, String subject, String msg) {
     _restAPI->sentNotification(sender, dest, subject, msg);
 }
 
+#if 0
 static String epochseconds2iso8601(time_t n) {
         struct tm * t = gmtime(&n);
 	char buff[10];
 	snprintf(buff,sizeof(buff),"%04d%02d%02d", t->tm_year, 1 + t->tm_mon, t->tm_mday);
 	return String(buff);
 }
+#endif
 
 void ACNodeRest::loop() {
     super::loop();

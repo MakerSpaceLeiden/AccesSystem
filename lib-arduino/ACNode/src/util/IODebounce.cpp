@@ -95,7 +95,7 @@ void IODebounce::loop() {
         this->_callBack(_lastStateBtn);
 }
 
-void IODebounce::setCallback(ButtonCallback callback, int mode) {
+void IODebounce::setCallback(IOButtonCallback callback, int mode) {
     this->_callBack = callback;
     this->_mode = mode;
 }

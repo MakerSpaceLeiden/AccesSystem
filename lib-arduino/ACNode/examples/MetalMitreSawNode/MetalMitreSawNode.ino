@@ -17,9 +17,17 @@
 
    Compile settings:  EPS32 Dev Module
 */
+
+
+#ifndef ARDUINO_PARTITION_min_spiffs
+#error "Unexpected partition table; may break OTA"
+#endif
+#ifndef ARDUINO_ESP32_WROOM_DA
+#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#endif
+
 #include <WhiteNodev108.h>
 #include <ButtonDebounce.h>
-#include "/Users/dirkx/.passwd.h"
 
 #ifndef MACHINE
 #define MACHINE "metalmitresaw"

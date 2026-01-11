@@ -425,7 +425,12 @@ void WhiteNodev108::report(JsonObject  report) {
     JsonObject ntp= report["time"].add<JsonObject>();
 
     ntp["ntp"] = (bool) esp_sntp_enabled();
-    ntp["ntppool"] = "" NTP_POOL "";
+
+    JsonArray srvs = report["servers"].add<JsonArray>();
+    const char * servers[] = { NTP_POOL, NULL };
+    for(const char **p = servers; *p; p++)
+    	srvs.add(*p);
+
     ntp["ntpstatus"] = sntp_get_sync_status();
 
     time_t now = time(NULL);

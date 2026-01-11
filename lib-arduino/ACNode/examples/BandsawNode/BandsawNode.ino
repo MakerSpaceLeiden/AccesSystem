@@ -137,7 +137,7 @@ void setup() {
 
 #ifdef ONOFFSWITCH
   expandedPinMode(ONOFFSWITCH, INPUT);
-  onoffSwitchDetect = new IODebounce(ONOFFSWITCH);
+  onoffSwitchDetect = new IODebounce("OnOffSwitch", ONOFFSWITCH);
   node.addHandler(onoffSwitchDetect);
 
   UNSAFE =  node.machinestate.addState("Blocked, switch=ON",
@@ -156,7 +156,7 @@ void setup() {
 #endif
 
   expandedPinMode(INTERLOCK, INPUT);
-  interlockDetect = new IODebounce(INTERLOCK);
+  interlockDetect = new IODebounce("Interlock", INTERLOCK);
   node.addHandler(interlockDetect);
 
   interlockDetect->setCallback([](const int newState) {
@@ -188,7 +188,7 @@ void setup() {
       Debug.printf("Interlock power now %s (State: %s)\n", newState ? "OFF" : "ON", node.machinestate.label());
   }, CHANGE);
 
-  motorCurrent = new IODebounce(MOTOR_CURRENT);
+  motorCurrent = new IODebounce("MotorCurrent", MOTOR_CURRENT);
   motorCurrent->setAnalogThreshold(30);  // Was 600
   node.addHandler(motorCurrent);
 
@@ -271,7 +271,7 @@ void loop() {
       else
         node.updateDisplayStateMsg("Prss GREEN @ back", 1);
 
-      node.updateDisplayStateMsg(node.machinestate.timeLeftInThisState(), 2);
+      node.updateDisplayStateMsg(node.machinestate.timeLeftInThisState().c_str(), 2);
     }
   };
 

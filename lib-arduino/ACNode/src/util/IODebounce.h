@@ -31,8 +31,8 @@ class IODebounce : public ACBase {
     typedef std::function<float(const int)> analogReadFunction;
     void setAnalogReadFunction(analogReadFunction func) { _analogRead = func; };
 
-    typedef std::function<void(const int)> ButtonCallback;
-    void setCallback(ButtonCallback,int mode = CHANGE);
+    typedef std::function<void(const int)> IOButtonCallback;
+    void setCallback(IOButtonCallback,int mode = CHANGE);
 
     bool operator ==(int s) { return (s ? HIGH : LOW) == _lastStateBtn; };
     bool operator !=(int s) { return (s ? HIGH : LOW) != _lastStateBtn; };
@@ -46,7 +46,7 @@ class IODebounce : public ACBase {
     unsigned long _delay;
     unsigned long _lastChangeTime;
     bool _lastStateBtn, _prevStateBtn, _hasfired=false;
-    ButtonCallback _callBack = NULL;
+    IOButtonCallback _callBack = NULL;
     digitalReadFunction _digitalRead = &expandedDigitalRead;
     analogReadFunction _analogRead = &expandedAnalogRead;
 };
