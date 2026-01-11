@@ -32,7 +32,19 @@ class IODebounce : public ACBase {
     void setAnalogReadFunction(analogReadFunction func) { _analogRead = func; };
 
     typedef std::function<void(const int)> IOButtonCallback;
-    void setCallback(IOButtonCallback,int mode = CHANGE);
+
+    // Constants from Arduino.h
+    typedef enum {
+	CBCT_RISING = RISING,
+	CBCT_FALLING = FALLING,
+	CBCT_CHANGE = CHANGE,
+	CBCT_ONLOW = ONLOW,
+	CBCT_ONHIGH = ONHIGH,
+	CBCT_ONLOW_WE = ONLOW_WE,
+	CBCT_ONHIGH_WE = ONHIGH_WE,
+    } change_t;
+
+    void setCallback(IOButtonCallback, change_t mode = CBCT_CHANGE);
 
     bool operator ==(int s) { return (s ? HIGH : LOW) == _lastStateBtn; };
     bool operator !=(int s) { return (s ? HIGH : LOW) != _lastStateBtn; };

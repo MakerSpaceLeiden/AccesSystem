@@ -232,7 +232,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
             _deskCtrl->close();
             return;
         };
-    },  CHANGE);
+    },  IODebounce::CBCT_CHANGE);
     addHandler(offButton);
   
     pinMode(14,INPUT_PULLUP);
@@ -268,7 +268,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
             }
             return;
         };
-    },  CHANGE);
+    },  IODebounce::CBCT_CHANGE);
     addHandler(menuButton);
     //machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
