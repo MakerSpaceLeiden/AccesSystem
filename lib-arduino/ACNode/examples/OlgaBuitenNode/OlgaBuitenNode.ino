@@ -375,7 +375,7 @@ void loop() {
                  forced_night ? ",Forced" : "");
     Debug.printf("[%s]",
                  node.machinestate.label());
-    Debug.printf(", %u seconds",
+    Debug.printf(", %llu seconds",
                  0 + node.machinestate.secondsInThisState());
     Debug.printf(" - %s/%s -- Motor=%d, Solenoid=%d, Open=%d",
                  isWorkingHours() ? "working-hours" : "outside-working-hours",

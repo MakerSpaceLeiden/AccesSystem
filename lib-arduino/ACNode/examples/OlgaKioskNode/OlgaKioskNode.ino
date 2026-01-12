@@ -96,6 +96,7 @@ const uint16_t GRAYISH = 0xAD55;
 #endif
 
 const char ota_password_hash[] = OTA_PASSWD_HASH256;
+
 ACNodeRest node(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 
 
@@ -145,9 +146,6 @@ void policeConections() {
   switch (justOneWSlisteners()) {
     case C_NONE:
       if (node.machinestate != NOCONNECTIONS) {
-        tft.fillScreen(ST77XX_WHITE);
-        tft.setFont(&FreeSans12pt7b);
-        printCentered("Open Browser on PC");
         node.machinestate = NOCONNECTIONS;
       };
       break;
@@ -157,9 +155,6 @@ void policeConections() {
       break;
     case C_TOOMANY:
       if (node.machinestate != TOOMANYCONNECTIONS) {
-        tft.fillScreen(ST77XX_WHITE);
-        tft.setFont(&FreeSans12pt7b);
-        printCentered("Quit other browsers");
         node.machinestate = TOOMANYCONNECTIONS;
       };
       break;
@@ -178,7 +173,7 @@ void setup() {
   setupDisplay();
   centeredText("wait", GRAYISH);
 
-  LOGGINGIN = node.machinestate.addState((const char *)"Logging in",
+  LOGGINGIN = node.machinestate.addState((const char *)"Logging you in",
                                          LED::LED_IDLE,
                                          (time_t)(LOGINDELAY * 1000),
                                          node.machinestate.WAITINGFORCARD,  // then go back to waiting for the next swipe.
@@ -218,7 +213,7 @@ void setup() {
     lastTag = String(tag);
 
     digitalWrite(LED_INDICATOR, HIGH);
-    ws.textAll("logging in");
+    ws.textAll("logging you in now");
 
     return ret;
   });
@@ -259,15 +254,26 @@ void setup() {
 
   node.machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     updateStatusBar(node.machinestate.label());
-    // ws.textAll(node.machinestate.label());
+    ws.textAll(node.machinestate.label());
   });
 
   node.machinestate.addOnChangeCallback(MachineState::WAITINGFORCARD, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {
     centeredText("login", GRAYISH);
   });
 
-  OTA *ota = new OTA(ota_password_hash);
-  node.addHandler(ota);
+  node.machinestate.addOnChangeCallback(NOCONNECTIONS, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {
+    tft.fillScreen(ST77XX_WHITE);
+    tft.setFont(&FreeSans12pt7b);
+    printCentered("Open Browser on PC");
+  });
+
+  node.machinestate.addOnChangeCallback(TOOMANYCONNECTIONS, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {
+    tft.fillScreen(ST77XX_WHITE);
+    tft.setFont(&FreeSans12pt7b);
+    printCentered("Quit other browsers");
+  });
+
+  node.addHandler(new OTA(ota_password_hash));
 
   node.onReport([](JsonObject report) {
     char tmp[256];
@@ -277,8 +283,8 @@ void setup() {
 
   ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
     if (type == WS_EVT_CONNECT || type == WS_EVT_DISCONNECT) {
-      // Debug.println("Lost/gained a connection - checking IPs");
-      // policeConections();
+      Debug.println("Lost/gained a connection - checking IPs");
+      policeConections();
     };
 
     if (type != WS_EVT_DATA) {
@@ -306,9 +312,11 @@ void setup() {
   tzset();
 
   Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
+  policeConections();
 }
 
 void loop() {
+//  ArduinoOTA.handle();
   node.loop();
   loopDisplay();
 
@@ -319,9 +327,16 @@ void loop() {
 
   if (node.machinestate == MachineState::WAITINGFORCARD) {
     static unsigned long lst = 0;
-    if (millis() - lst > 3000) {
+    if (millis() - lst > 2000) {
       lst = millis();
-      uint8_t r = 1 + (esp_random() % 99);
+
+      // prevent 00 and two identical consqeuitive numbers
+      //
+      static uint8_t lr = 0;
+      uint8_t r;
+      do { r = 1 + (esp_random() % 99); } while (r == lr);
+      lr = r;
+
       char buff[3];
       snprintf(buff, sizeof(buff), "%02d", r);
       ws.textAll(buff);
@@ -341,16 +356,5 @@ void loop() {
       tft.print(buff);
     }
   };
-
-  if (node.machinestate == LOGGINGIN)
-    return;
-
-  static unsigned long lst = 0;
-  if (millis() - lst < 5000)
-    return;
-
-  lst = millis();
-
-  ws.textAll(node.machinestate.label());
-  policeConections();
+  return;
 }

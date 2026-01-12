@@ -11,11 +11,22 @@
 #define ST77XX_DARKGREEN (0x03E0)
 #endif
 
+#define HW_SPI
+
+#ifdef HW_SPI
+SPIClass spi(HSPI);
+Adafruit_ST7789 tft = Adafruit_ST7789(&spi, OLED_CS, OLED_DC_RS, OLED_RST);
+#else
 Adafruit_ST7789 tft = Adafruit_ST7789(OLED_CS, OLED_DC_RS, OLED_MOSI, OLED_CLK, OLED_RST);
+#endif
+
 const int SCREEN_WIDTH = 240;
 const int SCREEN_HEIHGT = 135;
 
 void setupDisplay() {
+#ifdef HW_SPI
+  spi.begin(OLED_CLK, -1, OLED_MOSI, OLED_CS);
+#endif
 
   tft.init(SCREEN_HEIHGT, SCREEN_WIDTH);  // Swapped as we're rotating the screen 90 degrees.
   tft.setRotation(3);
@@ -24,9 +35,9 @@ void setupDisplay() {
   tft.setTextColor(ST77XX_BLACK);
   tft.setTextWrap(true);
   tft.setFont(NULL);
-  tft.setCursor(0,0);
+  tft.setCursor(0, 0);
 
-  tft.print("Started: " __DATE__ " " __TIME__ "\n");
+  tft.print("FW: " __DATE__ " " __TIME__ "\n");
 
   tft.setFont(&FreeSansBold18pt7b);
 }
@@ -35,6 +46,7 @@ void updateStatusBar(const char* str) {
   tft.setFont(NULL);
   tft.setCursor(0, 0);
   tft.setTextColor(ST77XX_BLACK);
+  tft.fillRect(0,0,tft.width()-1,8, ST77XX_WHITE);
   tft.print(str);
 }
 
@@ -57,7 +69,8 @@ void printCentered(const char* string) {
 }
 
 void centeredText(const char* string, uint16_t col) {
-  tft.fillScreen(ST77XX_WHITE);
+  // tft.fillScreen(ST77XX_WHITE);
+  tft.fillRect(0,8,tft.width()-1,tft.height()-9, ST77XX_WHITE);
   tft.fillCircle(tft.width() / 2, tft.height() / 2, (tft.height() / 2) * 0.8, col);
 
   tft.setTextColor(ST77XX_WHITE);
@@ -78,7 +91,6 @@ void tocker() {
 }
 
 void bottomStatusLine() {
-  return;
 
   static char buff[60] = "";
   static unsigned long lst = 0;
@@ -128,8 +140,8 @@ void bottomStatusLine() {
   size_t fql = strlen(WiFi.localIP().toString().c_str());
 
   char s[16] = "               ";
-  if (fql<15)
-    s[15-fql] = '\0';
+  if (fql < 15)
+    s[15 - fql] = '\0';
 
   snprintf(newbuff, sizeof(newbuff), "http://%s/login%s %3u%c %s", WiFi.localIP().toString().c_str(), s, h, u, p);
 

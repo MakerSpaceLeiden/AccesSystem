@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <esp_debug_helpers.h>
 #include "util/part.h"
+#include "util/reset.h"
 #include "esp_task_wdt.h"
 #include "esp_heap_caps.h"
 #include "esp_sntp.h"
@@ -30,6 +31,7 @@ beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timi
 
 float loopRate = 0;
 
+const char * reset_core0, *reset_core1;
 // Unfortunately - MQTT callbacks cannot yet pass
 // a pointer. So we need a 'global' variable; and
 // sort of treat this class as a singleton. And
@@ -64,6 +66,9 @@ void ACNodeBase::CONSTS() {
 
     Serial.begin(115200);
     while(!Serial) { delay(10); };
+
+    reset_core0 = reset_reason(0);
+    reset_core1 = reset_reason(1);
 
     Serial.println("\n\nBoot started -- " __DATE__ " - " __TIME__);
 };
@@ -428,8 +433,11 @@ void ACNodeBase::report(JsonObject out) {
     c[ "deny" ] = _deny;
     c[ "requests" ] = _reqs;    
  
-    JsonObject heap = out["memory"].add<JsonObject>();
+    JsonArray lr = out["lastResetReason"].add<JsonArray>();
+    lr.add(reset_core0);
+    lr.add(reset_core1);
 
+    JsonObject heap = out["memory"].add<JsonObject>();
     heap["heap_free"] = ESP.getFreeHeap();
     heap["heap_free8"] = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     heap["heap_free8_min"] = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);

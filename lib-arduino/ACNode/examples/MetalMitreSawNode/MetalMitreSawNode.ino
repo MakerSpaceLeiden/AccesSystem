@@ -27,7 +27,6 @@
 #endif
 
 #include <WhiteNodev108.h>
-#include <ButtonDebounce.h>
 
 #ifndef MACHINE
 #define MACHINE "metalmitresaw"
@@ -57,7 +56,7 @@ WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 #define RELAY_GPIO (node.OUT0)
 #define MOTOR_CURRENT (node.CURR0)
 
-ButtonDebounce *safetyDetect, *pumpDetect, *motorCurrent;
+IODebounce *safetyDetect, *pumpDetect, *motorCurrent;
 
 // Extra state above 'POWERED' - when the saw is spinning (detected via the motorCurrent) as
 // opposed to the safety circuitry being powered (i.e. relay has closed, so the interlock
@@ -84,18 +83,17 @@ void setup() {
   RUNNING = node.machinestate.addState("Saw Running", LED::LED_ON, MachineState::NEVER, 0);
 
   pinMode(PUMP, INPUT);
-  pumpDetect = new ButtonDebounce(PUMP);
+  pumpDetect = new IODebounce("Pump", PUMP);
   pumpDetect->setCallback([](const int newState) {
     // remove coolant nag from screen, if any.
     if (node.machinestate == RUNNING && !newState)
       node.updateDisplay(node.machine, node.machinestate.label(), true);
 
     Log.printf("Coolant pump now %s\n", newState ? "OFF" : "ON");
-  },
-                          CHANGE);
+  });
 
   pinMode(SAFETY, INPUT);
-  safetyDetect = new ButtonDebounce(SAFETY);
+  safetyDetect = new IODebounce("Interlock", SAFETY);
   safetyDetect->setCallback([](const int newState) {
     Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
     if (node.machinestate == MachineState::WAITINGFORCARD && newState == LOW) {
@@ -115,10 +113,9 @@ void setup() {
     } else {
       Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
     };
-  },
-                            CHANGE);
+  });
 
-  motorCurrent = new ButtonDebounce(MOTOR_CURRENT);
+  motorCurrent = new IODebounce("MotorCurrent",MOTOR_CURRENT);
   motorCurrent->setAnalogThreshold(600);  // typical is 0-50 for off, 1200 for on.
   motorCurrent->setCallback([](const int newState) {
     if (node.machinestate == POWERED && newState) {
@@ -131,8 +128,7 @@ void setup() {
       Log.printf("Unexpected change in motor current; state is %s and the current is %s\n",
                  node.machinestate.label(), newState ? "ON" : "OFF");
     }
-  },
-                            CHANGE);
+  });
 
   node.setOTAPasswordHash(OTA_PASSWD_HASH);
   node.set_mqtt_prefix("ac");

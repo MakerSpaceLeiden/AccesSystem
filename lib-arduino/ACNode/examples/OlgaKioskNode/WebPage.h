@@ -75,7 +75,7 @@ static const char webPage[] PROGMEM = R"(
          };
          if (event.data.startsWith('http')) {
             window.location.replace(event.data); // blocks back (as opposed to href)
-            info.innerHTML = 'logging in...';
+            info.innerHTML = 'ok - redirecting you now';
             return;
          };
 
@@ -87,8 +87,8 @@ static const char webPage[] PROGMEM = R"(
          websocket.onopen = onOpen;
          websocket.onclose = onClose;
          websocket.onmessage = onMessage;
-         info.innerHTML = 'connecting';
-         console.log('(re)Connecting)');
+         info.innerHTML = '(re)connecting';
+         console.log('(re)Connecting');
      }
 </script>
 </html>
