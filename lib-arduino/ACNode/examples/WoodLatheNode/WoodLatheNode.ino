@@ -28,8 +28,8 @@
 #define MACHINE   "woodlathe"
 #endif
 
-#define RELAY_GPIO        (OUT0)
-#define MOTOR_CURRENT     (CURR0)
+#define RELAY_GPIO        (node.OUT0)
+#define MOTOR_CURRENT     (node.CURR0)
 
 //#define OTA_PASSWD_MD5  "0f475732f6c1a632b3e161160be0cfc5" // the MD5 of "SomethingSecrit"
 
@@ -93,7 +93,7 @@ void setup() {
     Log.println("Approval callback");
     // We allow 'taking over a machine while it is on' -- hence this check for
     // if it is powered.
-    if (node.machinestate != POWERED & node.machinestate != MachineState::CHECKINGCARD) {
+    if ((node.machinestate != POWERED) && (node.machinestate != MachineState::CHECKINGCARD)) {
       node.buzzerErr();
       return;
     };
@@ -103,12 +103,14 @@ void setup() {
   // This node does not have a safety contactor; instead it has a single (off) button
   // that also contains the (error/aart) general indicator LED. This button is
   // wired to the MENU button.
-  node.setMenuCallback([](const int newState) {
+  //
+  node.setMenuCallback([](const int newState) -> bool {
     if (node.machinestate == POWERED && newState == LOW) {
       Log.println("Normal poweroff");
       normal_poweroff++;
       node.machinestate = MachineState::WAITINGFORCARD;
       node.buzzerOk();
+      return true;
     }
     else if (node.machinestate == RUNNING && newState == LOW) {
       // Refuse to let the safety be used to power something off. As
@@ -119,8 +121,8 @@ void setup() {
       bad_poweroff++;
     } else
       Debug.println("Left button press ignored.");
-  },
-  WHEN_PRESSED);
+    return false;
+  }, ONLOW);
 
   Log.println("Booted: " __FILE__ " " __DATE__ " " __TIME__);
 }

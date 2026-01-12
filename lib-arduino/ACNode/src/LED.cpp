@@ -6,7 +6,7 @@
 // We cannot quite call objects from the ticker callback; so
 // we use a tiny bit of glue.
 //
-static void flipPin(LED * led) { led->_update(); }
+// static void flipPin(LED * led) { led->_update(); }
 
 LED::LED(const char * name, const byte pin, const bool inverted) : ACBase(name), _pin(pin) ,_inverted(inverted) {
 #if 0

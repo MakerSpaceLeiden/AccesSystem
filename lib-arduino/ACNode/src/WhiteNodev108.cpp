@@ -232,7 +232,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
             _deskCtrl->close();
             return;
         };
-    },  CHANGE);
+    },  IODebounce::CBCT_CHANGE);
     addHandler(offButton);
   
     pinMode(14,INPUT_PULLUP);
@@ -268,7 +268,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
             }
             return;
         };
-    },  CHANGE);
+    },  IODebounce::CBCT_CHANGE);
     addHandler(menuButton);
     //machinestate.setOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
@@ -425,7 +425,12 @@ void WhiteNodev108::report(JsonObject  report) {
     JsonObject ntp= report["time"].add<JsonObject>();
 
     ntp["ntp"] = (bool) esp_sntp_enabled();
-    ntp["ntppool"] = "" NTP_POOL "";
+
+    JsonArray srvs = report["servers"].add<JsonArray>();
+    const char * servers[] = { NTP_POOL, NULL };
+    for(const char **p = servers; *p; p++)
+    	srvs.add(*p);
+
     ntp["ntpstatus"] = sntp_get_sync_status();
 
     time_t now = time(NULL);

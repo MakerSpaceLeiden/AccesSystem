@@ -283,7 +283,7 @@ void loop() {
       if (node.machinestate != SHUTTINGDOWN)
         node.updateDisplayStateMsg("Prss GREEN @ back", 1);
 
-      node.updateDisplayStateMsg(node.machinestate.timeLeftInThisState(), 2);
+      node.updateDisplayStateMsg(node.machinestate.timeLeftInThisState().c_str(), 2);
     }
   };
 
