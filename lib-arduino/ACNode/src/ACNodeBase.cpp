@@ -454,6 +454,27 @@ void ACNodeBase::report(JsonObject out) {
     mq[ "maxMqtt" ] = MAX_MSG;
     mq[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
+
+    JsonObject ntp= out["time"].add<JsonObject>();
+
+    ntp["ntp"] = (bool) esp_sntp_enabled();
+    JsonArray srvs = ntp["servers"].add<JsonArray>();
+    const char * servers[] = { NTP_POOL, NULL };
+    for(const char **p = servers; *p; p++)
+        srvs.add(*p);
+
+    sntp_sync_status_t s = sntp_get_sync_status();    
+    ntp["status"] = (s == SNTP_SYNC_STATUS_RESET) ? "Reset" : ((s == SNTP_SYNC_STATUS_COMPLETED) ? "Completed" : ((s == SNTP_SYNC_STATUS_IN_PROGRESS) ? "InProcess" : "Unknown" ));
+    
+    time_t now = time(NULL);
+    ntp["ctime"] = ctime(&now);
+    ntp["gmtime"] = asctime(gmtime(&now));
+    ntp["localtime"] = asctime(localtime(&now));
+            
+    struct tm ts;
+    if (getLocalTime(&ts))
+       ntp["Time"] = asctime(&ts);
+
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it)
         (*it)->report(out);
