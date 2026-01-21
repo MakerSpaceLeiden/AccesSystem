@@ -467,7 +467,7 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     client.setPrivateKey(client_key_as_pem); 
     
     if (!https.begin(client, url)) {
-        Log.println("setup fail");
+        Log.println("https client setup fail for url: " + String(url));
         return 0;
     };
     https.setTimeout(HTTP_TIMEOUT);

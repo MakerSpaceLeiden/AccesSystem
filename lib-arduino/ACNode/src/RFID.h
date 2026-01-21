@@ -2,6 +2,7 @@
 #define _H_RFID
 
 #define RFID_MAX_TAG_LEN (12)
+#define RFID_MAX_TAG_STRING_LEN (RFID_MAX_TAG_LEN * 4) // Up to a 3 digits and a dash and/or terminating \0. */
 
 #include <stddef.h>
 #include <functional>
@@ -33,7 +34,7 @@ class RFID : public ACBase {
   protected:
     bool _irqMode = false;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
-    char lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
+    char lasttag[RFID_MAX_TAG_STRING_LEN];      // Up to a 3 digit byte and a dash or terminating \0. */
     unsigned long lastswipe = 0, _scan = 0, _miss = 0;
 };
 

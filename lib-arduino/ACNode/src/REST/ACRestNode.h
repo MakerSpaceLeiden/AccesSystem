@@ -16,8 +16,9 @@ public:
 		e = *_e;
 		safestrcpy(tag, _tag);
     };
+
     ApprovalEntry e;
-    char tag[RFID_MAX_TAG_LEN*4+2] = "\0";
+    char tag[RFID_MAX_TAG_STRING_LEN] = "\0";
 };
 
 class ACNodeRest : public ACNodeBase {
@@ -56,9 +57,12 @@ private:
     const unsigned long TAG_SEND_INTERVAL = 5 * 1000; // at least 5 seconds in between tag sends.
 
     // we've gone from a std::list to something fix to battle fragmentation
-    static const unsigned char MAX_QUEUED = 2;
+    static const unsigned char MAX_QUEUED = 4;
+
     unsigned char _approvedTagsToSentQueued = 0;
     ApprovalEntryWithTag _approvedTagsToSent[MAX_QUEUED]; 
- 
+
+    unsigned char _unknownTagsToSentQueued = 0;
+    char _unknownTagsToSent[MAX_QUEUED][RFID_MAX_TAG_STRING_LEN];
 };
 #endif
