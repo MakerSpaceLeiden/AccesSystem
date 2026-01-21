@@ -192,8 +192,7 @@ void setup() {
       normal_poweron++;
     } else
       Debug.printf("Interlock power now %s (State: %s)\n", newState ? "OFF" : "ON", node.machinestate.label());
-  },
-                               CHANGE);
+  });
 
   motorCurrent = new IODebounce("motor_current", MOTOR_CURRENT);
   motorCurrent->setAnalogThreshold(CURR_TRESHOLD);
@@ -210,8 +209,7 @@ void setup() {
       Log.printf("Alert: Unexpected change in motor current; state is %s and the current is %s\n",
                  node.machinestate.label(), newState ? "ON" : "OFF");
     }
-  },
-                            CHANGE);
+  });
 
   node.setOTAPasswordHash(ota_password_hash);
   node.set_mqtt_prefix("ac");

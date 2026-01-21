@@ -189,11 +189,6 @@ void WhiteNodev108::begin(bool hasDisplay) {
 	ETH.begin(WN_ETH_PHY_TYPE, WN_ETH_PHY_ADDR, WN_ETH_PHY_MDC, WN_ETH_PHY_MDIO, WN_ETH_PHY_POWER, WN_ETH_CLK_MODE);
 #endif
 
-//    Cannot be called this early.
-//
-//    esp_sntp_servermode_dhcp(true);
-//    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3",NTP_POOL);
-
     configTzTime("CET",NTP_POOL);
     setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
     tzset();
@@ -421,26 +416,6 @@ void WhiteNodev108::report(JsonObject  report) {
     otr["ota"] = true;
     otr["idle_poweroff"] = idle_poweroff;
     otr["headless"] = (_display == NULL) ? true : false;
-
-    JsonObject ntp= report["time"].add<JsonObject>();
-
-    ntp["ntp"] = (bool) esp_sntp_enabled();
-
-    JsonArray srvs = report["servers"].add<JsonArray>();
-    const char * servers[] = { NTP_POOL, NULL };
-    for(const char **p = servers; *p; p++)
-    	srvs.add(*p);
-
-    ntp["ntpstatus"] = sntp_get_sync_status();
-
-    time_t now = time(NULL);
-    ntp["ctime"] = ctime(&now);
-    ntp["gmtime"] = asctime(gmtime(&now));
-    ntp["localtime"] = asctime(localtime(&now));
-
-    struct tm ts;
-    if (getLocalTime(&ts))
-       ntp["Time"] = asctime(&ts);
 
     super::report(report);
 }

@@ -94,7 +94,7 @@ WhiteNodev108 node = WhiteNodev108(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
 //
 MachineState::machinestate_t FIRING;
 
-ButtonDebounce *safetyDetect, *ovenCurrent, *vk2000detect;
+IODebounce *safetyDetect, *ovenCurrent, *vk2000detect;
 
 unsigned long startWhCounter = 0;
 volatile unsigned long whCounter = 0;
@@ -120,7 +120,7 @@ void setup() {
   FIRING = node.machinestate.addState("Firing", LED::LED_ON, 0 /* NEVER */, POWERED);
 
   pinMode(VK2000_GPIO, INPUT);
-  vk2000detect = new ButtonDebounce(VK2000_GPIO);
+  vk2000detect = new IODebounce("VK200", VK2000_GPIO);
 
   vk2000detect->setCallback([](const int newState) {
     Log.printf("VK2000 output now %s\n", newState ? "OFF" : "ON");
@@ -139,11 +139,10 @@ void setup() {
         Log.println("Unexpected VK2000 start of firing");
       }
     }
-  },
-                            CHANGE);
+  });
 
   pinMode(SAFETY, INPUT);
-  safetyDetect = new ButtonDebounce(SAFETY);
+  safetyDetect = new IODebounce("Interlock", SAFETY);
   safetyDetect->setCallback([](const int newState) {
     Log.printf("Interlock power now %s\n", newState ? "OFF" : "ON");
 
@@ -161,18 +160,16 @@ void setup() {
       Log.printf("Machine seems on - not quite expected this.");
       node.machinestate = POWERED;
     }
-  },
-                            CHANGE);
+  });
 
   pinMode(WHPULS_GPIO, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(WHPULS_GPIO), irqWattHourPulse, FALLING);
 
-  ovenCurrent = new ButtonDebounce(OVEN_CURRENT);
+  ovenCurrent = new IODebounce("OvenCurrent", OVEN_CURRENT);
   ovenCurrent->setAnalogThreshold(600);
   ovenCurrent->setCallback([](const int newState) {
-    Log.printf("Current to heating coil now %s\n", newState ? "OFF" : "ON");
-  },
-                           CHANGE);
+    Log.printf("Current to heating coil now %s\n", newState ? "OFF" : "ON"); 
+  });
 
   node.setOffCallback([](const int newState) -> bool {
     // the ceramics node is special in that we do not allow

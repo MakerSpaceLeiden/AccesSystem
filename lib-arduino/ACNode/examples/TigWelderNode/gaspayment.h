@@ -51,17 +51,17 @@ void claim() {
     wr.welding_timer_start_last_session = wr.welding_timer;
     wr.amount_claimed = wr.price_per_minute;
     
-    char * claim = paymentAPI->claim(e->uid.c_str(),wr.amount_claimed,"Up to 1 minute of TIG gas");
-    if (!claim) {
+    String claim = paymentAPI->claim(e->uid,wr.amount_claimed,"Up to 1 minute of TIG gas");
+    if (!claim || claim == "") {
         // do we pospone this ? or for now accept our 'risk' ?
         Log.println("Could not create a payment claim - registration failed.");
         return;
     };
-    strncpy(wr.last_claim, claim, sizeof(wr.last_claim,claim));
+    strncpy(wr.last_claim, claim.c_str(), sizeof(wr.last_claim));
     welding_save(true);
 
-    Log.printf("Claim %s of %.2f registerd for %s (%s)", claim, wr.amount_claimed, e->name.c_str(), e->uid.c_str());
-    free(claim);
+    Log.printf("Claim %s of %.2f registerd for %s (%s)", wr.last_claim, wr.amount_claimed, e->name, e->uid);
+    // free(claim);
 }
 
 void update_claim() {
@@ -124,8 +124,8 @@ void payment_init() {
                 wr.price_per_minute);
         } else {
             Log.printf("Pricing: %s (%s): %.02f\n",
-                paymentAPI->pricelist->defaultItem->name,
-                paymentAPI->pricelist->defaultItem->desc,
+                paymentAPI->pricelist->defaultItem->name.c_str(),
+                paymentAPI->pricelist->defaultItem->desc.c_str(),
                 paymentAPI->pricelist->defaultItem->price);
 
                 if (wr.price_per_minute != paymentAPI->pricelist->defaultItem->price) {

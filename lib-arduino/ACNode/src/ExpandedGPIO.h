@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#include "Adafruit_MCP23X17.h"
+#include <Adafruit_MCP23X17.h>
 #include <Adafruit_AW9523.h>
 
 // Use the top 2 bits for marking  the local/extended output.
@@ -17,6 +17,7 @@
 
 // Convinience functions that rely on a auto created
 // singleton.
+//
 extern void expandedPinMode(uint8_t pin, uint8_t mode);
 extern int  expandedDigitalRead(uint8_t pin);
 extern void expandedDigitalWrite(uint8_t pin, uint8_t val);

@@ -53,7 +53,7 @@ class IODebounce : public ACBase {
     void loop();
   private:
     int _pin;
-    int _mode; // Interrupt mode (RISING, FALLING, CHANGE, ONLOW, ONHIGH -- see Arduino.h)
+    change_t _mode; // Interrupt mode 
     unsigned short _analogThreshold = 0;
     unsigned long _delay;
     unsigned long _lastChangeTime;

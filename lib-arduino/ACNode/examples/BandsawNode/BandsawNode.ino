@@ -186,7 +186,7 @@ void setup() {
     }
     else
       Debug.printf("Interlock power now %s (State: %s)\n", newState ? "OFF" : "ON", node.machinestate.label());
-  }, CHANGE);
+  });
 
   motorCurrent = new IODebounce("MotorCurrent", MOTOR_CURRENT);
   motorCurrent->setAnalogThreshold(30);  // Was 600
@@ -203,7 +203,7 @@ void setup() {
       Log.printf("Alert: Unexpected change in motor current; state is %s and the current is %s\n",
                  node.machinestate.label(), newState ? "ON" : "OFF");
     }
-  }, CHANGE);
+  });
 
 
   node.setOTAPasswordHash(ota_password_hash);
@@ -213,10 +213,9 @@ void setup() {
   node.setNodeDeck(new MachineDeck(&node));
 
   node.onReport([](JsonObject  report) {
-    char * p = __FILE__;
-    char * q = rindex(p, '/');
-    if (q) p = q;
-    report["fw"] = __FILE__ " " __DATE__ " " __TIME__;
+    char tmp[256];
+    snprintf(tmp, sizeof(tmp), "%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__, __TIME__);
+    report["fw"] = tmp;
     report["bad_poweroff"] = bad_poweroff;
     report["normal_poweroff"] = normal_poweroff;
     report["idle_poweron"] = idle_poweroff;

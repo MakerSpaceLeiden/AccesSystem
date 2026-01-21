@@ -50,9 +50,9 @@ public:
     };
     const float ERRVAL = -999;
 private:
-    uint8_t _i2caddr;
     TwoWire * _wire;
     unsigned long _K;
+    uint8_t _i2caddr;
     float _temperature, _pressure;
     
     bool _startConversion() {

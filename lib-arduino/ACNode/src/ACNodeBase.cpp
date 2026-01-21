@@ -4,11 +4,12 @@
 #include <ArduinoJson.h>
 #include <esp_debug_helpers.h>
 #include "util/part.h"
+#include "util/reset.h"
 #include "esp_task_wdt.h"
 #include "esp_heap_caps.h"
 #include "esp_sntp.h"
 
-SET_LOOP_TASK_STACK_SIZE(12*1024);
+SET_LOOP_TASK_STACK_SIZE(16*1024);
 
 #ifdef ESP32
 #include <WiFi.h>
@@ -30,6 +31,7 @@ beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timi
 
 float loopRate = 0;
 
+const char * reset_core0, *reset_core1;
 // Unfortunately - MQTT callbacks cannot yet pass
 // a pointer. So we need a 'global' variable; and
 // sort of treat this class as a singleton. And
@@ -64,6 +66,9 @@ void ACNodeBase::CONSTS() {
 
     Serial.begin(115200);
     while(!Serial) { delay(10); };
+
+    reset_core0 = reset_reason(0);
+    reset_core1 = reset_reason(1);
 
     Serial.println("\n\nBoot started -- " __DATE__ " - " __TIME__);
 };
@@ -428,8 +433,11 @@ void ACNodeBase::report(JsonObject out) {
     c[ "deny" ] = _deny;
     c[ "requests" ] = _reqs;    
  
-    JsonObject heap = out["memory"].add<JsonObject>();
+    JsonArray lr = out["lastResetReason"].add<JsonArray>();
+    lr.add(reset_core0);
+    lr.add(reset_core1);
 
+    JsonObject heap = out["memory"].add<JsonObject>();
     heap["heap_free"] = ESP.getFreeHeap();
     heap["heap_free8"] = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     heap["heap_free8_min"] = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
@@ -445,6 +453,27 @@ void ACNodeBase::report(JsonObject out) {
     mq["mqtt_isConnected"] = isConnected();
     mq[ "maxMqtt" ] = MAX_MSG;
     mq[ "mqtt_reconnects" ] = _mqtt_reconnects;
+
+
+    JsonObject ntp= out["time"].add<JsonObject>();
+
+    ntp["ntp"] = (bool) esp_sntp_enabled();
+    JsonArray srvs = ntp["servers"].add<JsonArray>();
+    const char * servers[] = { NTP_POOL, NULL };
+    for(const char **p = servers; *p; p++)
+        srvs.add(*p);
+
+    sntp_sync_status_t s = sntp_get_sync_status();    
+    ntp["status"] = (s == SNTP_SYNC_STATUS_RESET) ? "Reset" : ((s == SNTP_SYNC_STATUS_COMPLETED) ? "Completed" : ((s == SNTP_SYNC_STATUS_IN_PROGRESS) ? "InProcess" : "Unknown" ));
+    
+    time_t now = time(NULL);
+    ntp["ctime"] = ctime(&now);
+    ntp["gmtime"] = asctime(gmtime(&now));
+    ntp["localtime"] = asctime(localtime(&now));
+            
+    struct tm ts;
+    if (getLocalTime(&ts))
+       ntp["Time"] = asctime(&ts);
 
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it)

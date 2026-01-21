@@ -110,7 +110,7 @@ public:
                 
         _display->printf("Welding :%lu [mins]\n", (wr.welding_timer+30UL)/60UL);
         if (wr.bottle_date) {
-            char buff[20];
+            char buff[32];
             struct tm *p = localtime((time_t*)&(wr.bottle_date));
             snprintf(buff,sizeof(buff),"%04d/%02d/%02d",
                      p->tm_year+1900, p->tm_mon+1, p->tm_mday);
@@ -236,7 +236,7 @@ void setup() {
     node.machinestate.setTimeout(POWERED, MAX_SECS_IDLE*1000);
         
     expandedPinMode(POWER_VOLTAGE, INPUT);
-    powerDetect = new IODebounce(POWER_VOLTAGE);
+    powerDetect = new IODebounce("PowerVoltage", POWER_VOLTAGE);
     powerDetect->setDigitalReadFunction(&expandedDigitalRead);
     powerDetect->setCallback([](const int newState) {
         // Debug.println(newState ? "OPTO2: Power OFF" : "OPTO2: Power ON");
@@ -266,11 +266,11 @@ void setup() {
             bad_poweroff++;
             welding_save(true);
         }
-    }, CHANGE);
+    });
     node.addHandler(powerDetect);
     
     expandedPinMode(WELDING_VOLTAGE, INPUT);
-    weldingDetect = new IODebounce(WELDING_VOLTAGE);
+    weldingDetect = new IODebounce("WeldingVoltage", WELDING_VOLTAGE);
     weldingDetect->setDigitalReadFunction(&expandedDigitalRead);
     weldingDetect->setCallback([](const int newState) {
         // Debug.println(newState ? "OPTO1: No gas flow/solenoid off" : "OPTO1: gas flow/solenoid on");
@@ -286,7 +286,7 @@ void setup() {
             wr.welding_timer += (wt+500UL)/1000UL;
             node.machinestate = powerDetect->state() ? CHECK_VALVE_CLOSED : POWERED;
         }
-    }, CHANGE);
+    });
     node.addHandler(weldingDetect);
 
     node.setOTAPasswordHash(ota_password_hash);
@@ -297,9 +297,6 @@ void setup() {
     node.setNodeDeck(&machineDeck);
     
     node.onReport([](JsonObject  report) {
-        char * p = __FILE__;
-        char * q = rindex(p,'/');
-        if (q) p = q;
         char tmp[256];
         snprintf(tmp,sizeof(tmp),"%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__,__TIME__);
         report["fw"] = tmp;
@@ -356,8 +353,8 @@ void setup() {
         Debug.printf("onApproval callback state: %s\n", node.machinestate.label());
         if (node.machinestate == SWAPPING_BOTTLE) {
             ApprovalEntry * e = node.lastApproved();
-            const char * shortName = e ? e->shortName.c_str() : "Unknown";
-            const char * name = e ? e->name.c_str() : "Unknown";
+            const char * shortName = e ? e->shortName : "Unknown";
+            const char * name = e ? e->name : "Unknown";
             char tmp[256];
 
             snprintf(tmp,sizeof(tmp),
@@ -588,8 +585,8 @@ void loop() {
         }
     } else if (node.machinestate == UNLOCKED) {
         if (node.machinestate.secondsLeftInThisState() < 60) {
-            String left = node.machinestate.timeLeftInThisState();
-            node.updateDisplayStateMsg("Auto off in " + left, 2);
+            String msg= "Auto off in " + node.machinestate.timeLeftInThisState();
+            node.updateDisplayStateMsg(msg.c_str(), 2);
         };
     };
 }

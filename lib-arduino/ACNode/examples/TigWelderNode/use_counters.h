@@ -60,7 +60,7 @@ static void welding_save(bool force = false) {
     //
     welding_rec_t c;
     welding_stats.readBytes(0, &c, sizeof(c));
-    if (wr.version = c.version && wr.welding_timer == c.welding_timer && wr.bottle_date == c.bottle_date)
+    if ((wr.version == c.version) && (wr.welding_timer == c.welding_timer) && (wr.bottle_date == c.bottle_date))
         return;
 
     welding_stats.writeBytes(0, &wr, sizeof(wr));

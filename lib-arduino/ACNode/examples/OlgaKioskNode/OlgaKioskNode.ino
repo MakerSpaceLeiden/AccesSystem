@@ -57,13 +57,16 @@ static const char url[] = TERMINAL_URL PATH_SAML;
 #include <ACNode.h>
 #include <OTA.h>
 #include <REST/ACRestNode.h>
+#include <esp_sntp.h>
 
+// Extra RED led above reader
+const uint8_t LED_INDICATOR = 5;
 
 // i2c wired RFID reader
 #include <RFID/RFID_MFRC522.h>
 RFID_MFRC522 *reader = NULL;
 const uint8_t MFRC_I2C_ADDDR = 0x28;
-const uint8_t MFRC_NRSTPD = -1;  // not connected.
+const uint8_t MFRC_NRSTPD = UNUSED_PIN;  // not connected.
 const uint8_t MFRC_IRQ = 25;
 const uint8_t I2C_SDA = 21;   // 21 - default
 const uint8_t I2C_SCL = 22;   // 22 - default
@@ -76,6 +79,9 @@ const uint8_t OLED_RST = 23;
 const uint8_t OLED_DC_RS = 18;
 const uint8_t OLED_CS = 0;  // Was 2
 #include "SPIDisplay.h"
+
+/* grayish -- https://barth-dev.de/online/rgb565-color-picker/ */
+const uint16_t GRAYISH = 0xAD55;
 
 
 #ifndef OTA_PASSWD_HASH256
@@ -90,17 +96,104 @@ const uint8_t OLED_CS = 0;  // Was 2
 #endif
 
 const char ota_password_hash[] = OTA_PASSWD_HASH256;
+
 ACNodeRest node(MACHINE, WIFI_NETWORK, WIFI_PASSWD);
+
+
+// Logging in is quite slow - so we have a special state for this.
+//
+MachineState::machinestate_t LOGGINGIN;
+#define LOGINDELAY (10 /* seconds*/)
+
+MachineState::machinestate_t NOCONNECTIONS, TOOMANYCONNECTIONS;
 
 #include "WebPage.h"
 
 String lastTag = "";
+
+typedef enum { C_NONE,
+               C_ONE,
+               C_TOOMANY } ws_count_t;
+
+ws_count_t justOneWSlisteners() {
+  IPAddress ip = INADDR_NONE;
+  for (std::list<AsyncWebSocketClient>::iterator it = ws.getClients().begin(); it != ws.getClients().end(); ++it) {
+    if (ip == INADDR_NONE) {
+      ip = it->client()->remoteIP();
+      continue;
+    };
+    if (ip != it->client()->remoteIP()) {
+      return C_TOOMANY;
+    }
+  };
+  if (ip == INADDR_NONE) {
+    return C_NONE;
+  };
+  return C_ONE;
+};
+
+// Check that we have just one listener. And if there
+// are multiple; we reject the login. This does not
+// stop network and browser shenigans - but that is fine
+// as we provide the evil maid with just about anything
+// she would need; including passwords already. So we are
+// not making a bad situation that much worse.
+//
+void policeConections() {
+  if (node.machinestate < MachineState::WAITINGFORCARD || node.machinestate == LOGGINGIN)
+    return;
+
+  switch (justOneWSlisteners()) {
+    case C_NONE:
+      if (node.machinestate != NOCONNECTIONS) {
+        node.machinestate = NOCONNECTIONS;
+      };
+      break;
+    case C_ONE:
+      if (node.machinestate != MachineState::WAITINGFORCARD)
+        node.machinestate = MachineState::WAITINGFORCARD;
+      break;
+    case C_TOOMANY:
+      if (node.machinestate != TOOMANYCONNECTIONS) {
+        node.machinestate = TOOMANYCONNECTIONS;
+      };
+      break;
+  };
+};
 
 void setup() {
   Serial.begin(115200);
   delay(500);
 
   Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__);
+
+  pinMode(LED_INDICATOR, OUTPUT);
+  digitalWrite(LED_INDICATOR, LOW);
+
+  setupDisplay();
+  centeredText("wait", GRAYISH);
+
+  LOGGINGIN = node.machinestate.addState((const char *)"Logging you in",
+                                         LED::LED_IDLE,
+                                         (time_t)(LOGINDELAY * 1000),
+                                         node.machinestate.WAITINGFORCARD,  // then go back to waiting for the next swipe.
+                                         false /* no OTA during this */,
+                                         false /* No reporting until we're done with the door. */
+  );
+  NOCONNECTIONS = node.machinestate.addState((const char *)"No browser connected yet",
+                                             LED::LED_IDLE,
+                                             MachineState::NEVER,
+                                             node.machinestate.WAITINGFORCARD,
+                                             true /* Ok to OTA during this */,
+                                             true /* Ok to  reporting */
+  );
+  TOOMANYCONNECTIONS = node.machinestate.addState((const char *)"Multiple browsers connected",
+                                                  LED::LED_IDLE,
+                                                  MachineState::NEVER,
+                                                  node.machinestate.WAITINGFORCARD,
+                                                  true /* Ok to OTA during this */,
+                                                  true /* Ok to  reporting */
+  );
 
   if (!i2cBus.begin())
     Serial.println("Could not start wire(i2cBus)");
@@ -111,18 +204,35 @@ void setup() {
     if (ret != ACBase::CMD_DECLINE)
       return ret;
 
-    if (node.machinestate == MachineState::WAITINGFORCARD)
-      node.machinestate = MachineState::CHECKINGCARD;
+    if (node.machinestate != MachineState::WAITINGFORCARD) {
+      Log.println("Rejecting login - not waiting for a card.");
+      return ACBase::CMD_CLAIMED;
+    };
+
+    node.machinestate = MachineState::CHECKINGCARD;
     lastTag = String(tag);
-    
-    ws.textAll("logging in");
+
+    digitalWrite(LED_INDICATOR, HIGH);
+    ws.textAll("logging you in now");
 
     return ret;
   });
   node.addHandler(reader);
 
   node.onApproval([](const char *machine) {
+    if (justOneWSlisteners() == C_TOOMANY) {
+      Log.println("Rejecting login -- to many browsers connected");
+      centeredText("SNIFF", ST77XX_RED);
+      return;
+    };
+    if (justOneWSlisteners() == C_NONE) {
+      Log.println("Rejecting login -- no browser connected");
+      centeredText("NoPC", ST77XX_ORANGE);
+      return;
+    }
     centeredText("OK", ST77XX_DARKGREEN);
+    digitalWrite(LED_INDICATOR, HIGH);
+
     JsonDocument saml = node._restAPI->get(url, "tag=" + lastTag);
 
     // Really bad idea unless we have some other security implemented or some max/count - i.e. we're giving everyone currently subscribed the Kerberos ticket.
@@ -131,8 +241,10 @@ void setup() {
     else
       ws.textAll("Failed");
 
+    node.machinestate = LOGGINGIN;
     lastTag = "";
   });
+
 
   node.onDenied([](const char *machine) {
     centeredText("???", ST77XX_RED);
@@ -142,15 +254,26 @@ void setup() {
 
   node.machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
     updateStatusBar(node.machinestate.label());
+    ws.textAll(node.machinestate.label());
   });
 
   node.machinestate.addOnChangeCallback(MachineState::WAITINGFORCARD, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {
-    centeredText("login", 0x8888 /* grayish */);
+    centeredText("login", GRAYISH);
   });
 
+  node.machinestate.addOnChangeCallback(NOCONNECTIONS, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {
+    tft.fillScreen(ST77XX_WHITE);
+    tft.setFont(&FreeSans12pt7b);
+    printCentered("Open Browser on PC");
+  });
 
-  OTA *ota = new OTA(ota_password_hash);
-  node.addHandler(ota);
+  node.machinestate.addOnChangeCallback(TOOMANYCONNECTIONS, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {
+    tft.fillScreen(ST77XX_WHITE);
+    tft.setFont(&FreeSans12pt7b);
+    printCentered("Quit other browsers");
+  });
+
+  node.addHandler(new OTA(ota_password_hash));
 
   node.onReport([](JsonObject report) {
     char tmp[256];
@@ -159,14 +282,19 @@ void setup() {
   });
 
   ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
-    if (type != WS_EVT_DATA)
+    if (type == WS_EVT_CONNECT || type == WS_EVT_DISCONNECT) {
+      Debug.println("Lost/gained a connection - checking IPs");
+      policeConections();
+    };
+
+    if (type != WS_EVT_DATA) {
       return;
+    };
 
     AwsFrameInfo *info = (AwsFrameInfo *)arg;
 
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
       if (len == 4 && strncmp((char *)data, "PING", 4) == 0) {
-        Debug.println("Returning WS Ack to ping");
         client->text("ACK");
       };
     };
@@ -179,18 +307,54 @@ void setup() {
 
   node.begin();
 
-  setupDisplay();
+  esp_sntp_servermode_dhcp(true);
+  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+  tzset();
 
   Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
+  policeConections();
 }
 
 void loop() {
+//  ArduinoOTA.handle();
   node.loop();
   loopDisplay();
 
-  static unsigned long lst = 0;
-  if (millis() - lst < 2000)
+  digitalWrite(LED_INDICATOR, (node.machinestate == MachineState::WAITINGFORCARD) ? 0 : ((uint8_t)(millis() / 200)) & 1);
+
+  if (!node.isConnected())
     return;
-  lst = millis();
-  ws.textAll(node.machinestate.label());
+
+  if (node.machinestate == MachineState::WAITINGFORCARD) {
+    static unsigned long lst = 0;
+    if (millis() - lst > 2000) {
+      lst = millis();
+
+      // prevent 00 and two identical consqeuitive numbers
+      //
+      static uint8_t lr = 0;
+      uint8_t r;
+      do { r = 1 + (esp_random() % 99); } while (r == lr);
+      lr = r;
+
+      char buff[3];
+      snprintf(buff, sizeof(buff), "%02d", r);
+      ws.textAll(buff);
+
+      int16_t x1, y1;
+      uint16_t w, h;
+      tft.setFont(&FreeSansBold18pt7b);
+      tft.setTextColor(ST77XX_BLACK);
+      tft.getTextBounds(buff, 0, 0, &x1, &y1, &w, &h);
+      const uint16_t W = 40, H = 26;
+      x1 = tft.width() / 2 - W / 2;
+      y1 = tft.height() / 2 - H / 2 - 8;
+
+      tft.setCursor(x1 + (W - w) / 2, y1 + (H - h) / 2);
+      tft.fillRect(x1, y1 - H + 1, W, H, GRAYISH);
+
+      tft.print(buff);
+    }
+  };
+  return;
 }

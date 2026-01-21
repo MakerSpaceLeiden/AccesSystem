@@ -26,16 +26,14 @@ void OTA::begin() {
     ArduinoOTA.setHostname((_acnodebase->moi[0]) ? _acnodebase->moi : "unset-acnode");
     
     ArduinoOTA.onStart([]() {
-        if (strstr(_acnodebase->moi,"test"))
-            Log.println("OTA process started (trusting though - not wiping private keys).");
-        else {
-            Log.println("OTA process started -- wiping private keys.");
-            // wipe_eeprom();
-            Log.println("Keys wiped. Do not forget to reset the TOFU on the server.");
-        };
+        Log.println("OTA process started (trusting though - not wiping private keys).");
+
         Serial.print("Progress: 0%");
+#if 0
         Log.stop();
         Debug.stop();
+	_acnodebase->webServer()->stop();
+#endif
     });
     ArduinoOTA.onEnd([]() {
         Serial.println("..100% Done");
