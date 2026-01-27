@@ -95,7 +95,9 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
     if (e) {
         Log.printf("Received a DENIED to power on %s for %s: %s\n", machine, e->name, e->status());
     } else {
-        Log.println("Unknown tag. Denied.");
+       	Log.println("Unknown tag. Denied and scheduled to report.");
+        if (_unknownTagsToSentQueued < MAX_QUEUED)
+	    safestrncpy(_unknownTagsToSent[_unknownTagsToSentQueued++], tag, RFID_MAX_TAG_STRING_LEN);
     };
     
     if (_denied_callback)
@@ -141,7 +143,18 @@ void ACNodeRest::loop() {
     super::loop();
 
     static unsigned lst = 0;
-    if (_approvedTagsToSentQueued && machinestate.isStable() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 500) {
+    if (!(machinestate.isStable() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 5000))
+	return;
+
+    if (_unknownTagsToSentQueued) {
+        const char * url = UNKTAG_URL;
+	if (_restAPI->rest(url,"tag=" + String(_unknownTagsToSent[--_unknownTagsToSentQueued]))) 
+        	Debug.println("Unknown tag reported");
+	else 
+		Log.println("Reporting unknown tag failed");
+    };
+
+    if (_approvedTagsToSentQueued) {
 	ApprovalEntryWithTag et = _approvedTagsToSent[--_approvedTagsToSentQueued];
 
 	// HTTP
@@ -190,6 +203,10 @@ void ACNodeRest::loop() {
 	lst = millis();
     };
 
+    // We have issues with heap fragmentation if we do regular https calls. At some
+    // point - we cannot find a 32k block of contineous memory in the 300k or so free
+    // at that time. We can only get rid of these AFAIK with a reboot.
+    //
     // Check if we need to reboot -- we do this every 3rd day; between 3am and 7am
     // in the morning if we've been idle for at 60 minutes.
     //

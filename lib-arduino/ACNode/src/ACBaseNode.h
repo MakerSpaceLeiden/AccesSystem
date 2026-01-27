@@ -250,7 +250,7 @@ protected:
     unsigned long _report_period;
     bool _wired;
     acnode_proto_t _proto;
-    char _lasttag[RFID_MAX_TAG_LEN * 4];      // Up to a 3 digit byte and a dash or terminating \0. */
+    char _lasttag[RFID_MAX_TAG_STRING_LEN];      // Up to a 3 digit byte and a dash or terminating \0. */
     // stat counters
     unsigned long _approve, _deny, _reqs, _mqtt_reconnects, _start_beat;
     

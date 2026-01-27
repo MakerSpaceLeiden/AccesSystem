@@ -13,7 +13,7 @@ void RFID::registerCallback(unsigned char irqpin) {
 };
 
 void RFID::processAndRateLimitCard(unsigned char * bintag, size_t len) {
-    char tag[RFID_MAX_TAG_LEN * 4 + 2];
+    char tag[RFID_MAX_TAG_STRING_LEN];
     bzero(tag,sizeof(tag));
     for (int i = 0; i < len; i++) {
         char buff[5];
