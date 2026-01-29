@@ -1,4 +1,6 @@
 #include "REST/RestAPI.h"
+
+
 #include "selfsign.h"
 #include "rest.h"
 #include "util/common-utils.h"
@@ -298,6 +300,9 @@ void RestAPI::report(JsonObject report) {
     sha256toHEX(sha256_client, tmp);
     r["rest_sha256"] = tmp;
 };   
+
+#include "Display/Deck.h"
+#include "Display/Display.h"
 
 void RestDeck::render_pane(bool refresh) {
     if(!refresh)

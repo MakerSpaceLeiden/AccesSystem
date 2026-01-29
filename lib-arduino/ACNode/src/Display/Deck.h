@@ -1,27 +1,23 @@
 #pragma once
 
-#include "Display/Display.h"
+#include <ESPAsyncWebServer.h>
+#include <TLog.h>
 
-#include "ACBase.h"
-#include "RFID.h"
-#include "ACBaseNode.h"
-
-
-extern Display * _display;
+// #include "ACBase.h"
+// #include "ACBaseNode.h"
 
 class DeckController;
+class ACNodeBase;
+
 class Deck {
 public:
     Deck(ACNodeBase * node) : _acnode(node) {};
-    void display(bool refresh = true);
+    virtual void display(bool refresh = true);
+    virtual void render_pane(bool refresh);
 
 protected:
     ACNodeBase * _acnode;
 
-    virtual void render_pane(bool refresh) {
-        if (refresh)
-            _display->print("*****\nNOT IMPLEMENTED\n*****");
-    };
     friend class DeckController;
 };
 
@@ -56,11 +52,4 @@ class LogQrDeck : public Deck {
 public:
     LogQrDeck(ACNodeBase * node) : Deck(node) {};
     virtual void render_pane(bool refresh);
-};
-class RfidDeck : public Deck {
-public:
-    RfidDeck(ACNodeBase * node, RFID * r) : Deck(node),_reader(r) {};
-    virtual void render_pane(bool refresh);
-private:
-    RFID * _reader = NULL;
 };

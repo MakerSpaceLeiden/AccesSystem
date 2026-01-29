@@ -151,6 +151,19 @@ void WhiteNodev108::begin(bool hasDisplay) {
     } else 
 	Log.println("OLED screen - count not init.");
 
+    webServer()->on("/reboot",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+	Log.println("Reboot requested");
+	machinestate = MachineState::REBOOT;
+        request->send(200, "text/plain", "OK");
+	yield(); delay(100); yield();
+        ESP.restart();
+    });
+
+    webServer()->on("/resetRFID",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+	Log.println("RFID reset requested");
+	_reader->alive();
+    });
+
     OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
     ota->setOTAOK([&](){
         return machinestate.safeForOTA();

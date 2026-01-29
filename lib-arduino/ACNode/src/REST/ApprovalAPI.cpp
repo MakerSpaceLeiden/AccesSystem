@@ -1,4 +1,5 @@
 #include "REST/ApprovalAPI.h"
+#include "Display/Display.h"
 
 #include <stdlib.h>
 #include <strings.h>
@@ -206,6 +207,7 @@ void ApprovalAPI::sendBestEffortTagApproved(const char * tag) {
     Debug.printf("Reporting use: %s (%d)\n", (n < 0) ? "ERR" : (char *)p, len);
     return;
 }
+
 
 void ApprovalDeck::render_pane(bool refresh) {
     if(!refresh)

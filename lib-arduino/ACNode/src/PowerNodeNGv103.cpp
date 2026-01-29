@@ -1,3 +1,4 @@
+#include "ACBaseNode.h"
 #include "PowerNodeNGv103.h"
 #include <OlimexBoard.h>
 #include <ETH.h>

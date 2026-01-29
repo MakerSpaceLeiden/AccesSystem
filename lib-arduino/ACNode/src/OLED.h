@@ -21,6 +21,7 @@
 #include <Adafruit_SSD1306.h>
 #include "Display/Deck.h"
 #include <ACBase.h>
+#include "util/common-utils.h"
 
 #define OLED_DEFAULT_SPEED        144 // pixels/second
 

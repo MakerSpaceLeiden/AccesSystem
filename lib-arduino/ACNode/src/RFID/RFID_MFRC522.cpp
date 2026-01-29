@@ -176,9 +176,24 @@ void RFID_MFRC522::report(JsonObject report) {
     super::report(out);
 };
 
+bool RFID_MFRC522::alive() {
+    for(int retry = 0; retry < 3; retry++) {
+        byte version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
+	if ((version & 0xF0 == 0x90) || (version == 0x12)) {
+		rfid_tests++;
+    		Debug.println("RFID_MFRC522 alive");
+		return true;
+        };
+	rfid_vfail++;
+        reset();
+    };
+    Log.println("RFID_MFRC522 alive check failed three times");
+    return false;
+};
+
 String RFID_MFRC522::firmwareVersionString() {
         const char * str;
-	unsigned char version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
+ 	unsigned char version = _mfrc522->PCD_ReadRegister(MFRC522::VersionReg);
         switch(version) {
 		case 0x00: str="00-wiring-error"; break;
 		case 0xFF: str="FF-wiring-error"; break;
@@ -197,3 +212,4 @@ String RFID_MFRC522::stateString() {
         begin();
    	return res;
 }
+
