@@ -400,7 +400,7 @@ void ACNodeBase::report(JsonObject out) {
     out[ "node" ] = moi;
     out[ "machine" ] = machine;
     
-    JsonObject hw = out["hardware"].add<JsonObject>();
+    JsonObject hw = out["hardware"].to<JsonObject>();
     char chipstr[30]; safestrncpy(chipstr,chipId().c_str(),sizeof(chipstr));
     hw[ "id" ] = chipstr;
     hw["loop_rate"] = loopRate;
@@ -410,14 +410,14 @@ void ACNodeBase::report(JsonObject out) {
     hw[ "uptime" ] = uptimeInSeconds();
 
     char ipstr[30]; safestrncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
-    JsonObject n= out["net"].add<JsonObject>();
+    JsonObject n= out["net"].to<JsonObject>();
 
     n[ "ip" ] = ipstr;
     n[ "type" ] = _wired ? "UTP" : "WiFi";
     char macstr[30]; safestrncpy(macstr, macAddressString().c_str(),sizeof(macstr));
     n[ "mac" ] = macstr;
 
-    JsonObject fw = out["build"].add<JsonObject>();
+    JsonObject fw = out["build"].to<JsonObject>();
     fw[ "class" ] = name();
     fw[ "board" ] = getHW();
     fw[ "sdk" ] = _sdk;
@@ -428,16 +428,16 @@ void ACNodeBase::report(JsonObject out) {
         if (time(NULL) > 1542275849)
             _start_beat = time(NULL) + millis()/1000;
 
-    JsonObject c = out["tags"].add<JsonObject>();
+    JsonObject c = out["tags"].to<JsonObject>();
     c[ "approve" ] = _approve;
     c[ "deny" ] = _deny;
     c[ "requests" ] = _reqs;    
  
-    JsonArray lr = out["lastResetReason"].add<JsonArray>();
+    JsonArray lr = out["lastResetReason"].to<JsonArray>();
     lr.add(reset_core0);
     lr.add(reset_core1);
 
-    JsonObject heap = out["memory"].add<JsonObject>();
+    JsonObject heap = out["memory"].to<JsonObject>();
     heap["heap_free"] = ESP.getFreeHeap();
     heap["heap_free8"] = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     heap["heap_free8_min"] = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
@@ -446,7 +446,7 @@ void ACNodeBase::report(JsonObject out) {
    
     // attempt to track down MQTT issue.
     //
-    JsonObject mq = out["mqtt"].add<JsonObject>();
+    JsonObject mq = out["mqtt"].to<JsonObject>();
     mq["mqtt_host"] = mqtt_server;
     mq["mqtt_port"] = mqtt_port;
     mq["mqtt_isUp"] = isUp();
@@ -455,10 +455,10 @@ void ACNodeBase::report(JsonObject out) {
     mq[ "mqtt_reconnects" ] = _mqtt_reconnects;
 
 
-    JsonObject ntp= out["time"].add<JsonObject>();
+    JsonObject ntp= out["time"].to<JsonObject>();
 
     ntp["ntp"] = (bool) esp_sntp_enabled();
-    JsonArray srvs = ntp["servers"].add<JsonArray>();
+    JsonArray srvs = ntp["servers"].to<JsonArray>();
     const char * servers[] = { NTP_POOL, NULL };
     for(const char **p = servers; *p; p++)
         srvs.add(*p);

@@ -174,7 +174,7 @@ exit:
 }
 
 void ApprovalAPI::report(JsonObject report) {
- JsonObject r = report["bintags"].add<JsonObject>();
+ JsonObject r = report["bintags"].to<JsonObject>();
 
     char buff[32] = "never";
     if (getDataDate()) {

@@ -421,11 +421,11 @@ void WhiteNodev108::loop() {
 }
 
 void WhiteNodev108::report(JsonObject  report) {
-    JsonObject m = report["machine"].add<JsonObject>();
+    JsonObject m = report["machine"].to<JsonObject>();
     m["manual_poweroff"] = manual_poweroff;
     m["errors"] = errors;
 
-    JsonObject otr = report["display"].add<JsonObject>();
+    JsonObject otr = report["display"].to<JsonObject>();
     otr["ota"] = true;
     otr["idle_poweroff"] = idle_poweroff;
     otr["headless"] = (_display == NULL) ? true : false;

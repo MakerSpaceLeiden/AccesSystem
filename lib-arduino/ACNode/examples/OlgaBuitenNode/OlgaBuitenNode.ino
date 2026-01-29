@@ -328,7 +328,7 @@ void setup() {
     snprintf(tmp, sizeof(tmp), "%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__, __TIME__);
     report["fw"] = tmp;
 
-    JsonObject stats = report["counts"].add<JsonObject>();
+    JsonObject stats = report["counts"].to<JsonObject>();
 
     stats["count_open"] = opening_door_count;
     stats["count_key_open"] = key_open_count;
