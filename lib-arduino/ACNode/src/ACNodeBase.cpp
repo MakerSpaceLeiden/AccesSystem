@@ -533,6 +533,8 @@ void ACNodeBase::loop() {
                 _client.endPublish();
 		if (actual != len)
 			Log.printf("Only wrote %d bytes of a %d report to mqtt#%s", actual, len, topic);
+		else 
+			Debug.printf("Posted a %d report to topic %s\n", len, topic);
             } else {
 		Log.printf("Could not write report of %d bytres to mqtt#%s", len, topic);
 	    };
