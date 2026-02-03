@@ -45,6 +45,7 @@ typedef RFID super;
 
     String firmwareVersionString();
     String stateString();
+    bool alive();
 
     void begin();
     void loop();

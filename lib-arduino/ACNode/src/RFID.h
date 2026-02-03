@@ -1,5 +1,4 @@
-#ifndef _H_RFID
-#define _H_RFID
+#pragma once
 
 #define RFID_MAX_TAG_LEN (12)
 #define RFID_MAX_TAG_STRING_LEN (RFID_MAX_TAG_LEN * 4) // Up to a 3 digits and a dash and/or terminating \0. */
@@ -7,16 +6,21 @@
 #include <stddef.h>
 #include <functional>
 
-#include <ACBaseNode.h>
 #include <ACBase.h>
 #include <Wire.h>
+
+#include <Display/Deck.h>
 
 // global variable for IRQ handler.
 extern volatile bool cardScannedIrqSeen;
 
+
 class RFID : public ACBase {
   public:
     virtual const char * name() { return "RFID"; };
+    virtual void reset() { Debug.printf("%s reset not implemented", name()); };
+    virtual bool alive() { Debug.printf("%s check not implemented", name()); return true; };
+
     virtual String firmwareVersionString() { return "unknown"; };
     virtual String stateString() { return "state?"; };
     
@@ -29,8 +33,6 @@ class RFID : public ACBase {
 
     RFID& onSwipe(THandlerFunction_SwipeCB fn) { _swipe_cb = fn; return *this; };
 
-
-    bool alive() { return true; };
   protected:
     bool _irqMode = false;
     THandlerFunction_SwipeCB _swipe_cb = NULL;
@@ -38,4 +40,13 @@ class RFID : public ACBase {
     unsigned long lastswipe = 0, _scan = 0, _miss = 0;
 };
 
-#endif
+class RFID;
+class ACNodeBase;
+
+class RfidDeck : public Deck {
+public:
+    RfidDeck(ACNodeBase * node, RFID * r) : Deck(node),_reader(r) {};
+    virtual void render_pane(bool refresh);
+private:
+    RFID * _reader = NULL;
+};

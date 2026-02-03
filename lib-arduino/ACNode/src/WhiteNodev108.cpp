@@ -151,6 +151,19 @@ void WhiteNodev108::begin(bool hasDisplay) {
     } else 
 	Log.println("OLED screen - count not init.");
 
+    webServer()->on("/reboot",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+	Log.println("Reboot requested");
+	machinestate = MachineState::REBOOT;
+        request->send(200, "text/plain", "OK");
+	yield(); delay(100); yield();
+        ESP.restart();
+    });
+
+    webServer()->on("/resetRFID",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+	Log.println("RFID reset requested");
+	_reader->alive();
+    });
+
     OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
     ota->setOTAOK([&](){
         return machinestate.safeForOTA();
@@ -408,11 +421,11 @@ void WhiteNodev108::loop() {
 }
 
 void WhiteNodev108::report(JsonObject  report) {
-    JsonObject m = report["machine"].add<JsonObject>();
+    JsonObject m = report["machine"].to<JsonObject>();
     m["manual_poweroff"] = manual_poweroff;
     m["errors"] = errors;
 
-    JsonObject otr = report["display"].add<JsonObject>();
+    JsonObject otr = report["display"].to<JsonObject>();
     otr["ota"] = true;
     otr["idle_poweroff"] = idle_poweroff;
     otr["headless"] = (_display == NULL) ? true : false;

@@ -1,6 +1,12 @@
 #include "Display/Deck.h"
-#include "Display/DeckController.h"
+#include "Display/Display.h"
+
 #include "Display/fonts.h"
+
+void Deck::render_pane(bool refresh) {
+    if (refresh)
+        _display->print("*****\nNOT IMPLEMENTED\n*****");
+};
 
 void Deck::display(bool refresh) {
     if (refresh) {

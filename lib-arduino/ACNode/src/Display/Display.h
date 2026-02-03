@@ -3,18 +3,19 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SH110X.h>
+#include "Adafruit_NoOLED.h"
+#include <ESPAsyncWebServer.h>
+#include <TLog.h>
+
+#include "ACBase.h"
+#include "ACBaseNode.h"
 #include "Display/fonts.h"
 
-#include "Adafruit_NoOLED.h"
 
 #ifndef ADAFRUIT_GFX_DEGREE_SYMBOL
 // #define ADAFRUIT_GFX_DEGREE_SYMBOL (247)
 #define ADAFRUIT_GFX_DEGREE_SYMBOL (0x5e) // ^
 #endif
-
-#include "ACBase.h"
-#include "ACBaseNode.h"
-
 
 class Display : public Adafruit_SH1106G {
 private:
@@ -50,4 +51,4 @@ public:
     };
 };
 
-
+extern Display * _display;

@@ -4,6 +4,8 @@
 
 #include "Display/Display.h"
 #include "Display/msl-logo.h"
+#include "util/common-utils.h"
+
 
 
 bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg, bool headless) {

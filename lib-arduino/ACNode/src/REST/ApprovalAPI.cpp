@@ -1,4 +1,5 @@
 #include "REST/ApprovalAPI.h"
+#include "Display/Display.h"
 
 #include <stdlib.h>
 #include <strings.h>
@@ -173,7 +174,7 @@ exit:
 }
 
 void ApprovalAPI::report(JsonObject report) {
- JsonObject r = report["bintags"].add<JsonObject>();
+ JsonObject r = report["bintags"].to<JsonObject>();
 
     char buff[32] = "never";
     if (getDataDate()) {
@@ -206,6 +207,7 @@ void ApprovalAPI::sendBestEffortTagApproved(const char * tag) {
     Debug.printf("Reporting use: %s (%d)\n", (n < 0) ? "ERR" : (char *)p, len);
     return;
 }
+
 
 void ApprovalDeck::render_pane(bool refresh) {
     if(!refresh)
