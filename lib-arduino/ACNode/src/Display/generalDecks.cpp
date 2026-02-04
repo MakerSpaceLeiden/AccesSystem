@@ -90,7 +90,10 @@ void MqttDeck::render_pane(bool refresh) {
         q = (char *)"    ";
     };
     _display->printf("Port :%u\n",_acnode->mqtt_port);
-    _display->printf("Topic:%s/%s\n",_acnode->mqtt_topic_prefix,_acnode->logpath);
+    _display->printf("Topic:%s/%s\n",
+	_acnode->mqtt_topic_prefix,_acnode->logpath);
+    _display->printf("Alive:%s\n",
+	_acnode->_client.connected() ? "YES" : "NO");
 };
 
 void QrDeck::render_pane(bool refresh) {

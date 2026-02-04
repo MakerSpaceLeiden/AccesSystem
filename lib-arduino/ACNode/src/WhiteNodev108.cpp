@@ -7,7 +7,6 @@
 #include <hal/wdt_hal.h>
 #include <hal/wdt_types.h>
 
-
 #include "Display/Deck.h"
 #include "OTA.h"
 
@@ -145,6 +144,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
     if (_display && _display->begin(SCREEN_Address, true, strstr(machine,"test") ? (const char*)__TIME__ : (const char*)"")) {
 	_display->setRotation(2);
         _display->setWebResponder("/display.pbm", webServer());
+        _display->setPNGWebResponder("/display.png", webServer());
         webServer()->on("/display",  HTTP_GET, [this](AsyncWebServerRequest *request) {
              request->send(200, "text/html", (uint8_t *)htmlDisplayPageContent, htmlDisplayPageContentLength);
         });
@@ -154,13 +154,14 @@ void WhiteNodev108::begin(bool hasDisplay) {
     webServer()->on("/reboot",  HTTP_GET, [this](AsyncWebServerRequest *request) {
 	Log.println("Reboot requested");
 	machinestate = MachineState::REBOOT;
-        request->send(200, "text/plain", "OK");
+        request->send(200, "text/plain", "OK\n");
 	yield(); delay(100); yield();
         ESP.restart();
     });
 
     webServer()->on("/resetRFID",  HTTP_GET, [this](AsyncWebServerRequest *request) {
 	Log.println("RFID reset requested");
+        request->send(200, "text/plain", "OK\n");
 	_reader->alive();
     });
 

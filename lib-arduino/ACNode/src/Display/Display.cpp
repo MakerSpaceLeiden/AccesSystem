@@ -35,23 +35,42 @@ bool Display::begin(uint8_t SCREEN_Address, bool reset, const char * bootmsg, bo
     return true;
 }
 
-void Display::setWebResponder(const char *  urlPrefix, AsyncWebServer * server, bool raw) {
+void Display::setPNGWebResponder(const char *  urlPrefix, AsyncWebServer * server, bool raw) {
     server->on(urlPrefix, HTTP_GET, [raw,this](AsyncWebServerRequest *request) {
-#if 0
-       	size_t len;
-       	uint8_t *png = tdefl_write_image_to_png_file_in_memory(getBuffer(),SCREEN_WIDTH, SCREEN_HEIGHT, 1, &len);
+	uint8_t * dst = (uint8_t *)malloc(SCREEN_HEIGHT*SCREEN_WIDTH);
+	uint8_t * png = NULL;
+	size_t len = 0;
+	if (dst) {
+		// uint8_t * src = getBuffer();
+		uint32_t pix = 0;
+		for(uint16_t y = 0; y < SCREEN_HEIGHT; y++) 
+			for(uint16_t x = 0; x < SCREEN_WIDTH; x++, pix++) 
+			     dst[pix] = getPixel(x,y) ? 255 : 0;
+
+	       	png = (uint8_t *)tdefl_write_image_to_png_file_in_memory(
+			dst,SCREEN_WIDTH, SCREEN_HEIGHT, 1, &len);
+	
+		free(dst);
+	};
+
        	if (len && png) {
 	        AsyncResponseStream *response = request->beginResponseStream("image/png", len);
        		response->write(png, len);
       		request->send(response);
 	} else {
-  		request->send(500, "text/plain", "Failed to generate the PNG");
+		Log.printf("Failed to generate the PNG: %s failed",
+			dst ? "conversion" : "malloc");
+  		request->send(500, "text/plain", "Failed to generate the PNG\n");
 	};
 	if (png)
 	       mz_free(png);
-#else
-       AsyncResponseStream *response = request->beginResponseStream("image/pbm", SCREEN_WIDTH*SCREEN_HEIGHT/8+32);
+    });
+};
 
+void Display::setWebResponder(const char *  urlPrefix, AsyncWebServer * server, bool raw) {
+    server->on(urlPrefix, HTTP_GET, [raw,this](AsyncWebServerRequest *request) {
+       AsyncResponseStream *response = request->beginResponseStream(
+		"image/pbm", SCREEN_WIDTH*SCREEN_HEIGHT/8+32);
        response->printf("P4\n%d %d\n", SCREEN_WIDTH,SCREEN_HEIGHT);
        if (raw) {
        	 response->write(getBuffer(),  SCREEN_WIDTH * SCREEN_HEIGHT / 8);
@@ -70,7 +89,6 @@ void Display::setWebResponder(const char *  urlPrefix, AsyncWebServer * server, 
          };
       };
       request->send(response);
-#endif
     });
 };
 

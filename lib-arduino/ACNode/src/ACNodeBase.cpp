@@ -408,6 +408,7 @@ void ACNodeBase::report(JsonObject out) {
     hw["coreTemp"]  = coreTemp();
 #endif
     hw[ "uptime" ] = uptimeInSeconds();
+    hw[ "i2chz" ] = Wire.getClock();
 
     char ipstr[30]; safestrncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
     JsonObject n= out["net"].to<JsonObject>();
@@ -530,9 +531,12 @@ void ACNodeBase::loop() {
                 } _pswriter = { ._ptr = &_client };
                 size_t actual = serializeJson(jsonDoc, _pswriter); 
 		Debug.println();
-                _client.endPublish();
+                int r = _client.endPublish();
 		if (actual != len)
 			Log.printf("Only wrote %d bytes of a %d report to mqtt#%s", actual, len, topic);
+		else
+		if (r != 1) 
+			Log.printf("Error after writing %d bytes of a %d report to mqtt#%s", actual, len, topic);
 		else 
 			Debug.printf("Posted a %d report to topic %s\n", len, topic);
             } else {
