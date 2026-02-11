@@ -29,6 +29,7 @@ public:
                        SCREEN_WIDTH(w), SCREEN_HEIGHT(h) {};
                    
     bool begin(uint8_t SCREEN_Address, bool reset = true, const char * bootmsg = NULL, bool headless = false);
+    void setPNGWebResponder(const char * urlPrefix, AsyncWebServer * _webServer, bool raw = false);
     void setWebResponder(const char * urlPrefix, AsyncWebServer * _webServer, bool raw = false);
 
     void setDisplayScreensaver(bool on);
