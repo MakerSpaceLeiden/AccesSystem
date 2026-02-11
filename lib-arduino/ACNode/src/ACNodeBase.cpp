@@ -530,7 +530,6 @@ void ACNodeBase::loop() {
                     size_t write(const uint8_t *buffer, size_t length) { return _ptr->write(buffer,length); };
                 } _pswriter = { ._ptr = &_client };
                 size_t actual = serializeJson(jsonDoc, _pswriter); 
-		Debug.println();
                 int r = _client.endPublish();
 		if (actual != len)
 			Log.printf("Only wrote %d bytes of a %d report to mqtt#%s", actual, len, topic);
@@ -538,7 +537,7 @@ void ACNodeBase::loop() {
 		if (r != 1) 
 			Log.printf("Error after writing %d bytes of a %d report to mqtt#%s", actual, len, topic);
 		else 
-			Debug.printf("Posted a %d report to topic %s\n", len, topic);
+			Debug.printf("Posted a %d byte report to topic %s\n", len, topic);
             } else {
 		Log.printf("Could not write report of %d bytres to mqtt#%s", len, topic);
 	    };
