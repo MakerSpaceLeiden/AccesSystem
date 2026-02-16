@@ -160,7 +160,7 @@ void RFID_MFRC522::loop() {
                 Debug.printf("RFID reader passed selftest ok\n");
     		rfid_tests++;
             };
-            reset();
+	    _mfrc522->PCD_Init();
         };
         return;
     };
@@ -209,7 +209,7 @@ String RFID_MFRC522::firmwareVersionString() {
 
 String RFID_MFRC522::stateString() { 
 	String res = _mfrc522->PCD_PerformSelfTest() ? "pass" : "FAIL";
-        begin();
+        _mfrc522->PCD_Init();
    	return res;
 }
 

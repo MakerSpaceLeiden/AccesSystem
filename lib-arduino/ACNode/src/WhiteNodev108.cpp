@@ -6,6 +6,7 @@
 #include <esp_task_wdt.h>
 #include <hal/wdt_hal.h>
 #include <hal/wdt_types.h>
+#include <HTTPClient.h>
 
 #include "Display/Deck.h"
 #include "OTA.h"
@@ -146,7 +147,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
         _display->setWebResponder("/display.pbm", webServer());
         _display->setPNGWebResponder("/display.png", webServer());
         webServer()->on("/display",  HTTP_GET, [this](AsyncWebServerRequest *request) {
-             request->send(200, "text/html", (uint8_t *)htmlDisplayPageContent, htmlDisplayPageContentLength);
+             request->send(HTTP_CODE_OK, "text/html", (uint8_t *)htmlDisplayPageContent, htmlDisplayPageContentLength);
         });
     } else 
 	Log.println("OLED screen - count not init.");
@@ -154,15 +155,20 @@ void WhiteNodev108::begin(bool hasDisplay) {
     webServer()->on("/reboot",  HTTP_GET, [this](AsyncWebServerRequest *request) {
 	Log.println("Reboot requested");
 	machinestate = MachineState::REBOOT;
-        request->send(200, "text/plain", "OK\n");
+        request->send(HTTP_CODE_OK, "text/plain", "OK\n");
 	yield(); delay(100); yield();
         ESP.restart();
     });
 
     webServer()->on("/resetRFID",  HTTP_GET, [this](AsyncWebServerRequest *request) {
 	Log.println("RFID reset requested");
-        request->send(200, "text/plain", "OK\n");
-	_reader->alive();
+	bool ok = _reader->alive();
+	request->send(ok ? HTTP_CODE_OK: HTTP_CODE_INTERNAL_SERVER_ERROR,
+		 "text/plain", ok ? "OK\n" : "RFID check error\n");
+    });
+    webServer()->on("/rfidState",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+	Log.println("RFID state/selftest requested");
+	request->send(HTTP_CODE_OK, "text/plain", _reader->stateString());
     });
 
     OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
