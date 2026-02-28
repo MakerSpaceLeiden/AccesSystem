@@ -46,7 +46,7 @@
 #endif
 
 const char ota_password_hash[] = OTA_PASSWD_HASH256;
-BlueNodev114 node = BlueNodev114(MACHINE);
+auto node = BlackNodev111(MACHINE);
 
 MachineState::machinestate_t BUZZING; // Extra, hardware specific states
 

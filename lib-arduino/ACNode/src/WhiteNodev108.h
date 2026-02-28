@@ -69,7 +69,7 @@ public:
  
     void CONSTS() {
         Wire.setPins(I2C_SDA, I2C_SCL);
-	Wire.setClock(2*1000);
+	// Wire.setClock(2*1000);
         
 //        super::CONSTS();
                 

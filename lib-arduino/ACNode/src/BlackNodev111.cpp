@@ -1,5 +1,7 @@
 #include "BlackNodev111.h"
 #include "util/cufflink_heartbeat.h"
+#include <HTTPClient.h>
+
 
 BlackNodev111::BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto)
 : WhiteNodev108(machine, ssid, ssid_passwd, proto)  { 
@@ -36,7 +38,7 @@ const char * checkAW() {
        if (1 != Wire.write(0x10 /* AW9523_REG_CHIPID */))
 		return "write-fail";
 
-       switch((Wire.endTransmission(false)) {
+       switch(Wire.endTransmission(false)) {
         case 0: break;
 	case 1: return "transmit-fail - data too long"; break;
 	case 2: return "transmit-fail - address nack"; break;
@@ -44,10 +46,11 @@ const char * checkAW() {
 	case 5: return "transmit-fail - timeout "; break;
 	default: return "transmit-fail - error"; break;
       };
-       if (Wire.requestFrom(0x58,1,false) != 1) 
+
+      if (Wire.requestFrom(0x58,1,false) != 1) 
 		return "read-fail - incorrect len";
       
-     return Wire.read() == 0x23 ? NULL, "incorrect ID";
+     return Wire.read() == 0x23 ? NULL : "incorrect ID";
 };
 
 void BlackNodev111::begin(bool hasDisplay) {
