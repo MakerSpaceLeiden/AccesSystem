@@ -20,8 +20,7 @@ void BlackNodev111::pop() {
     machinestate.setLedState(MachineState::WAITINGFORCARD, LED::LED_OFF);
 };
 
-void BlackNodev111::begin(bool hasDisplay) {
-    ExpandedGPIO::getInstance().addAW9523();
+void initAW() {
     // Reduce the current to a sensible level.
     // Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5.
     //
@@ -29,6 +28,31 @@ void BlackNodev111::begin(bool hasDisplay) {
     Wire.write(0x11);
     Wire.write(3);
     Wire.endTransmission();
+};
+
+const char * checkAW() {
+       Wire.beginTransmission(0x58);
+
+       if (1 != Wire.write(0x10 /* AW9523_REG_CHIPID */))
+		return "write-fail";
+
+       switch((Wire.endTransmission(false)) {
+        case 0: break;
+	case 1: return "transmit-fail - data too long"; break;
+	case 2: return "transmit-fail - address nack"; break;
+	case 3: return "transmit-fail - data nack"; break;
+	case 5: return "transmit-fail - timeout "; break;
+	default: return "transmit-fail - error"; break;
+      };
+       if (Wire.requestFrom(0x58,1,false) != 1) 
+		return "read-fail - incorrect len";
+      
+     return Wire.read() == 0x23 ? NULL, "incorrect ID";
+};
+
+void BlackNodev111::begin(bool hasDisplay) {
+    ExpandedGPIO::getInstance().addAW9523();
+    initAW();
     
     xpinMode(LEDA,AW9523_LED_MODE);
     xanalogWrite(LEDA,0);
@@ -78,6 +102,14 @@ void BlackNodev111::begin(bool hasDisplay) {
     if (!errorLed)
 	errorLed = new LEDAW("ErrorLedAW", LED_INDICATOR);
     addHandler(errorLed);
+
+
+    webServer()->on("/awState",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+       const char * result = checkAW();
+       if (result == NULL) result = "OK";
+       Log.printf("AW state/selftest: %s\n", result);
+       request->send(HTTP_CODE_OK, "text/plain", result);
+    });
 
     super::begin(hasDisplay);
 }

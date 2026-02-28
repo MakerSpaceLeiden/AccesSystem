@@ -71,7 +71,6 @@ void ExpandedGPIO::xpinMode(uint8_t pin, uint8_t mode) {
           Log.printf("No expanded pinMode() for pin 0x%x, ignored.\n", pin);
 }
 
-
 int ExpandedGPIO::xdigitalRead(uint8_t pin) {
     if ((pin & PIN_GPIO_MASK) == PIN_HPIO_PLAIN)
         return digitalRead(pin);

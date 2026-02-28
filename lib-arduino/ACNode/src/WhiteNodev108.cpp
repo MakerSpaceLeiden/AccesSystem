@@ -171,6 +171,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
 	request->send(HTTP_CODE_OK, "text/plain", _reader->stateString());
     });
 
+
     OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
     ota->setOTAOK([&](){
         return machinestate.safeForOTA();
