@@ -26,13 +26,21 @@
   - https://wiki.makerspaceleiden.nl/mediawiki/index.php/QR_olgabinnen
 
 */
+#ifndef ARDUINO_PARTITION_min_spiffs
+#error "Unexpected partition table; may break OTA"
+#endif
+#ifndef ARDUINO_ESP32_WROOM_DA
+#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#endif
+
+
 
 #include <BlueNodev114.h>
 
-#define MACHINE          "olgabinnen"
+#define MACHINE "olgabinnen"
 
-#define SOLENOID_GPIO (node.OUT0) // Top relay; wired to switch 12v
-#define BUZZ_TIME     (4) // How long to buzz the door open.
+#define SOLENOID_GPIO (node.OUT0)  // Top relay; wired to switch 12v
+#define BUZZ_TIME (4)              // How long to buzz the door open.
 
 // Generate with 'echo -n Password | openssl sha256 or
 // use https://emn178.github.io/online-tools/sha256.html.
@@ -48,12 +56,12 @@
 const char ota_password_hash[] = OTA_PASSWD_HASH256;
 auto node = BlackNodev111(MACHINE);
 
-MachineState::machinestate_t BUZZING; // Extra, hardware specific states
+MachineState::machinestate_t BUZZING;  // Extra, hardware specific states
 
-unsigned long opening_door_count  = 0, door_denied_count = 0;
+unsigned long opening_door_count = 0, door_denied_count = 0;
 
-void setup() {  
-  Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__ );
+void setup() {
+  Serial.println("setup(): " __FILE__ " " __DATE__ " " __TIME__);
 
   digitalWrite(SOLENOID_GPIO, LOW);
   pinMode(SOLENOID_GPIO, OUTPUT);
@@ -61,13 +69,13 @@ void setup() {
 
   // Add the states needed for this node.
   //
-  BUZZING = node.machinestate.addState((const char*)"Buzzing",
+  BUZZING = node.machinestate.addState((const char *)"Buzzing",
                                        LED::LED_IDLE,
-                                       (time_t)(BUZZ_TIME * 1000), // stay in this state for BUZZ_TIME seconds
-                                       node.machinestate.WAITINGFORCARD, // then go back to waiting for the next swipe.
+                                       (time_t)(BUZZ_TIME * 1000),        // stay in this state for BUZZ_TIME seconds
+                                       node.machinestate.WAITINGFORCARD,  // then go back to waiting for the next swipe.
                                        false /* no OTA during this */,
                                        false /* No reporting until we're done with the door. */
-                                      );
+  );
 
   node.onApproval([](const char *machine) {
     Log.printf("Engaging the solenoid/buzzer\n");
@@ -80,9 +88,13 @@ void setup() {
     door_denied_count++;
   });
 
+  node.machinestate.addOnChangeCallback(MachineState::WAITINGFORCARD, [](MachineState::machinestate_t oldState, MachineState::machinestate_t newState) {
+    // experiment - always reset the RFID reader post any scan.
+  });
+
   node.setOTAPasswordHash(ota_password_hash);
 
-  node.onReport([](JsonObject  report) {
+  node.onReport([](JsonObject report) {
     char tmp[256];
     snprintf(tmp, sizeof(tmp), "%s %s %s", FILE2FIRMWARE(__FILE__), __DATE__, __TIME__);
     report["fw"] = tmp;
@@ -92,7 +104,7 @@ void setup() {
 
   node.begin();
 
-  Log.printf("Booted: %s " __DATE__ " " __TIME__,  FILE2FIRMWARE(__FILE__));
+  Log.printf("Booted: %s " __DATE__ " " __TIME__, FILE2FIRMWARE(__FILE__));
 }
 
 void loop() {
