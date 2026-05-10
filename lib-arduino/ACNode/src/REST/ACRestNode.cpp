@@ -139,6 +139,24 @@ static String epochseconds2iso8601(time_t n) {
 }
 #endif
 
+void ACNodeRest::report(JsonObject report) {
+   ApprovalEntry *e = lastApproved();
+
+   JsonObject m = report["user"].to<JsonObject>();
+   m["inUse"] = (e) ? true : false;
+
+   if (e == NULL)
+	return;
+
+   m["name"] = e->name;
+   m["shortname"] = e->shortname;
+   m["uid"] = e->uid;
+
+   m["has"] = e->has;
+   m["needs"] = e->needs;
+} 
+
+
 void ACNodeRest::loop() {
     super::loop();
 

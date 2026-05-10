@@ -33,6 +33,7 @@ public:
     void pop();
     
     void begin(eth_board_t board = BOARD_AART, uint8_t clear_button = -1);
+    void report(JsonObject report);
     void loop();
 
     void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true);
@@ -44,6 +45,7 @@ public:
     ApprovalEntry * lastApproved();
     
     void sentNotification(String dest, String subject, String msg);
+
 
     // Temp unprotected for payment experiments.
     RestAPI * _restAPI;
