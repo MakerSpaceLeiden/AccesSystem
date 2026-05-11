@@ -26,7 +26,7 @@
 #include <BlueNodev114.h>
 
 #ifndef ARDUINO_ESP32_WROOM_DA
-#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#error "Black/Blue/White Hardware is expected to be an ESP32 WROOM-DA"
 #endif
 
 #ifndef ARDUINO_PARTITION_min_spiffs
@@ -60,7 +60,7 @@
 #endif
 const char ota_password_hash[] = OTA_PASSWD_HASH256;
 
-BlueNodev114 node = BlueNodev114(MACHINE);
+auto node = WhiteNodev108(MACHINE);
 
 unsigned long bad_poweroff = 0, normal_poweroff = 0, normal_poweron = 0, idle_poweroff = 0;
 
@@ -113,7 +113,7 @@ static void tellOff(const char *msg) {
 
 class MachineDeck : public Deck {
 public:
-  MachineDeck(BlackNodev111 *node)
+  MachineDeck(auto *node)
     : Deck(node){};
 
   void render_pane(bool refresh) {
@@ -236,10 +236,17 @@ void setup() {
   node.onReport([](JsonObject report) {
     char *p = (char *)__FILE__;
     char *q = rindex(p, '/');
-    if (q) p = q;
+    if (q) p = q+1;
+
     char buff[128];
-    snprintf(buff, sizeof(buff), "%s " __DATE__ " " __TIME__, p);
-    report["fw"] = buff;
+    snprintf(buff, sizeof(buff), "%s", p);
+    if (q = strstr(buff,".ino"))
+        *q = '\0';
+
+    JsonObject fw = report["fw"].to<JsonObject>();
+    fw["file"] = buff;
+    fw["compiled"] = __DATE__ " " __TIME__;
+    
     report["bad_poweroff"] = bad_poweroff;
     report["normal_poweroff"] = normal_poweroff;
     report["idle_poweron"] = idle_poweroff;

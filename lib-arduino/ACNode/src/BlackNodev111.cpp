@@ -117,31 +117,6 @@ void BlackNodev111::begin(bool hasDisplay) {
     super::begin(hasDisplay);
 }
 
-void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
-    if (num == OUT0)
-        expectOut1 = val ? HIGH : LOW;
-    if (num == OUT1)
-        expectOut2 = val ? HIGH : LOW;
-    xdigitalWrite(num,val);
-}
-                           
-bool BlackNodev111::getMonitoredOutput(uint8_t num) {
-    xpinMode(num,INPUT);
-    bool out = digitalRead(num);
-    xpinMode(num,OUTPUT);
-    return out;
-}
-
-bool BlackNodev111::monitoredOutputIsOK(uint8_t num) {
-    bool expect = (num == OUT0) ? expectOut1 : expectOut2;
-
-    xpinMode(num,INPUT);
-    bool curr = xdigitalRead(num);
-    xpinMode(num,OUTPUT);
-    
-    return expect == curr;
-}
-
 void BlackNodev111::setYesCallback(ButtonCallback callback, int mode ) {
     _yesCallBack = callback;
     _yesCallBackMode = mode;

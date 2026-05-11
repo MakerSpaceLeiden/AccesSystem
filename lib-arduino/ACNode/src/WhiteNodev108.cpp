@@ -499,3 +499,28 @@ void ButtonsDeck::render_pane(bool refresh) {
     }
 };
 
+void WhiteNodev108::setMonitoredOutput(uint8_t num, bool val) {
+    if (num == OUT0)
+        expectOut1 = val ? HIGH : LOW;
+    if (num == OUT1)
+        expectOut2 = val ? HIGH : LOW;
+    xdigitalWrite(num,val);
+}   
+                           
+bool WhiteNodev108::getMonitoredOutput(uint8_t num) {
+    xpinMode(num,INPUT);
+    bool out = digitalRead(num);
+    xpinMode(num,OUTPUT);
+    return out;
+}      
+                
+bool WhiteNodev108::monitoredOutputIsOK(uint8_t num) {
+    bool expect = (num == OUT0) ? expectOut1 : expectOut2;
+        
+    xpinMode(num,INPUT);
+    bool curr = xdigitalRead(num);
+    xpinMode(num,OUTPUT);
+        
+    return expect == curr;
+}     
+

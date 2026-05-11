@@ -85,20 +85,10 @@ public:
     void pop();
     void loop();
     
-    // From 1.11 nodes have an internal overwrite switch/jumper. When setting it
-    // using this method - the main loop will monitor for this switch or jumper
-    // to be used as a bypass. It won't block this - just report it in the logging.
-    //
-    void setMonitoredOutput(uint8_t num, bool val);
-    bool getMonitoredOutput(uint8_t num);
-    bool monitoredOutputIsOK(uint8_t num);
-
     // Newer nodes have an extra button.
     //
     void setYesCallback(ButtonCallback callback,int mode = CHANGE);
 private:
-    int8_t expectOut1 = -1;
-    int8_t expectOut2 = -1;
     IODebounce *yesButton;
     ButtonCallback _yesCallBack;
     int _yesCallBackMode;
