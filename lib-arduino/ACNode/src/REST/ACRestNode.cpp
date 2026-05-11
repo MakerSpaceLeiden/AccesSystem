@@ -145,15 +145,16 @@ void ACNodeRest::report(JsonObject report) {
    JsonObject m = report["usage"].to<JsonObject>();
    m["inUse"] = (e) ? true : false;
 
-   if (e == NULL)
-	return;
+   if (e) {
+     m["name"] = e->name;
+     m["shortname"] = e->shortName;
+     m["uid"] = e->uid;
+  
+     m["has"] = e->has;
+     m["needs"] = e->needs;
+   };
 
-   m["name"] = e->name;
-   m["shortname"] = e->shortname;
-   m["uid"] = e->uid;
-
-   m["has"] = e->has;
-   m["needs"] = e->needs;
+   super::report(report);
 } 
 
 
