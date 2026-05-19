@@ -1,6 +1,8 @@
 #include "REST/ACRestNode.h"
 #include "REST/rest.h"
 
+#include <ESPAsyncWebServer.h>
+
 ACNodeRest::ACNodeRest(const char * machine, const char * ssid, const char * ssid_passwd) : super(machine,ssid,ssid_passwd) {
     CONSTS();
     pop();
@@ -51,6 +53,53 @@ void ACNodeRest::pop() {
     
     addHandler(_restAPI);
     addHandler(_approvalAPI);
+
+    _ws = new AsyncWebSocket("/wsstate");
+    _ws->onEvent([this](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+        if (type != WS_EVT_DATA)
+                return;
+
+        AwsFrameInfo *info = (AwsFrameInfo*)arg;
+
+        if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+                data[len] = 0;
+                if (strcmp((char*)data, "getState") == 0) {
+        		JsonDocument jsonDoc;
+		        JsonObject out = jsonDoc.to<JsonObject>();
+		        report(out);
+			String line;
+		        if (serializeJson(jsonDoc, line))
+			        client->text(line);
+		};
+        }
+    });
+    webServer()->addHandler(_ws);
+
+    // Keep the world pro-actively informed of state changes (push).
+    //
+    machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+	// Build up a standard report; we may actually want to
+	// change this in a shorter status report (which we can
+	// then merge as a tree into a larger status report 
+	// that is send on a timer.
+	//
+        JsonDocument jsonDoc;
+        JsonObject out = jsonDoc.to<JsonObject>();
+        report(out);
+
+	String line;
+        if (!serializeJson(jsonDoc, line)) 
+		return; // we do not log an error; as we're likely have ran out of memory and do not want to make things worse.
+
+	// Update all listening web sockets, if any.
+	if (_ws)
+		_ws->textAll(line);
+
+	// Send out an update on a specific MQTT channel
+	char topic[128];
+	snprintf(topic,sizeof(topic),"ac/state/%s",moi);
+	_client.publish(topic,line.c_str());
+    });
 }
 
 void ACNodeRest::begin(eth_board_t board, uint8_t clear_button) {

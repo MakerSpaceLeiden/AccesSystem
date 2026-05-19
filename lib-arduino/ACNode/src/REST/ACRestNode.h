@@ -24,6 +24,7 @@ public:
 class ACNodeRest : public ACNodeBase {
 private:
     typedef ACNodeBase super;
+    AsyncWebSocket * _ws = NULL;
 
 public:
     ACNodeRest(const char * machine, const char * ssid, const char * ssid_passwd);
