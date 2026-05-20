@@ -110,11 +110,11 @@ void ACNodeBase::pop() {
     _webServer->on("/state.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
          AsyncResponseStream *response = request->beginResponseStream("application/json");
 
-         JsonDocument JsonDoc;
-         JsonObject out = doc.to<JsonObject>();
+         JsonDocument jsonDoc;
+         JsonObject out = jsonDoc.to<JsonObject>();
          report(out);
 
-         serializeJson(JsonDocument, *response);
+         serializeJson(jsonDoc, *response);
          request->send(response);
     });
     _webServer->on("/state",  HTTP_GET, [this](AsyncWebServerRequest *request) {
