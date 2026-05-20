@@ -511,6 +511,7 @@ void ACNodeBase::loop() {
 
             JsonDocument jsonDoc;
             JsonObject out = jsonDoc.to<JsonObject>();
+	    report(out);
 
             mqttJsonPost(topic, jsonDoc);
         }
@@ -573,6 +574,11 @@ void ACNodeBase::loop() {
 }
 
 void ACNodeBase::mqttJsonPost(const char * topic, const JsonDocument &jsonDoc) {
+    if (!isUp()) {
+	Debug.println("Not sending mqtt json state change notification - as MQTT is not yet up");
+	return;
+    };
+
     struct NullWriter {
         size_t write(uint8_t c) { return 1; };
         size_t write(const uint8_t *buffer, size_t length) { return length; };
@@ -584,7 +590,7 @@ void ACNodeBase::mqttJsonPost(const char * topic, const JsonDocument &jsonDoc) {
     // that does not make its own copy.
    //
    if (!_client.beginPublish(topic, len, false)) {
-	   Log.printf("Could not start writing report of %d bytres to mqtt#%s", len, topic);
+	   Log.printf("Could not start writing report of %d bytres to mqtt#%s\n", len, topic);
            return;
    };
 	
@@ -597,11 +603,11 @@ void ACNodeBase::mqttJsonPost(const char * topic, const JsonDocument &jsonDoc) {
 
    int r = _client.endPublish();
    if (r != 1) {
-       Log.printf("Error after writing %d bytes of a %d report to mqtt#%s", actual, len, topic);
+       Log.printf("Error after writing %d bytes of a %d report to mqtt#%s\n", actual, len, topic);
        return;
    };
    if (actual != len) {
-       Log.printf("Only wrote %d bytes of a %d report to mqtt#%s", actual, len, topic);
+       Log.printf("Only wrote %d bytes of a %d report to mqtt#%s\n", actual, len, topic);
        return;
    };
    Debug.printf("Posted a %d byte json to topic %s\n", len, topic);
