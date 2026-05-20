@@ -1,5 +1,7 @@
 #include "BlackNodev111.h"
 #include "util/cufflink_heartbeat.h"
+#include <HTTPClient.h>
+
 
 BlackNodev111::BlackNodev111(const char * machine, const char * ssid, const char * ssid_passwd, acnode_proto_t proto)
 : WhiteNodev108(machine, ssid, ssid_passwd, proto)  { 
@@ -20,8 +22,7 @@ void BlackNodev111::pop() {
     machinestate.setLedState(MachineState::WAITINGFORCARD, LED::LED_OFF);
 };
 
-void BlackNodev111::begin(bool hasDisplay) {
-    ExpandedGPIO::getInstance().addAW9523();
+void initAW() {
     // Reduce the current to a sensible level.
     // Awaiting https://github.com/adafruit/Adafruit_AW9523/pull/5.
     //
@@ -29,6 +30,32 @@ void BlackNodev111::begin(bool hasDisplay) {
     Wire.write(0x11);
     Wire.write(3);
     Wire.endTransmission();
+};
+
+const char * checkAW() {
+       Wire.beginTransmission(0x58);
+
+       if (1 != Wire.write(0x10 /* AW9523_REG_CHIPID */))
+		return "write-fail";
+
+       switch(Wire.endTransmission(false)) {
+        case 0: break;
+	case 1: return "transmit-fail - data too long"; break;
+	case 2: return "transmit-fail - address nack"; break;
+	case 3: return "transmit-fail - data nack"; break;
+	case 5: return "transmit-fail - timeout "; break;
+	default: return "transmit-fail - error"; break;
+      };
+
+      if (Wire.requestFrom(0x58,1,false) != 1) 
+		return "read-fail - incorrect len";
+      
+     return Wire.read() == 0x23 ? NULL : "incorrect ID";
+};
+
+void BlackNodev111::begin(bool hasDisplay) {
+    ExpandedGPIO::getInstance().addAW9523();
+    initAW();
     
     xpinMode(LEDA,AW9523_LED_MODE);
     xanalogWrite(LEDA,0);
@@ -79,32 +106,15 @@ void BlackNodev111::begin(bool hasDisplay) {
 	errorLed = new LEDAW("ErrorLedAW", LED_INDICATOR);
     addHandler(errorLed);
 
+
+    webServer()->on("/awState",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+       const char * result = checkAW();
+       if (result == NULL) result = "OK";
+       Log.printf("AW state/selftest: %s\n", result);
+       request->send(HTTP_CODE_OK, "text/plain", result);
+    });
+
     super::begin(hasDisplay);
-}
-
-void BlackNodev111::setMonitoredOutput(uint8_t num, bool val) {
-    if (num == OUT0)
-        expectOut1 = val ? HIGH : LOW;
-    if (num == OUT1)
-        expectOut2 = val ? HIGH : LOW;
-    xdigitalWrite(num,val);
-}
-                           
-bool BlackNodev111::getMonitoredOutput(uint8_t num) {
-    xpinMode(num,INPUT);
-    bool out = digitalRead(num);
-    xpinMode(num,OUTPUT);
-    return out;
-}
-
-bool BlackNodev111::monitoredOutputIsOK(uint8_t num) {
-    bool expect = (num == OUT0) ? expectOut1 : expectOut2;
-
-    xpinMode(num,INPUT);
-    bool curr = xdigitalRead(num);
-    xpinMode(num,OUTPUT);
-    
-    return expect == curr;
 }
 
 void BlackNodev111::setYesCallback(ButtonCallback callback, int mode ) {

@@ -171,6 +171,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
 	request->send(HTTP_CODE_OK, "text/plain", _reader->stateString());
     });
 
+
     OTAWithDisplay * ota = new OTAWithDisplay(_ota_hash, _display, moi);
     ota->setOTAOK([&](){
         return machinestate.safeForOTA();
@@ -497,4 +498,29 @@ void ButtonsDeck::render_pane(bool refresh) {
         _display->fillRect(x + 2, y + 2, 10 - 4, 10 - 4, s->lst ? SH110X_WHITE : SH110X_BLACK);
     }
 };
+
+void WhiteNodev108::setMonitoredOutput(uint8_t num, bool val) {
+    if (num == OUT0)
+        expectOut1 = val ? HIGH : LOW;
+    if (num == OUT1)
+        expectOut2 = val ? HIGH : LOW;
+    xdigitalWrite(num,val);
+}   
+                           
+bool WhiteNodev108::getMonitoredOutput(uint8_t num) {
+    xpinMode(num,INPUT);
+    bool out = digitalRead(num);
+    xpinMode(num,OUTPUT);
+    return out;
+}      
+                
+bool WhiteNodev108::monitoredOutputIsOK(uint8_t num) {
+    bool expect = (num == OUT0) ? expectOut1 : expectOut2;
+        
+    xpinMode(num,INPUT);
+    bool curr = xdigitalRead(num);
+    xpinMode(num,OUTPUT);
+        
+    return expect == curr;
+}     
 

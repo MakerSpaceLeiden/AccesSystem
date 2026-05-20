@@ -69,6 +69,7 @@ public:
  
     void CONSTS() {
         Wire.setPins(I2C_SDA, I2C_SCL);
+	// Wire.setClock(2*1000);
         
 //        super::CONSTS();
                 
@@ -136,6 +137,14 @@ public:
     void addDeck(Deck * deck);
     Deck * currentDeck() { return _deskCtrl->current(); };
 
+    
+    // From 1.11 nodes have an internal overwrite switch/jumper. When setting it
+    // using this method - the main loop will monitor for this switch or jumper
+    // to be used as a bypass. It won't block this - just report it in the logging.
+    //
+    void setMonitoredOutput(uint8_t num, bool val);
+    bool getMonitoredOutput(uint8_t num);
+    bool monitoredOutputIsOK(uint8_t num);
 protected:
     LED * errorLed = NULL;
     void pop();
@@ -178,6 +187,9 @@ private:
 #endif
     
     void report(JsonObject  out);
+public:
+    int8_t expectOut1 = -1;
+    int8_t expectOut2 = -1;
 };
 
 

@@ -95,7 +95,7 @@ void RFID_MFRC522::reset() {
     }
     delay(50); // minimal 35 mS
     _mfrc522->PCD_Init();     // Init MFRC522
-    delay(15);
+    delay(50);
 }
 
 void RFID_MFRC522::loop() {
@@ -161,6 +161,7 @@ void RFID_MFRC522::loop() {
     		rfid_tests++;
             };
 	    _mfrc522->PCD_Init();
+    	    delay(50);
         };
         return;
     };
@@ -210,6 +211,7 @@ String RFID_MFRC522::firmwareVersionString() {
 String RFID_MFRC522::stateString() { 
 	String res = _mfrc522->PCD_PerformSelfTest() ? "pass" : "FAIL";
         _mfrc522->PCD_Init();
+        delay(50);
    	return res;
 }
 
