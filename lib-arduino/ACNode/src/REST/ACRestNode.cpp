@@ -74,7 +74,6 @@ void ACNodeRest::pop() {
 		return; // we do not log an error; as we're likely have ran out of memory and do not want to make things worse.
 	   _ws->textAll(line);
          };
-         Debug.printf("Send a json report to %s\n", topic);
     });
 
     machinestate.setState(MachineState::BOOTING);
