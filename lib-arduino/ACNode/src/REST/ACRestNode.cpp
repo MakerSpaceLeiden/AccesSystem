@@ -37,8 +37,6 @@ void ACNodeRest::pop() {
         clearLastApproved();
     });
     
-    machinestate.setState(MachineState::BOOTING);
-    addHandler(&machinestate);
 
     _restAPI->setTerminalname(machine);
     _restAPI->onPairingRequested([this](){
@@ -51,6 +49,37 @@ void ACNodeRest::pop() {
         machinestate = MachineState::WAITINGFORCARD;
     });
     
+    // Keep the world pro-actively informed of state changes (push).
+    //
+    machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
+	// Build up a standard report; we may actually want to
+	// change this in a shorter status report (which we can
+	// then merge as a tree into a larger status report 
+	// that is send on a timer.
+	//
+        JsonDocument jsonDoc;
+        JsonObject out = jsonDoc.to<JsonObject>();
+        report(out);
+
+	// Send out an update on a specific MQTT channel
+	char topic[128];
+	snprintf(topic,sizeof(topic),"ac/state/%s",moi);
+        mqttJsonPost(topic, jsonDoc);
+
+
+	// Update all listening web sockets, if any.
+	if (_ws) {
+	   String line;
+           if (!serializeJson(jsonDoc, line)) 
+		return; // we do not log an error; as we're likely have ran out of memory and do not want to make things worse.
+	   _ws->textAll(line);
+         };
+         Debug.printf("Send a json report to %s\n", topic);
+    });
+
+    machinestate.setState(MachineState::BOOTING);
+
+    addHandler(&machinestate);
     addHandler(_restAPI);
     addHandler(_approvalAPI);
 
@@ -75,31 +104,6 @@ void ACNodeRest::pop() {
     });
     webServer()->addHandler(_ws);
 
-    // Keep the world pro-actively informed of state changes (push).
-    //
-    machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-	// Build up a standard report; we may actually want to
-	// change this in a shorter status report (which we can
-	// then merge as a tree into a larger status report 
-	// that is send on a timer.
-	//
-        JsonDocument jsonDoc;
-        JsonObject out = jsonDoc.to<JsonObject>();
-        report(out);
-
-	String line;
-        if (!serializeJson(jsonDoc, line)) 
-		return; // we do not log an error; as we're likely have ran out of memory and do not want to make things worse.
-
-	// Update all listening web sockets, if any.
-	if (_ws)
-		_ws->textAll(line);
-
-	// Send out an update on a specific MQTT channel
-	char topic[128];
-	snprintf(topic,sizeof(topic),"ac/state/%s",moi);
-	_client.publish(topic,line.c_str());
-    });
 }
 
 void ACNodeRest::begin(eth_board_t board, uint8_t clear_button) {

@@ -75,8 +75,10 @@ static String enum_i2c() {
 #endif
 
 void WhiteNodev108::pop() {
+
     // Non standard pins for i2c.
     Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.setClock(25 * 1000);
     
     FAULTED =     machinestate.addState("Switch Fault", LED::LED_ERROR, MachineState::NEVER, 
 	MachineState::NEVER, true, true);

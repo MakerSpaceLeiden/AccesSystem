@@ -110,11 +110,11 @@ void ACNodeBase::pop() {
     _webServer->on("/state.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
          AsyncResponseStream *response = request->beginResponseStream("application/json");
 
-         JsonDocument doc;
+         JsonDocument JsonDoc;
          JsonObject out = doc.to<JsonObject>();
          report(out);
 
-         serializeJson(out, *response);
+         serializeJson(JsonDocument, *response);
          request->send(response);
     });
     _webServer->on("/state",  HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -511,36 +511,8 @@ void ACNodeBase::loop() {
 
             JsonDocument jsonDoc;
             JsonObject out = jsonDoc.to<JsonObject>();
-            report(out);
 
-	    struct NullWriter {
-                size_t write(uint8_t c) { return 1; };
-                size_t write(const uint8_t *buffer, size_t length) { return length; };
-            } _nullwriter;
-            size_t len = serializeJson(jsonDoc, _nullwriter);
-
-	    // We really want to avoid creating another copy of this 2k payload; as
-	    // it fragments the stack. So we use a custom writer and a leaner interface
-            // that does not make its own copy.
-            //
-            if (_client.beginPublish(topic, len, false)) {
-	        struct PubSubWriter {
-		    PubSubClient * _ptr;
-                    size_t write(uint8_t c) { return _ptr->write(c); };
-                    size_t write(const uint8_t *buffer, size_t length) { return _ptr->write(buffer,length); };
-                } _pswriter = { ._ptr = &_client };
-                size_t actual = serializeJson(jsonDoc, _pswriter); 
-                int r = _client.endPublish();
-		if (actual != len)
-			Log.printf("Only wrote %d bytes of a %d report to mqtt#%s", actual, len, topic);
-		else
-		if (r != 1) 
-			Log.printf("Error after writing %d bytes of a %d report to mqtt#%s", actual, len, topic);
-		else 
-			Debug.printf("Posted a %d byte report to topic %s\n", len, topic);
-            } else {
-		Log.printf("Could not write report of %d bytres to mqtt#%s", len, topic);
-	    };
+            mqttJsonPost(topic, jsonDoc);
         }
     }
     // XX to hook into a callback of the ethernet/wifi
@@ -598,6 +570,41 @@ void ACNodeBase::loop() {
 
     if(isConnected()) 
         mqttLoop();
+}
+
+void ACNodeBase::mqttJsonPost(const char * topic, const JsonDocument &jsonDoc) {
+    struct NullWriter {
+        size_t write(uint8_t c) { return 1; };
+        size_t write(const uint8_t *buffer, size_t length) { return length; };
+    } _nullwriter;
+    size_t len = serializeJson(jsonDoc, _nullwriter);
+
+    // We really want to avoid creating another copy of this 2k payload; as
+    // it fragments the stack. So we use a custom writer and a leaner interface
+    // that does not make its own copy.
+   //
+   if (!_client.beginPublish(topic, len, false)) {
+	   Log.printf("Could not start writing report of %d bytres to mqtt#%s", len, topic);
+           return;
+   };
+	
+   struct PubSubWriter {
+       PubSubClient * _ptr;
+       size_t write(uint8_t c) { return _ptr->write(c); };
+       size_t write(const uint8_t *buffer, size_t length) { return _ptr->write(buffer,length); };
+   } _pswriter = { ._ptr = &_client };
+   size_t actual = serializeJson(jsonDoc, _pswriter); 
+
+   int r = _client.endPublish();
+   if (r != 1) {
+       Log.printf("Error after writing %d bytes of a %d report to mqtt#%s", actual, len, topic);
+       return;
+   };
+   if (actual != len) {
+       Log.printf("Only wrote %d bytes of a %d report to mqtt#%s", actual, len, topic);
+       return;
+   };
+   Debug.printf("Posted a %d byte json to topic %s\n", len, topic);
 }
 
 void ACNodeBase::delayedReboot() {
