@@ -18,7 +18,7 @@ OTA::OTA(const char * password) : _ota_password_hash(password) {
     };
 
     strncpy(_ota_masked_password_hash, _ota_password_hash, 3);
-    strncpy(_ota_masked_password_hash+3, "...", 3);
+    strncpy(_ota_masked_password_hash+3, "...", 4);
     strncpy(_ota_masked_password_hash+6, _ota_password_hash+ l - 3, 3);
 } 
 
