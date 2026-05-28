@@ -156,7 +156,8 @@ public:
     // ACBase - standard handlers.
     //
     void begin();
-    void report(JsonObject report);
+    void report(JsonObject & report);
+    void status(JsonObject & report);
     void loop();
 };
 

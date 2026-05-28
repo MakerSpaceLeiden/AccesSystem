@@ -199,7 +199,8 @@ public:
         Log.printf("%s: Not IMPLEMENTED\n", __PRETTY_FUNCTION__);
     }
 
-    void report(JsonObject  report);
+    void report(JsonObject &report);
+    void status(JsonObject &status);
    
     PubSubClient _client = PubSubClient(_espClient);
     char mqtt_topic_prefix[MAX_NAME];

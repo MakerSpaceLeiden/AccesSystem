@@ -51,7 +51,8 @@ typedef RFID super;
     void loop();
     void reset();
 
- void report(JsonObject report);
+ void report(JsonObject & report);
+ //void status(JsonObject & report);
 
   private:
     MFRC522_SPI * _spiDevice;

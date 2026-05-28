@@ -243,9 +243,14 @@ void PaymentAPI::loop() {
     	fetchPricelist();
 }
 
-void PaymentAPI::report(JsonObject report) {
-    report["payment"] = ready();
+void PaymentAPI::report(JsonObject & report) {
+    status(report);
     report["pricelist"] = pricelist ? pricelist->items.size() : 0;
+}
+
+void PaymentAPI::status(JsonObject & report) {
+    report["payment"] = ready();
     if (pricelist)
     	report["pricelist_age"] = (millis() - _lastPricelist)/1000;
-}
+};
+
