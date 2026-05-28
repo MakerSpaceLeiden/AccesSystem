@@ -207,6 +207,10 @@ public:
     void configureMQTT();
     void reconnectMQTT();
     void mqttLoop();
+    // Special version of a client posting - that conserves memory.
+    void mqttJsonPost(const char * topic, const JsonDocument &jsonDoc);
+
+
     
     virtual void request_approval(const char * tag, const char * operation = NULL, const char * target = NULL, bool useCacheOk= true) { 
         Log.printf("%s: Not IMPLEMENTED\n", __PRETTY_FUNCTION__);

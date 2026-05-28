@@ -88,11 +88,13 @@ public:
     // Newer nodes have an extra button.
     //
     void setYesCallback(ButtonCallback callback,int mode = CHANGE);
+    void setHeartbeat(bool on) { _hearthBeat = on; };
 private:
     IODebounce *yesButton;
     ButtonCallback _yesCallBack;
     int _yesCallBackMode;
-    
+    bool _hearthBeat = true;
+
 #if 0
     const uint8_t * leds() {
         static const uint8_t tmp[] = { BUZZER, LED_INDICATOR, LEDA, LEDB, LEDC, LEDD, LEDE, 255};

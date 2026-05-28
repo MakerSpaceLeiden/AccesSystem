@@ -166,12 +166,14 @@ void setup() {
   node.setMonitoredOutput(DAY_SOLENOID, LOW);
 
   // Set slowr, 10kHz clock (default is 400kHz or 100kHz) as we have long wires.
-  // Call this early - we need the extended GPIO set up.
   //
   Wire.setClock(2 * 1000);
 
   node.setOTAPasswordHash(ota_password_hash);
   node.begin(false /* no OLED screen */);
+
+  // Set slowr, 2 kHz clock (default is 400kHz or 100kHz) as we have long wires.
+  // Wire.setClock(2 * 1000);
 
   expandedPinMode(LED_BUTTON_RED, AW9523_LED_MODE);
   expandedAnalogWrite(LED_BUTTON_RED, 255);

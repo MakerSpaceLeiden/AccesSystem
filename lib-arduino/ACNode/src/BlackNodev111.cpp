@@ -134,7 +134,8 @@ void BlackNodev111::loop() {
 	xdigitalWrite(LEDE, LOW);
     };
 #endif
-    xanalogWrite(LEDE,hearthbeat());
+   if (_hearthBeat) 
+	xanalogWrite(LEDE,hearthbeat());
 
     static unsigned long last = 0;
     if (millis() - last < 10*1000)
