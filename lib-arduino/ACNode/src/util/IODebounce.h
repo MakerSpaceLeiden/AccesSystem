@@ -48,7 +48,9 @@ class IODebounce : public ACBase {
 
     bool operator ==(int s) { return (s ? HIGH : LOW) == _lastStateBtn; };
     bool operator !=(int s) { return (s ? HIGH : LOW) != _lastStateBtn; };
- 
+
+    void status(JsonObject & report);
+
     void _ticker_update();
     void loop();
   private:

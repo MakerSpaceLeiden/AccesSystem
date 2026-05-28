@@ -160,7 +160,9 @@ void MachineState::report(JsonObject & report) {
 void MachineState::status(JsonObject &report) {
     JsonObject s = report["state"].to<JsonObject>();
     s["state"] = label();
-    JsonObject tis = s["seconds_in_state"].to<JsonObject>();
+    s["label"] = label();
+    s["secondsInThisState"] = secondsInThisState();
+    s["secondsLeftInThisState"] = secondsLeftInThisState();
 };
 
 void MachineState::loop()

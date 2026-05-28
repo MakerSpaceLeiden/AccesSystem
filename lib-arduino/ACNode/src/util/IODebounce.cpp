@@ -53,6 +53,23 @@ bool IODebounce::state(){
     return _lastStateBtn;
 }
 
+void IODebounce::status(JsonObject & report) {
+   JsonObject m = report["io"].to<JsonObject>();
+   JsonObject n = m[_name].to<JsonObject>();
+
+   n["label"] = _name;
+   n["state"] = _lastStateBtn;
+
+   n["milliSecondsInThisState"] = millis() - _lastChangeTime;
+
+   n["rawState"] = rawState();
+   n["rawValue"] = raw();
+
+   n["type"] =  _analogThreshold ? "ANALOG" : "DIGITAL";
+   if (_analogThreshold) 
+	n["analogThreshold"] = _analogThreshold;
+};
+
 void IODebounce::_ticker_update(){
     int btnState = rawState();
     
