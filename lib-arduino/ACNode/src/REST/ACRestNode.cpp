@@ -17,6 +17,32 @@ void ACNodeRest::CONSTS() {
     // super::CONSTS();
 }
 
+void ACNodeRest::reportStateChange() {
+   // Build up a standard report; we may actually want to
+   // change this in a shorter status report (which we can
+   // larger status report 
+   // that is send on a timer.
+   //
+   JsonDocument jsonDoc;
+   JsonObject out = jsonDoc.to<JsonObject>();
+   report(out);
+
+   // Send out an update on a specific MQTT channel
+   char topic[128];
+   snprintf(topic,sizeof(topic),"ac/state/%s",moi);
+   mqttJsonPost(topic, jsonDoc);
+   
+   
+   // Update all listening web sockets, if any.
+   if (_ws) {
+      String line;
+      if (!serializeJson(jsonDoc, line)) 
+         return; // we do not log an error; as we're likely have ran out of memory and do not want to make things worse.
+
+      _ws->textAll(line);
+   };
+}
+
 void ACNodeRest::pop() {
     // super::pop();
     _restAPI = new RestAPI();
@@ -52,28 +78,7 @@ void ACNodeRest::pop() {
     // Keep the world pro-actively informed of state changes (push).
     //
     machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-	// Build up a standard report; we may actually want to
-	// change this in a shorter status report (which we can
-	// then merge as a tree into a larger status report 
-	// that is send on a timer.
-	//
-        JsonDocument jsonDoc;
-        JsonObject out = jsonDoc.to<JsonObject>();
-        report(out);
-
-	// Send out an update on a specific MQTT channel
-	char topic[128];
-	snprintf(topic,sizeof(topic),"ac/state/%s",moi);
-        mqttJsonPost(topic, jsonDoc);
-
-
-	// Update all listening web sockets, if any.
-	if (_ws) {
-	   String line;
-           if (!serializeJson(jsonDoc, line)) 
-		return; // we do not log an error; as we're likely have ran out of memory and do not want to make things worse.
-	   _ws->textAll(line);
-         };
+	reportStateChange();
     });
 
     machinestate.setState(MachineState::BOOTING);
@@ -139,6 +144,10 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
         // if (std::find(std::begin(_approvedTagsToSent), std::end( _approvedTagsToSent), t) != std::end( _approvedTagsToSent))
 	if (_approvedTagsToSentQueued < MAX_QUEUED)
         	_approvedTagsToSent[_approvedTagsToSentQueued++] = ApprovalEntryWithTag(e,tag);
+
+        // Is this a take over of an active machine ? then do a superfluis report.
+        if (machinestate > MachineState::WAITINGFORCARD)
+		reportStateChange();
 
         _approve++;
         return;

@@ -48,6 +48,7 @@ public:
     
     void sentNotification(String dest, String subject, String msg);
 
+    void reportStateChange(); // should move to base & revamp all state stuff
 
     // Temp unprotected for payment experiments.
     RestAPI * _restAPI;
