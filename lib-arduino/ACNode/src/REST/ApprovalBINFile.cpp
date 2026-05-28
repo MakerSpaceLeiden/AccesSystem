@@ -383,8 +383,19 @@ const unsigned char testfile[] = {
     0xa0, 0xef, 0x66, 0xcc, 0xb1
 };
 
-/* Compile with
- *  cd ..; c++ -o test -L$MBEDDIR/lib -lmbedcrypto -I$MBEDDIR/include -I. -DTEST=1 REST/ApprovalBINFile.cpp; ./x 
+/* Install mbedTLS somewhere and set MBEDDIR to its location (eg. /opt/local or /usr/local) and then
+ * compile with
+ *
+ *    cd ..; c++ -o test -L$MBEDDIR/lib -lmbedcrypto -I$MBEDDIR/include -I. -DTEST=1 REST/ApprovalBINFile.cpp && ./test
+ *
+ * and it should output
+ *
+ *   Running with build in test file and testing against build in tag
+ *   Loaded 11 TAGs with ID 0x000000ce, size 1029, version MSLv1, dated Wed Sep 11 18:35:37
+ *   Found tag: 1-2-5
+ *   	Owner: Leo Tags
+ *   	Perm: 0x01 & 0x05 = 0x01 : Permitted
+ *   
  */
 
 int main(int argc, char ** argv) {
@@ -421,7 +432,7 @@ int main(int argc, char ** argv) {
         ApprovalEntry * e = api.getEntry(tag);
         if (e) {
             printf("Found tag: %s\n\tOwner: %s\n\tPerm: 0x%02x & 0x%02x = 0x%02x : %s\n",
-                    tag, e->name.c_str(),
+                    tag, e->name,
                     e->has, e->needs,
                    e->has & e->needs,
                    (e->has & e->needs) ? "Permitted" : "denied");

@@ -240,7 +240,7 @@ void setup() {
 
     char buff[128];
     snprintf(buff, sizeof(buff), "%s", p);
-    if (q = strstr(buff,".ino"))
+    if ((q = strstr(buff,".ino")))
         *q = '\0';
 
     JsonObject fw = report["fw"].to<JsonObject>();

@@ -6,7 +6,12 @@
 #include <sys/types.h>
 #include <assert.h>
 
+#ifdef TEST
+#define safesnprintf snprintf
+#define safestrncpy strncpy
+#else
 #include "util/common-utils.h"
+#endif
 
 typedef unsigned char acl_t;
 #define ACL_MASK_ACTIVE      (1)     // required to operate  / is set to active (see below APPROVE)
