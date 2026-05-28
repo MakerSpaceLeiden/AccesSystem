@@ -191,7 +191,13 @@ static String epochseconds2iso8601(time_t n) {
 }
 #endif
 
-void ACNodeRest::report(JsonObject report) {
+void ACNodeRest::report(JsonObject & report) {
+   status(report);
+
+   super::report(report);
+} 
+
+void ACNodeRest::status(JsonObject & report) {
    ApprovalEntry *e = lastApproved();
 
    JsonObject m = report["usage"].to<JsonObject>();
@@ -206,8 +212,8 @@ void ACNodeRest::report(JsonObject report) {
      m["needs"] = e->needs;
    };
 
-   super::report(report);
-} 
+   super::status(report);
+};
 
 
 void ACNodeRest::loop() {

@@ -396,7 +396,7 @@ const char * getHW(void) {
     return res;
 }
 
-void ACNodeBase::report(JsonObject out) {
+void ACNodeBase::report(JsonObject & out) {
     out[ "node" ] = moi;
     out[ "machine" ] = machine;
     
@@ -474,7 +474,7 @@ void ACNodeBase::report(JsonObject out) {
             
     struct tm ts;
     if (getLocalTime(&ts))
-       ntp["Time"] = asctime(&ts);
+       ntp["time"] = asctime(&ts);
 
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it)
@@ -482,6 +482,31 @@ void ACNodeBase::report(JsonObject out) {
     
     if (_report_callback)
         _report_callback(out);
+}
+
+void ACNodeBase::status(JsonObject &out) {
+    JsonObject hw = out["hardware"].to<JsonObject>();
+    hw["loop_rate"] = loopRate;
+#ifdef ESP32
+    hw["coreTemp"]  = coreTemp();
+#endif
+    hw[ "uptime" ] = uptimeInSeconds();
+
+    char ipstr[30]; safestrncpy(ipstr, String(localIP().toString()).c_str(),sizeof(ipstr));
+    JsonObject n= out["net"].to<JsonObject>();
+
+    n[ "ip" ] = ipstr;
+    n[ "type" ] = _wired ? "UTP" : "WiFi";
+
+    JsonObject ntp= out["time"].to<JsonObject>();
+
+    struct tm ts;
+    if (getLocalTime(&ts))
+       ntp["time"] = asctime(&ts);
+
+    std::list<ACBase *>::iterator it;
+    for (it =_handlers.begin(); it!=_handlers.end(); ++it)
+        (*it)->status(out);
 }
 
 void ACNodeBase::checkClearEEPromAndCacheButtonPressed(unsigned char button) {};

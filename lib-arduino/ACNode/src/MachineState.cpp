@@ -148,7 +148,7 @@ void MachineState::begin() {
     // Debug.println(__PRETTY_FUNCTION__);
 };
 
-void MachineState::report(JsonObject report) {
+void MachineState::report(JsonObject & report) {
     JsonObject s = report["state"].to<JsonObject>();
     s["state"] = label();
     JsonObject tis = s["seconds_in_state"].to<JsonObject>();
@@ -156,6 +156,12 @@ void MachineState::report(JsonObject report) {
         if (_state2stateStruct[i])
             tis[ _state2stateStruct[i]->label ] = _state2stateStruct[i]->timeInState + ((i == machinestate) ? (millis() - laststatechange) : 0)/1000;
 }
+
+void MachineState::status(JsonObject &report) {
+    JsonObject s = report["state"].to<JsonObject>();
+    s["state"] = label();
+    JsonObject tis = s["seconds_in_state"].to<JsonObject>();
+};
 
 void MachineState::loop()
 {

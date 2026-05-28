@@ -173,8 +173,16 @@ exit:
     return;
 }
 
-void ApprovalAPI::report(JsonObject report) {
- JsonObject r = report["bintags"].to<JsonObject>();
+void ApprovalAPI::status(JsonObject & out) {
+
+    // JsonObject r = report["bintags"].to<JsonObject>();
+    // r["id"] = getIdentifier();
+
+    report(out);
+};
+
+void ApprovalAPI::report(JsonObject & report) {
+    JsonObject r = report["bintags"].to<JsonObject>();
 
     char buff[32] = "never";
     if (getDataDate()) {

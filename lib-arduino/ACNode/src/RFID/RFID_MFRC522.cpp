@@ -169,7 +169,7 @@ void RFID_MFRC522::loop() {
     return;
 }
 
-void RFID_MFRC522::report(JsonObject report) {
+void RFID_MFRC522::report(JsonObject & report) {
     JsonObject out = report["rfid"].to<JsonObject>();
     out["mfrc522_failed_version_tests"] = rfid_vfail;
     out["mfrc522_failed_self_tests"] = rfid_tfail;

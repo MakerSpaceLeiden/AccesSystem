@@ -33,7 +33,9 @@ public:
     
     void begin();
     void loop();
-    void report(JsonObject report);
+
+    void report(JsonObject & report);
+    void status(JsonObject & report);
 
     void scheduleImmediateUpdate();
     void scheduleForcedReload();

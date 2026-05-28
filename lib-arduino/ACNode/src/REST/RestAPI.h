@@ -65,7 +65,8 @@ public:
 
     bool isPaired() { return paired; };
 
-    void report(JsonObject report);
+    void report(JsonObject & report);
+    void status(JsonObject & report);
 private:
     THandlerFunction_NotifyPair _pair_cb;
     THandlerFunction_NotifyPaired _paired_cb;

@@ -19,7 +19,8 @@ class OTA: public ACBase
 
     void loop();
     void begin();
-    void report(JsonObject report);
+    void report(JsonObject & report);
+    // void status(JsonObject & report);
     const char * passwdType();
   protected:
     const char * _ota_password_hash = NULL;

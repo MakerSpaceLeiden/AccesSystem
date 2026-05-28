@@ -285,7 +285,15 @@ void RestAPI::loop()
 
 extern unsigned char sha256_client[32]; // cheat
 
-void RestAPI::report(JsonObject report) {
+void RestAPI::status(JsonObject & report) {
+    JsonObject r = report["rest"].to<JsonObject>();
+
+    r["ready"] = ready();
+    r["state"] = getStatLabel();
+};
+
+
+void RestAPI::report(JsonObject & report) {
     JsonObject r = report["rest"].to<JsonObject>();
 
     r["ready"] = ready();

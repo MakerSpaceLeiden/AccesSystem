@@ -41,6 +41,7 @@ public:
     virtual void loop() { return; };
     virtual void stop() { return; };
     virtual void report(JsonObject report) { return; }
+    virtual void status(JsonObject &status) { return; }
     
     virtual void set_debug(bool debug);
 

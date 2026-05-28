@@ -65,7 +65,7 @@ void OTA::begin() {
     Debug.println("OTA Enabled");
 }
 
-void OTA::report(JsonObject report) {
+void OTA::report(JsonObject & report) {
     JsonObject ota = report["ota"].add<JsonObject>();
     ota["enabled"] = true;
     ota["ota_hash"] = passwdType();

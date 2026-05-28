@@ -430,7 +430,7 @@ void WhiteNodev108::loop() {
     super::loop();
 }
 
-void WhiteNodev108::report(JsonObject  report) {
+void WhiteNodev108::report(JsonObject  & report) {
     JsonObject m = report["machine"].to<JsonObject>();
     m["manual_poweroff"] = manual_poweroff;
     m["errors"] = errors;

@@ -186,7 +186,8 @@ private:
     };
 #endif
     
-    void report(JsonObject  out);
+    void report(JsonObject & report);
+    // void status(JsonObject & report);
 public:
     int8_t expectOut1 = -1;
     int8_t expectOut2 = -1;
