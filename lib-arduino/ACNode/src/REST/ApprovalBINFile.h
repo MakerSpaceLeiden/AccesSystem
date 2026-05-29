@@ -21,10 +21,18 @@ public:
     inline unsigned long getDataDate() { return datadate; };
     inline size_t getNumberOfTags() { return ntags; };
 
-    const char * versionStr() { switch(version) {
+    typedef enum { UNK, MSLv1, MSLv2, MSLv3 } version_t;
+
+    const char * versionStr() {
+	return versionStr(version);
+    };
+
+    const char * versionStr(version_t v) { 
+        switch(v) {
         case UNK: break;
         case MSLv1: return (const char *)"v1";
         case MSLv2: return (const char *)"v2";
+        case MSLv3: return (const char *)"v3";
     };  return (const char *)"unk"; };
 
 protected:
@@ -52,8 +60,8 @@ private:
 
     const unsigned char * getEntryPtr(unsigned char * saltedtag);
 
-    enum { UNK, MSLv1, MSLv2 } version;
-    
+
+    version_t version;
     unsigned long identifier = 0;   // unqiue, opaque identifier
     unsigned long datadate = 0;     // date of creation
 };

@@ -56,16 +56,20 @@
  # Example: 1-2-3-210-10
  # The decoded name is UTF-8.
  */
-bool ApprovalBINFile::import(const unsigned char * binfile, size_t len) {
-    
+bool ApprovalBINFile::import(const unsigned char * binfile, size_t actual_len) {
+    size_t len = actual_len;
+
     const unsigned char prefix1[] = { 0x4d, 0x53, 0x4c, 0x31 }; // MSL1
     const unsigned char prefix2[] = { 0x4d, 0x53, 0x4c, 0x32 }; // MSL2
+    const unsigned char prefix3[] = { 0x4d, 0x53, 0x4c, 0x33 }; // MSL3 (MSL2 with training SHA256)
     
-    version =  UNK;
+    version_t newversion =  UNK;
     if (!bcmp(prefix1, binfile, 4))
-        version = MSLv1;
+        newversion  = MSLv1;
     else if (!bcmp(prefix2, binfile, 4))
-        version = MSLv2;
+        newversion  = MSLv2;
+    else if (!bcmp(prefix3, binfile, 4))
+        newversion  = MSLv3;
     else {
         Log_printf("Unknown tagblob version\n");
         free((void *)binfile);
@@ -85,9 +89,35 @@ bool ApprovalBINFile::import(const unsigned char * binfile, size_t len) {
     ptr_eof = ptr_members + len_mem;
     
     ntags = len_tag / TAG_ENTRY_SIZE;
+    if (newversion  == MSLv3) {
+        // There is a trailing SHA256 at the end; which we
+        // keep around for now (we could/re-alloc to reclaim
+        // those 32 bytes later).
+        //
+	len -= 256/8; // a 256 bit SHA256 is 32 bytes long.
+
+        mbedtls_sha256_context sha_ctx;
+        unsigned char sha256[32];
+        mbedtls_sha256_init(&sha_ctx);
+
+        mbedtls_sha256_starts(&sha_ctx, 0);
+        mbedtls_sha256_update(&sha_ctx, binfile, len);
+        mbedtls_sha256_finish(&sha_ctx, sha256);
+        mbedtls_sha256_free(&sha_ctx);
+
+        char buff[256 /4 +1];
+        Debug.printf("binfile sha256: %s\n", sha256toHEX(binfile+len, buff));
+
+        if (bcmp(sha256, binfile+len, 32)) {
+            Debug.printf("receivd sha256: %s\n", sha256toHEX(sha256, buff));
+            Log_printf("Tagblob corrupted on sha256\n");
+            free((void *)binfile);
+            return false;
+        };
+    };
     
     if (ptr_eof != binfile + len || len_tag - ntags * TAG_ENTRY_SIZE != 0) {
-        Log_printf("Tagblob currupted\n");
+        Log_printf("Tagblob currupted on length\n");
         free((void *)binfile);
         return false;
     };
@@ -97,14 +127,14 @@ bool ApprovalBINFile::import(const unsigned char * binfile, size_t len) {
     buff[19] = '\0';
 
     Log_printf("Loaded %u TAGs with ID 0x%08lx, size %u, version %s, dated %s\n",
-               ntags, identifier, len,
-               version == MSLv2 ? "MSLv2" : "MSLv1", buff);
+               ntags, identifier, actual_len, versionStr(newversion), buff);
     
     // Swap the file in; take over the malloc/free
     //
     if (blob) free((void*)blob);
+    version = newversion;
     blob = binfile;
-    blob_len = len;
+    blob_len = actual_len;
 
 #if 0
     // Reconstruct binary with:
