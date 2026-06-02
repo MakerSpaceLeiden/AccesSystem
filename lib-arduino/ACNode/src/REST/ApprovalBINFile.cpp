@@ -106,7 +106,7 @@ bool ApprovalBINFile::import(const unsigned char * binfile, size_t actual_len) {
         mbedtls_sha256_free(&sha_ctx);
 
         char buff[256 /4 +1];
-        Debug.printf("binfile sha256: %s\n", sha256toHEX(binfile+len, buff));
+        Debug.printf("binfile sha256: %s\n", sha256toHEX((unsigned char *)binfile+len, buff));
 
         if (bcmp(sha256, binfile+len, 32)) {
             Debug.printf("receivd sha256: %s\n", sha256toHEX(sha256, buff));
