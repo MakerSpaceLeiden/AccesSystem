@@ -5,6 +5,7 @@
 
 #include "util/common-utils.h"
 #include "rest.h"
+#include "jsonAllocator.h"
 
 #ifndef PAY_URL
 #define PAY_URL "https://my.crm.local:443/pettycash/api"
@@ -159,7 +160,7 @@ bool PaymentAPI::readCache() {
         Log.println("Failed to read product cache file ");
         return true;
     };
-    JsonDocument res;
+    JsonDocument res(&jsonAllocator);
     DeserializationError r = deserializeJson(res, f);
     f.close();
 
