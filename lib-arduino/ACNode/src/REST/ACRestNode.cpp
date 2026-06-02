@@ -1,6 +1,8 @@
 #include "REST/ACRestNode.h"
 #include "REST/rest.h"
 
+#include "jsonAllocator.h"
+
 #include <ESPAsyncWebServer.h>
 
 ACNodeRest::ACNodeRest(const char * machine, const char * ssid, const char * ssid_passwd) : super(machine,ssid,ssid_passwd) {
@@ -23,15 +25,14 @@ void ACNodeRest::reportStateChange() {
    // larger status report 
    // that is send on a timer.
    //
-   JsonDocument jsonDoc;
+   JsonDocument jsonDoc(&jsonAllocator);
    JsonObject out = jsonDoc.to<JsonObject>();
    report(out);
 
    // Send out an update on a specific MQTT channel
    char topic[128];
-   snprintf(topic,sizeof(topic),"ac/state/%s",moi);
+   snprintf(topic,sizeof(topic),"%s/state/%s",mqtt_topic_prefix,moi);
    mqttJsonPost(topic, jsonDoc);
-   
    
    // Update all listening web sockets, if any.
    if (_ws) {
@@ -97,7 +98,7 @@ void ACNodeRest::pop() {
         if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
                 data[len] = 0;
                 if (strcmp((char*)data, "getState") == 0) {
-        		JsonDocument jsonDoc;
+        		JsonDocument jsonDoc(&jsonAllocator);
 		        JsonObject out = jsonDoc.to<JsonObject>();
 		        report(out);
 			String line;
@@ -248,7 +249,7 @@ void ACNodeRest::loop() {
 
 	// MQTT old style
 	{
-	        JsonDocument payload;
+	        JsonDocument payload(&jsonAllocator);
 	        payload["name"] = et.e.name;
 	        payload["machine"] = machine;
 	        payload["node"] = moi;
@@ -268,7 +269,7 @@ void ACNodeRest::loop() {
 		char buff[64];
 		safesnprintf(buff, sizeof(buff),"%s/%s", moi, machine);
 
-	        JsonDocument payload;
+	        JsonDocument payload(&jsonAllocator);
 	        payload["iss"] = buff;
 
 	        payload["name"] = et.e.name;
