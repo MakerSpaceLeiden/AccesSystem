@@ -217,6 +217,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
     tzset();
 
     offButton = new IODebounce("OffButton", OFF_BUTTON);
+    offButton->setLabels("inactive","pressed");
     offButton->setCallback([&](const int newState) {
         Debug.printf("OFF button %s\n",newState ? "released" : "pressed");
 
@@ -255,6 +256,7 @@ void WhiteNodev108::begin(bool hasDisplay) {
   
     pinMode(14,INPUT_PULLUP);
     menuButton = new IODebounce("MenuButton", MENU_BUTTON);
+    menuButton->setLabels("inactive","pressed");
     menuButton->setCallback([&](const int newState) {
         Debug.printf("MENU button %s @ %s\n",newState ? "released" : "pressed", machinestate.label());
         if (_menuCallBack &&

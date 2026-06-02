@@ -181,6 +181,10 @@ void setup() {
 #ifdef INTERLOCK
   expandedPinMode(INTERLOCK, INPUT);
   interlockDetect = new IODebounce("interlock", INTERLOCK);
+  // This I/O is an active low; so at closed interlock - the voltage is pulled down;
+  // otherwise it is floating up.
+  interlockDetect->setLabels("open/broken","closed");
+
   node.addHandler(interlockDetect);
 
   interlockDetect->setCallback([](const int newState) {

@@ -27,6 +27,8 @@ SET_LOOP_TASK_STACK_SIZE(16*1024);
 
 #include "WhiteNodeIndexPage.h"
 
+#include "jsonAllocator.h"
+
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 
 float loopRate = 0;
@@ -110,7 +112,17 @@ void ACNodeBase::pop() {
     _webServer->on("/state.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
          AsyncResponseStream *response = request->beginResponseStream("application/json");
 
-         JsonDocument jsonDoc;
+         JsonDocument jsonDoc(&jsonAllocator);
+         JsonObject out = jsonDoc.to<JsonObject>();
+         status(out);
+
+         serializeJson(jsonDoc, *response);
+         request->send(response);
+    });
+    _webServer->on("/report.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
+         AsyncResponseStream *response = request->beginResponseStream("application/json");
+
+         JsonDocument jsonDoc(&jsonAllocator);
          JsonObject out = jsonDoc.to<JsonObject>();
          report(out);
 
@@ -118,7 +130,13 @@ void ACNodeBase::pop() {
          request->send(response);
     });
     _webServer->on("/state",  HTTP_GET, [this](AsyncWebServerRequest *request) {
-         request->send(200, "text/html", (uint8_t *)htmlStatusPageContent, htmlStatusPageContentLength);
+         request->send(200, "text/html", (uint8_t *)htmlStatePageContent, htmlStatePageContentLength);
+    });
+    _webServer->on("/report",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+         request->send(200, "text/html", (uint8_t *)htmlReportPageContent, htmlReportPageContentLength);
+    });
+    _webServer->on("/jsRenderJson.js",  HTTP_GET, [this](AsyncWebServerRequest *request) {
+         request->send(200, "text/html", (uint8_t *)jsRenderJsonContent, jsRenderJsonContentLength);
     });
 
     Log.setTimestamp(true); 
@@ -440,10 +458,13 @@ void ACNodeBase::report(JsonObject & out) {
 
     JsonObject heap = out["memory"].to<JsonObject>();
     heap["heap_free"] = ESP.getFreeHeap();
+    heap["psram_free"] = ESP.getFreePsram();
     heap["heap_free8"] = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     heap["heap_free8_min"] = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
     heap["heap_free8_largest"] = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     heap["stack_size"] = getArduinoLoopTaskStackSize();
+    heap["spiram_size"] = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    heap["intram_size"] = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
    
     // attempt to track down MQTT issue.
     //
@@ -466,16 +487,23 @@ void ACNodeBase::report(JsonObject & out) {
 
     sntp_sync_status_t s = sntp_get_sync_status();    
     ntp["status"] = (s == SNTP_SYNC_STATUS_RESET) ? "Reset" : ((s == SNTP_SYNC_STATUS_COMPLETED) ? "Completed" : ((s == SNTP_SYNC_STATUS_IN_PROGRESS) ? "InProcess" : "Unknown" ));
-    
-    time_t now = time(NULL);
-    ntp["ctime"] = ctime(&now);
-    ntp["gmtime"] = asctime(gmtime(&now));
-    ntp["localtime"] = asctime(localtime(&now));
-            
-    struct tm ts;
-    if (getLocalTime(&ts))
-       ntp["time"] = asctime(&ts);
 
+    // We need a buffer for the next 3 which we
+    // own/can modify ourselfs to remove the 
+    // trailing '\n'.
+    //
+    time_t now = time(NULL);
+    char tmp[32]; 
+
+    ctime_r(&now,tmp); tmp[strlen(tmp)-1] = '\0';
+    ntp["ctime"] = tmp;
+
+    asctime_r(gmtime(&now),tmp); tmp[strlen(tmp)-1] = '\0'; 
+    ntp["gmtime"] = tmp;
+
+    asctime_r(localtime(&now),tmp); tmp[strlen(tmp)-1] = '\0'; 
+    ntp["localtime"] = tmp;
+            
     std::list<ACBase *>::iterator it;
     for (it =_handlers.begin(); it!=_handlers.end(); ++it)
         (*it)->report(out);
@@ -485,6 +513,9 @@ void ACNodeBase::report(JsonObject & out) {
 }
 
 void ACNodeBase::status(JsonObject &out) {
+    out[ "node" ] = moi;
+    out[ "machine" ] = machine;
+
     JsonObject hw = out["hardware"].to<JsonObject>();
     hw["loop_rate"] = loopRate;
 #ifdef ESP32
@@ -534,7 +565,7 @@ void ACNodeBase::loop() {
             char topic[128];
 	    safesnprintf(topic, sizeof(topic), "%s/report/%s", mqtt_topic_prefix, moi);
 
-            JsonDocument jsonDoc;
+            JsonDocument jsonDoc(&jsonAllocator);
             JsonObject out = jsonDoc.to<JsonObject>();
 	    report(out);
 

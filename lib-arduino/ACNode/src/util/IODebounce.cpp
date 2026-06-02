@@ -54,11 +54,12 @@ bool IODebounce::state(){
 }
 
 void IODebounce::status(JsonObject & report) {
-   JsonObject m = report["io"].to<JsonObject>();
-   JsonObject n = m[_name].to<JsonObject>();
+   // JsonObject m = report["io"].to<JsonObject>();
+   JsonObject n = report[_name].to<JsonObject>();
 
    n["label"] = _name;
-   n["state"] = _lastStateBtn;
+   n["state"] = state();
+   n["stateLabel"] = state() ? _trueLabel : _falseLabel;
 
    n["milliSecondsInThisState"] = millis() - _lastChangeTime;
 

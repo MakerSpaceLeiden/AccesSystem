@@ -20,7 +20,9 @@ class IODebounce : public ACBase {
     // const char * name() { return "IODebounce"; };
     
     void setAnalogThreshold(unsigned short val); // Set to 0 to go back to digital again.
-
+    void setLabels(const char * trueLabel, const char * falseLabel) {
+	_trueLabel = (char *)trueLabel; _falseLabel = (char *)falseLabel;
+    };
     bool state();
     bool rawState();
     unsigned short raw();
@@ -63,5 +65,6 @@ class IODebounce : public ACBase {
     IOButtonCallback _callBack = NULL;
     digitalReadFunction _digitalRead = &expandedDigitalRead;
     analogReadFunction _analogRead = &expandedAnalogRead;
+    char * _trueLabel = (char *)"TRUE", * _falseLabel = (char *)"FALSE";
 };
 #endif

@@ -40,10 +40,20 @@ function onLoad() {
 </html>
 )";
 #else
-static const char *htmlStatusPageContent PROGMEM = R"(
-<!DOCTYPE html><html><head><title>Status report</title><head><script>function rr(r){if(null===r)return"<font color=red>NULL</color>";if("string"==typeof r)return"<font color=black>"+r+"</color>";if("number"==typeof r)return"<font color=darkblue>"+r+"</color>";if("boolean"==typeof r)return r?"TRUE":"FALSE";if(Array.isArray(r)){var o="";for(const t of r)o+=rr(t)+"</br>";return o}if(r.constructor==Object){o="";for(const t of Object.keys(r).sort())o+="<tr valign=top><td align=right><code>"+t+"</code></td><td bgcolor=lightblue>"+rr(r[t])+"</td></tr>";return"<table>"+o+"</table>"}return r}function o(){fetch("state.json").then((r=>r.json())).then((r=>{document.getElementById("report").innerHTML="<h1><hr>Node "+r.node+"<hr></h1>"+rr(r)})).catch((r=>console.log(r)))}</script><body onload='o()'><div id='report'></div></body></html>
+static const char *jsRenderJsonContent PROGMEM = R"(
+function rr(r){if(null===r)return"<font color=red>NULL</color>";if("string"==typeof r)return"<font color=black>"+r+"</color>";if("number"==typeof r)return"<font color=darkblue>"+r+"</color>";if("boolean"==typeof r)return r?"TRUE":"FALSE";if(Array.isArray(r)){var o="";for(const t of r)o+=rr(t)+"</br>";return o}if(r.constructor==Object){o="";for(const t of Object.keys(r).sort())o+="<tr valign=top><td align=right><code>"+t+"</code></td><td bgcolor=lightblue>"+rr(r[t])+"</td></tr>";return"<table>"+o+"</table>"}return r}function o(u){fetch(u).then((r=>r.json())).then((r=>{document.getElementById("jsRender").innerHTML="<h1><hr>Node "+r.node+"<hr></h1>"+rr(r)})).catch((r=>console.log(r)))}
 )";
+static const size_t jsRenderJsonContentLength = strlen_P(jsRenderJsonContent);
+
+static const char *htmlStatePageContent PROGMEM = R"(
+<!DOCTYPE html><html><head><title>State</title><head><script src="jsRenderJson.js"></script></head><body onload='o("state.json")'><div id='jsRender'></div></body></html>
+)";
+static const size_t htmlStatePageContentLength = strlen_P(htmlStatePageContent);
+
+static const char *htmlReportPageContent PROGMEM = R"(
+<!DOCTYPE html><html><head><title>Report</title><head><script src="jsRenderJson.js"></script></head><body onload='o("report.json")'><div id='jsRender'></div></body></html>
+)";
+static const size_t htmlReportPageContentLength= strlen_P(htmlReportPageContent);
+
 #endif
 
-
-static const size_t htmlStatusPageContentLength = strlen_P(htmlStatusPageContent);

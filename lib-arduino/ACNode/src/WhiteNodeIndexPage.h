@@ -8,6 +8,7 @@ The local time at node %NODE% is %TIME%.
 <hr><i>
 <a href="/log">log</a>,
 <a href="/state">state</a> 
+<a href="/report">report</a> 
 <a href="/display">display</a> 
 </body>
 </html>
