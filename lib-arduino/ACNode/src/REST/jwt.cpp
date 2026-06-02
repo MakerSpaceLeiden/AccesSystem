@@ -2,6 +2,8 @@
 
 #include "REST/jwt.h"
 #include "REST/selfsign.h"	// for SHA256 hex conversion routine
+#include "jsonAllocator.h"
+
 
 #include <mbedtls/base64.h>
 #include <mbedtls/dhm.h>
@@ -119,7 +121,7 @@ String generateSignedES256JWT(JsonDocument &payload, char * private_key_as_pem, 
     unsigned char hash[32];
     unsigned char *sig;
     String out;
-    JsonDocument hdr;
+    JsonDocument hdr(&jsonAllocator);
     String hdrSerialized, plSerialized;
     int ret;
 
