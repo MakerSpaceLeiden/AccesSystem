@@ -60,7 +60,7 @@ public:
     int get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, String encodedpostargs = "");
 
     // return a stream - for readBytes()
-    NetworkClient * get(const char *url, String encodedpostargs = "");
+    NetworkClient * getStream(const char *url, String encodedpostargs = "");
 
     String stationname() { return _stationName; }
     // const char * stationname() { return _stationName.c_str(); }

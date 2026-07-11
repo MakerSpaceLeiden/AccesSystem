@@ -1,5 +1,7 @@
 #include <ACNode.h>
+#ifdef _HAS_CONFIG
 #include "ConfigPortal.h"
+#endif
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include <esp_debug_helpers.h>
@@ -295,23 +297,6 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
         WiFi.onEvent(WiFiEvent);
 #endif
     
-#ifdef CONFIGAP
-    configBegin();
-    
-    // Go into Config AP mode if the orange button is pressed
-    // just post powerup -- or if we have an issue loading the
-    // config.
-    //
-    static int debounce = 0;
-    while (xdigitalRead(PUSHBUTTON) == 0 && debounce < 5) {
-        debounce++;
-        delay(5);
-    };
-    if (debounce >= 5 || configLoad() == 0)  {
-        configPortal();
-    }
-#endif
-    
     if (_wired) {
         Log.println("Wired mode");
         // WiFi.mode(WIFI_STA);
@@ -320,13 +305,7 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
             Log.printf("Starting up wifi (hardcoded SSID <%s>)\n", _ssid);
             WiFi.begin(_ssid, _ssid_passwd);
         } else {
-#ifdef CONFIGAP
-            Log.println("Staring wifi auto connect.");
-            WiFiManager wifiManager;
-            wifiManager.autoConnect();
-#else
             Log.println("**** WARNING - No Wifi Details/no network");
-#endif
         };
     esp_sntp_servermode_dhcp(1);  
     
@@ -337,8 +316,6 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
     };
     
     if (!_wired && !isConnected()) {
-        // Log.printf("No connection after %d seconds (ssid=%s). Going into config portal (debug mode);.\n", del, WiFi.SSID().c_str());
-        // configPortal();
         Log.printf("No connection after %d seconds (ssid=%s)\n", del, WiFi.SSID().c_str());
     }
     else
@@ -389,10 +366,6 @@ void ACNodeBase::_begin(eth_board_t board /* default is BOARD_AART */, uint8_t c
 
     Log.printf("MQTT: initialized mqtt://%s@%s:%d/%s\n", mqtt_moi, mqtt_server, mqtt_port, mqtt_topic_prefix);
 
-#ifdef CONFIGAP
-    configBegin();
-#endif
-    
     Log.begin();
     Debug.begin(); 
 

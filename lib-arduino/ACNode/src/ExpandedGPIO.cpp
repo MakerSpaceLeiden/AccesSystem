@@ -14,12 +14,14 @@ unsigned int expandedAnalogRead(uint8_t pin) { return __exp.xanalogRead(pin); };
 static int wp = 0;
 static const int MAXREPORT=500;
 
+#ifdef _HAS_MCP
 void ExpandedGPIO::addMCP(unsigned int i2caddr, TwoWire * wire) {
     if (mcp) return;
     
     mcp = new Adafruit_MCP23X17();
     mcp->begin_I2C(i2caddr,wire);
 }
+#endif
 
 void ExpandedGPIO::addAW9523(unsigned int i2caddr, TwoWire * wire) {
     if (awp)
@@ -44,11 +46,13 @@ void ExpandedGPIO::xpinMode(uint8_t pin, uint8_t mode) {
         pinMode(pin,mode);
         return;
     };
+#ifdef _HAS_MCP
     if ((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) {
         if (!mcp) Serial.println("Error - MCP not yet configured");
         mcp->pinMode(pin & ~PIN_GPIO_MASK, mode);
         return;
     };
+#endif
     if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp) {
         if (!awp) Serial.println("Error - AWP not yet configured");
 #if 0
@@ -75,8 +79,10 @@ int ExpandedGPIO::xdigitalRead(uint8_t pin) {
     if ((pin & PIN_GPIO_MASK) == PIN_HPIO_PLAIN)
         return digitalRead(pin);
     
+#ifdef _HAS_MCP
     if (((pin & PIN_GPIO_MASK) == PIN_HPIO_MCP) && mcp)
         return mcp->digitalRead(pin & ~PIN_GPIO_MASK) ? HIGH : LOW;
+#endif
     
     if (((pin & PIN_GPIO_MASK) == PIN_HPIO_AW9523) && awp)
             return awp->digitalRead(pin & ~PIN_GPIO_MASK) ? HIGH : LOW;

@@ -86,9 +86,12 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
     return -1;
 }
 
-NetworkClient * RestAPI::get(const char *url, String encodedpostargs = "") {
-	NetworkClient *stream = http.getStreamPtr();
-
+NetworkClient * RestAPI::getStream(const char *url, String encodedpostargs) {
+	//	NetworkClient *stream  = http.getStreamPtr();
+	// XXX
+	//return stream;
+	return NULL;
+};
 
 bool RestAPI::rest(const char *url,String encodedpostargs) {
     rest_ret_t ret = ERR_FATAL;
