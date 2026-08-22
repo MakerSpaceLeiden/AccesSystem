@@ -14,10 +14,13 @@
 #ifdef TEST
 // Avoid using anytihng that is Arduino/ESP32 specific.
 //
+bool _debug = false;
 #define Log_printf printf
+#define Debug_printf if (_debug) printf
 #else
 #include <TLog.h>
 #define Log_printf Log.printf
+#define Debug_printf Debug.printf
 #endif
 
 /* Compact/IoT oriented version of the tag/acl data; with the names
@@ -56,34 +59,43 @@
  # Example: 1-2-3-210-10
  # The decoded name is UTF-8.
  */
-bool ApprovalBINFile::import(const unsigned char * binfile, size_t actual_len) {
-    size_t len = actual_len;
+bool ApprovalBINFile::import(File *f) {
+    unsigned char buff[128];
+
+    size_t len = f->size();
 
     const unsigned char prefix1[] = { 0x4d, 0x53, 0x4c, 0x31 }; // MSL1
     const unsigned char prefix2[] = { 0x4d, 0x53, 0x4c, 0x32 }; // MSL2
     const unsigned char prefix3[] = { 0x4d, 0x53, 0x4c, 0x33 }; // MSL3 (MSL2 with training SHA256)
-    
-    version_t newversion =  UNK;
-    if (!bcmp(prefix1, binfile, 4))
-        newversion  = MSLv1;
-    else if (!bcmp(prefix2, binfile, 4))
-        newversion  = MSLv2;
-    else if (!bcmp(prefix3, binfile, 4))
-        newversion  = MSLv3;
-    else {
-        Log_printf("Unknown tagblob version\n");
-        free((void *)binfile);
+
+    // header
+    if (!f->seek(0) || f->read(buff, 116) != 116) {
+        Log_printf("Unable to read header\n");
         return false;
     };
     
-    identifier = ntohl( *(uint32_t*)(binfile + 4) );
-    datadate = ntohl( *(uint32_t*)(binfile + 8) );
-    len_tag = ntohl( *(uint32_t*)(binfile + 12) );
-    len_mem = ntohl( *(uint32_t*)(binfile + 16) );
-    ptr_salt = binfile + 20;
-    ptr_keysalt = ptr_salt + 32;
-    ptr_ivs = ptr_keysalt + 32;
-    ptr_tags = ptr_ivs + 32;
+    version_t newversion =  UNK;
+    if (!bcmp(prefix1, buff, 4))
+        newversion  = MSLv1;
+    else if (!bcmp(prefix2, buff, 4))
+        newversion  = MSLv2;
+    else if (!bcmp(prefix3, buff, 4))
+        newversion  = MSLv3;
+    else {
+        Log_printf("Unknown tagblob version\n");
+        return false;
+    };
+    
+    identifier = ntohl( *(uint32_t*)(buff + 4) );
+    datadate = ntohl( *(uint32_t*)(buff + 8) );
+    len_tag = ntohl( *(uint32_t*)(buff + 12) );
+    len_mem = ntohl( *(uint32_t*)(buff + 16) );
+
+    memcpy(salt,    buff + 20         , 32);
+    memcpy(keysalt, buff + 20 +32     , 32);
+    memcpy(ivs,     buff + 20 +32 + 32, 32);
+
+    ptr_tags = 0 + 20 + 32 + 32+ 32;
     
     ptr_members = ptr_tags + len_tag;
     ptr_eof = ptr_members + len_mem;
@@ -101,130 +113,120 @@ bool ApprovalBINFile::import(const unsigned char * binfile, size_t actual_len) {
         mbedtls_sha256_init(&sha_ctx);
 
         mbedtls_sha256_starts(&sha_ctx, 0);
-        mbedtls_sha256_update(&sha_ctx, binfile, len);
+        f->seek(0);
+        for(long l = len;f->available() > 0 && l >= 0; ) {
+            size_t to_read = l;
+	    if (l > f->available()) l = f->available();
+            if (l > sizeof(buff)) l = sizeof(buff);
+            size_t was_read  = f->read(buff,to_read);
+            mbedtls_sha256_update(&sha_ctx, buff, was_read);
+            l -= was_read;
+        };
         mbedtls_sha256_finish(&sha_ctx, sha256);
         mbedtls_sha256_free(&sha_ctx);
 
-        char buff[256 /4 +1];
-        Debug.printf("binfile sha256: %s\n", sha256toHEX((unsigned char *)binfile+len, buff));
+        unsigned char _sha256[256/8];
+        if (f->read(buff,sizeof(_sha256)) != sizeof(_sha256)) {
+            Log_printf("SHA256 missing at end of blob\n");
+            return false;
+        };
 
-        if (bcmp(sha256, binfile+len, 32)) {
-            Debug.printf("receivd sha256: %s\n", sha256toHEX(sha256, buff));
+        char buff[256 /4 +1];
+        Debug_printf("binfile sha256: %s\n", sha256toHEX(_sha256,buff));
+
+        if (bcmp(sha256, _sha256, 32)) {
+            Debug_printf("receivd sha256: %s\n", sha256toHEX(sha256, buff));
             Log_printf("Tagblob corrupted on sha256\n");
-            free((void *)binfile);
             return false;
         };
     };
-    
-    if (ptr_eof != binfile + len || len_tag - ntags * TAG_ENTRY_SIZE != 0) {
+   
+    if (ptr_eof != len || len_tag - ntags * TAG_ENTRY_SIZE != 0) {
         Log_printf("Tagblob currupted on length\n");
-        free((void *)binfile);
         return false;
     };
-
+{
     char buff[30];
     ctime_r((const time_t *) &datadate,buff);
     buff[19] = '\0';
 
     Log_printf("Loaded %u TAGs with ID 0x%08lx, size %u, version %s, dated %s\n",
-               ntags, identifier, actual_len, versionStr(newversion), buff);
+               ntags, identifier, f->size(), versionStr(newversion), buff);
+};
     
-    // Swap the file in; take over the malloc/free
-    //
-    if (blob) free((void*)blob);
     version = newversion;
-    blob = binfile;
-    blob_len = actual_len;
-
-#if 0
-    // Reconstruct binary with:
-    //
-    //    pbaste | xxd -r -p > x.bin
-    //    opensl sha256 x.bin
-    //
-    Serial.println("\n-----\n");
-    for(size_t i = 0; i < len; i++) 
-	Serial.printf("%02x%s", blob[i],(i % 32 == 31) ? "\n" : "");
-
-    mbedtls_sha256_context sha_ctx;
-    unsigned char sha256[32];
-    mbedtls_sha256_init(&sha_ctx);
-
-    mbedtls_sha256_starts(&sha_ctx, 0);
-    mbedtls_sha256_update(&sha_ctx, blob, len);
-    mbedtls_sha256_finish(&sha_ctx, sha256);
-    mbedtls_sha256_free(&sha_ctx);
-
-    Serial.print("\nSHA: ");
-    for(size_t i = 0; i < 32; i++) 
-	Serial.printf("%02x",sha256[i]);
-    Serial.println("\n-----");
-#endif
     return true;
-}
-
-ApprovalBINFile::~ApprovalBINFile() {
-    if (blob) free((void*)blob);
-    blob = NULL;
 }
 
 /* Simple binary search for a 32 byte hash
  */
-const unsigned char * ApprovalBINFile::getEntryPtr(unsigned char * saltedtag) {
+size_t ApprovalBINFile::getEntryPtr(File * f, unsigned char * saltedtag) {
     for(int low = 0, high = ntags-1; low <= high;) {
         int mid = low + (high - low) / 2;
-        const unsigned char * ptr = ptr_tags + mid * TAG_ENTRY_SIZE;
-        int c = bcmp(ptr, saltedtag, 32);
+
+        size_t ptr= ptr_tags + mid * TAG_ENTRY_SIZE;
+        f->seek(ptr);
+
+        unsigned char buff[32];
+        f->read(buff, 32);
+
+        int c = bcmp(buff, saltedtag, 32);
         if (c == 0)
             return ptr;
+
         else if (c < 0)
             low = mid + 1;
         else
             high = mid - 1;
     }
-    return NULL;
+    return 0;
 }
 
-ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
-    if (!blob) {
-        Log_printf("getEntry: No data (yet)\n");
-        return NULL;
-    };
-    
+ApprovalEntry * ApprovalBINFile::getEntry(File*f, const char * tag) {
     unsigned char saltedtag[32];
     
     mbedtls_sha256_context sha_ctx;
     mbedtls_sha256_init(&sha_ctx);
     
     mbedtls_sha256_starts(&sha_ctx, 0);
-    mbedtls_sha256_update(&sha_ctx, ptr_salt, 32);
+    mbedtls_sha256_update(&sha_ctx, salt, 32);
     mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
     mbedtls_sha256_finish(&sha_ctx, saltedtag);
     mbedtls_sha256_free(&sha_ctx);
     
-    const unsigned char * ptr = getEntryPtr(saltedtag);
+    size_t ptr = getEntryPtr(f,saltedtag);
     if (!ptr)
         return NULL;
-    
-    const unsigned char * tagkey = ptr + 32;
-    unsigned int idx =  ntohl( *(uint32_t*)(ptr + 64));
+   
+    f->seek(ptr); // a bit silly - as we just read 32 bytes from here already
+
+    unsigned char buff2[68];
+    f->read(buff2,sizeof(buff2));
+
+    const unsigned char * tagkey = buff2 + 32;
+    unsigned int idx =  ntohl( *(uint32_t*)(buff2 + 64));
 
     if (idx > len_mem - 3 - 16) {
-        printf("Corr 0\n");
+        Log_printf("getEntry: Corrupted idx\n");
         return NULL;
     };
-    
-    unsigned char * mptr = (unsigned char*) ptr_members + idx;
+   
+     
+    size_t mptr = ptr_members + idx;
     if (mptr > ptr_eof) {
         Log_printf("getEntry: Corrupted entry\n");
         return NULL;
     };
-    
-    acl_t has = (acl_t)*(unsigned char*)(mptr + 0);
-    acl_t needs = (acl_t)*(unsigned char*)(mptr + 1);
-    size_t paddedlen = (size_t)*(unsigned char*)(mptr + 2);
-    unsigned char * padded_enc_name = (unsigned char *)mptr + 3;
-    
+    f->seek(mptr);
+
+    unsigned char buff3[256+4]; // sort of a max size (see below)
+    f->read(buff3,sizeof(buff3));
+
+    acl_t has = (acl_t)*(unsigned char*)(buff3 + 0);
+    acl_t needs = (acl_t)*(unsigned char*)(buff3 + 1);
+    size_t paddedlen = (size_t)*(unsigned char*)(buff3 + 2);
+    unsigned char * padded_enc_name = (unsigned char *)buff3 + 3;
+  
     if (paddedlen % 16) {
         Log_printf("getEntry: size not a multiple of 16\n");
         return NULL;
@@ -239,23 +241,34 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
     unsigned char saltkey[32];
     mbedtls_sha256_starts(&sha_ctx, 0);
     mbedtls_sha256_update(&sha_ctx, (unsigned char*) tag, strlen(tag));
-    mbedtls_sha256_update(&sha_ctx, ptr_keysalt, 32);
+    mbedtls_sha256_update(&sha_ctx, keysalt, 32);
     mbedtls_sha256_finish(&sha_ctx, saltkey);
+
     
     unsigned char dec[32];
     memcpy((void*)dec,(void*)tagkey,32);
     for(int i = 0; i < 32; i++)
         dec[i] ^= saltkey[i];
     
+
     // Construct the IV for this user entry from the iv salt
     // and the index. Note that we're only using the first 16
     // bytes as the actual IV.
     //
     unsigned char uiv[32];
     mbedtls_sha256_starts(&sha_ctx, 0);
-    mbedtls_sha256_update(&sha_ctx, ptr_ivs, 32);
-    mbedtls_sha256_update(&sha_ctx, ptr + 64, 4); // In network order.
+    mbedtls_sha256_update(&sha_ctx, ivs, 32);
+    mbedtls_sha256_update(&sha_ctx, buff2 + 64, 4); // In network order.
     mbedtls_sha256_finish(&sha_ctx, uiv);
+
+#ifdef TEST 
+    {
+	char buff[256];
+        Debug_printf("Saltkey:	%s\n", sha256toHEX(saltkey,buff));
+        Debug_printf("Deckey:		%s\n", sha256toHEX(dec,buff));
+        Debug_printf("uiv:		%s\n", sha256toHEX(uiv,buff));
+    };
+#endif
     
     unsigned char plaintext[256]; // worst case, avoids a malloc.
     
@@ -269,9 +282,8 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
             Log_printf("getEntry: Failed to CBC decrypt\n");
             return NULL;
         };
-    
     mbedtls_aes_free(&aes);
-    
+ 
     // Removed PKCS#7 padding - as traditionally used with AES.
     // https://www.ietf.org/rfc/rfc2315.txt; section 10.3, page 21 Note 2.
     //
@@ -316,6 +328,17 @@ ApprovalEntry * ApprovalBINFile::getEntry(const char * tag) {
 }
 
 #ifdef TEST
+void ApprovalBINFile::debug_dump() {
+	char buff[256];
+	Debug_printf("Version:	%s\n", versionStr());
+	Debug_printf("Tags:		%d,(%ld bytes, %ld #)\n", ntags, len_tag, len_tag/TAG_ENTRY_SIZE);
+	Debug_printf("Users:		%ld bytes\n", len_mem);
+
+        Debug_printf("Salt:		%s\n",  sha256toHEX(salt,buff));
+        Debug_printf("Keysalt:	%s\n",  sha256toHEX(keysalt,buff));
+        Debug_printf("IV Seed:	%s\n",  sha256toHEX(ivs,buff));
+}
+
 #include <iostream>
 #include <list>
 #include <string>
@@ -326,7 +349,7 @@ const unsigned char testfile[] = {
      Header     116
      Tags:      748
      Users:     165
-     
+    
      Salt=13b77375a4fa7b913fa471b4cf85ad53d32037e8e6f349793e1b472171131856
      saltedtag=8d0ae8e1ec9be3431d24c5e43c24ab74e3f8e510808c8af8155f9d20f700586f
      
@@ -343,7 +366,6 @@ const unsigned char testfile[] = {
      resulting clr=4c656f20546167730808080808080808 (inc padding)
                    4c656f2054616773 (sans padding)
                    Leo Tags (note, no terminating \0)
-
      
      */
     0x4d, 0x53, 0x4c, 0x31, 0x00, 0x00, 0x00, 0xce, 0x66, 0xe1, 0xc6, 0xd9, 0x00, 0x00, 0x02, 0xec,
@@ -428,41 +450,46 @@ const unsigned char testfile[] = {
  *   
  */
 
+#include "util/hex-util.cpp"
+
 int main(int argc, char ** argv) {
     ApprovalBINFile api;
     size_t len = 0;
     unsigned char * ptr = NULL;
     char * tag = (char *)"1-2-5";
     int argi = 1;
-    
+    File * f = NULL;
+      
     if (argc == 1) {
         fprintf(stderr,"Running with build in test file and testing against build in tag\n");
-        len = sizeof(testfile);
-        ptr = (unsigned char*) malloc(len);
-        memcpy(ptr,testfile,len);
+        f = new File(testfile,sizeof(testfile));
+        _debug = true;
     } else
     if (argc == 2) {
         fprintf(stderr,"Syntax: %s [<file> <tag> [tag ...]]", argv[0]);
         exit(1);
     } else {
-        FILE *f = fopen(argv[1], "rb");assert(f);
-        fseek(f, 0, SEEK_END);
-        len = ftell(f);
-        fseek(f, 0, SEEK_SET);
+        FILE * fin = fopen(argv[1], "rb");assert(f);
+        fseek(fin, 0, SEEK_END);
+        len = ftell(fin);
+        fseek(fin, 0, SEEK_SET);
         ptr = (unsigned char*)malloc(len);
-        size_t n = fread(ptr, 1, len, f);
-        fclose(f);
+        size_t n = fread(ptr, 1, len, fin);
+        fclose(fin);
         assert(n == len);
         argi++; // skip filename
         tag = argv[argi++];
+        f = new File(ptr,len);
     }
-    assert(api.import(ptr,len));
-    
+    assert(api.import(f));
+
+    api.debug_dump();
+   
     while(1) {
-        ApprovalEntry * e = api.getEntry(tag);
+        ApprovalEntry * e = api.getEntry(f, tag);
         if (e) {
-            printf("Found tag: %s\n\tOwner: %s\n\tPerm: 0x%02x & 0x%02x = 0x%02x : %s\n",
-                    tag, e->name,
+            printf("Found tag: %s\n\tOwner: %s (%s)\n\tPerm: 0x%02x & 0x%02x = 0x%02x : %s\n",
+                    tag, e->name, e->shortName,
                     e->has, e->needs,
                    e->has & e->needs,
                    (e->has & e->needs) ? "Permitted" : "denied");
@@ -470,7 +497,7 @@ int main(int argc, char ** argv) {
             std::cout << "Tag " << tag << " not found." << "\n";
         };
         if (argi >= argc)
-            break;
+		break;
         tag = argv[argi++];
     }
 }

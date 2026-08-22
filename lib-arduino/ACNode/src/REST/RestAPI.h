@@ -49,7 +49,8 @@ public:
     
     JsonDocument get(const char *url,String encodedpostargs = "");
     bool rest(const char *url,String encodedpostargs = "");
-    
+    bool getStream(const char *url,String encodedpostargs = "", Stream * out = NULL);
+ 
     // Will return the actual number of bytes read; or a -1 on error.
     // if maxbufflenp is a pointer to a max value; this cap the number
     // of bytes read; with this value updated to the number of bytes
@@ -58,9 +59,6 @@ public:
     // to malloc()ed buffer that needs to be freeed. If buffp is zero
     // no data is returned.
     int get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, String encodedpostargs = "");
-
-    // return a stream - for readBytes()
-    NetworkClient * getStream(const char *url, String encodedpostargs = "");
 
     String stationname() { return _stationName; }
     // const char * stationname() { return _stationName.c_str(); }

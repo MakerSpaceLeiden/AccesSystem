@@ -453,14 +453,11 @@ exit:
     return ret;
 };
 
-size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret, String encodedpostargs) {
-    unsigned char sha256[32];
-    int len = 0;
-    size_t l = 0;
-    unsigned char * buff = NULL;
-    size_t max;
 
-    *ret = ERR_FATAL;
+rest_ret_t raw_rest_setup(const char * terminalName, const char *url,  String encodedpostargs) {
+    unsigned char sha256[32];
+
+    rest_ret_t ret = ERR_FATAL;
     
     client.setCACert(ca_root); 
     client.setCertificate(client_cert_as_pem); 
@@ -468,7 +465,7 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     
     if (!https.begin(client, url)) {
         Log.println("https client setup fail for url: " + String(url));
-        return 0;
+        return ERR_FATAL;
     };
     https.setTimeout(HTTP_TIMEOUT);
     https.setUserAgent(terminalName);
@@ -492,45 +489,121 @@ size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp
     
     if (0 != memcmp(sha256, sha256_server_key, 31)) {
         Log.println("raw_rest: Server pubkey changed. Aborting");
-        *ret = ERR_REPAIR;
+        ret = ERR_REPAIR;
         goto exit;
     }
     
     if (httpCode == HTTP_CODE_UNAUTHORIZED) {
-        *ret = ERR_REPAIR;
+        ret = ERR_REPAIR;
         Log.printf("raw_rest: Unauthorized; repairing\n");
         goto exit;
     };
     
     if (httpCode == HTTP_CODE_FOUND) {
         // Special case; to confirm pairing; with no data sent (should change into some json with config).
-        *ret = NOERROR_OK;
+        ret = NOERROR_OK;
         goto exit;
     }
     
     if (httpCode == HTTP_CODE_BAD_REQUEST) {
         Log.printf("raw_rest: bad request; propably lost the pairing\n");
-        *ret = ERR_REPAIR;
+        ret = ERR_REPAIR;
         goto exit;
     }
     
     
     if (httpCode == HTTP_CODE_NOT_FOUND) {
         Log.printf("raw_rest: not-found: %s(%d): %s\n", https.errorToString(httpCode).c_str(), httpCode, https.getString().c_str());
-        *ret = ERR_RETRYABLE;
+        ret = ERR_RETRYABLE;
         goto exit;
     };
     
     if (httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_CREATED) {
         Log.printf("raw_rest: failed: %s(%d):  %s\n", https.errorToString(httpCode).c_str(), httpCode, https.getString().c_str());
-        *ret = ERR_RETRYABLE;
+        ret = ERR_RETRYABLE;
         goto exit;
     };
-    
+    return NOERROR;
+exit:
+    https.end();
+    client.stop();
+    return ret;
+}
+
+rest_ret_t raw_rest(const char * terminalName, const char *url, String encodedpostargs, THContentCallback cb) {
+    rest_ret_t ret = ERR_FATAL;
+
+    if ((ret = raw_rest_setup(terminalName, url, encodedpostargs)) != NOERROR)
+	return ret;
+
+    WiFiClient * stream = https.getStreamPtr();
+    size_t len = https.getSize();
+
+    unsigned long _lst = millis(), TO = 3500;
+    for(;;) {
+
+	    if (!stream->connected()) {
+                if (len != -1) {
+                   Log.println("Connection closed unexpectedly");
+                   ret = ERR_RETRYABLE;
+                };
+                break; 
+            };
+
+      	    int sizeAvailable = stream->available();
+            if (sizeAvailable == 0) {
+		if (millis() > _lst + TO) {
+			Log.println("HTTP read timeout");
+                        ret = ERR_RETRYABLE;
+			break;
+		};
+		delay(250);
+		continue;
+	    };
+
+	    unsigned char buff[2048];
+            size_t left = sizeof(buff);
+
+            if (left > sizeAvailable)
+                  left = sizeAvailable;
+
+            int n = stream->readBytes(buff, left);
+            if (n <= 0) {
+		Log.println("HTTP read error");
+                ret = ERR_RETRYABLE;
+		break;
+	    }
+            if ((cb) && (cb(buff, n) != n)) {
+		Log.println("HTTP write/cb error");
+                ret = ERR_RETRYABLE;
+		break;
+	    }
+
+            if (n != left) {
+		Debug.println("HTTP read incomplete, retry");
+            };
+            _lst = millis();
+            TO = 1500;
+   };
+
+   https.end();
+   client.stop();
+
+   return ret;
+}
+
+size_t raw_rest(const char * terminalName, const char *url, size_t * maxbufflenp, unsigned char ** buffp, rest_ret_t * ret, String encodedpostargs) {
+    unsigned char * buff = NULL;
+    size_t max, l = 0;
+    int len = 0;
+
+    if ((*ret = raw_rest_setup(terminalName, url, encodedpostargs)) != NOERROR)
+	return 0;
+ 
     len = https.getSize();
     if (len) {
         if (len == -1)
-            max = 128 * 1024 * 1024; // Hard cap when the length is unknown (we should propably realloc() for this).
+            max = 12 * 1024 * 1024; // Hard cap when the length is unknown (we should propably realloc() for this).
         
         if (len != -1 && len < max)
             max = len;

@@ -44,6 +44,8 @@ public:
     void sendBestEffortTagApproved(const char * tag);
     inline unsigned long getLastUpdate() { return last_update; };
 
+    ApprovalEntry * getEntry(const char * tag);
+
 private:
     RestAPI * _restAPI = NULL;
     const char * machine;
@@ -54,14 +56,17 @@ private:
     update_t needsUpdate();
     void updateTagDB();
 
+    bool import(const char * filename);
+
     // We'll have to revisit this for multi machine nodes; but sort of cannot
     // get round the fact that we need one per machine - or we need to modify
     // the file format to have a `which machine' flag.
+    //
     const char * TAGBINFILE = "/msl1.bin";
-    void readCache();
-    void writeCache();
+    const char * TAGBINFILE_NEW = "/msl1.new";
+    const char * TAGBINFILE_OLD = "/msl1.old";
 
-    // friend class ApprovalDeck;
+    bool _valid = false;
 };
 
 class ApprovalDeck : public Deck {

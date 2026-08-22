@@ -2,8 +2,13 @@
 #include <ArduinoJson.h>
 #include <esp_debug_helpers.h>
 
+// Just for logging.
+#include "ACNode.h"
+
 #ifndef _jsonAllocator_H
 #define _jsonAllocator_H
+
+static unsigned int _max = 0;
 
 // We're struggling with very fragmented heaps. There are two
 // likely culprints - the TLS stack (which we cannot really change)
@@ -21,7 +26,7 @@
 //
 struct SpiRamAllocator : ArduinoJson::Allocator {
 public:
-  SpiRamAllocator() : SpiRamAllocator(8 * 1024) {};
+  SpiRamAllocator() : SpiRamAllocator(6 * 1024) {};
   SpiRamAllocator(size_t s) {
 	if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM))
 		return;
@@ -35,11 +40,12 @@ public:
   void* allocate(size_t size) override {
     if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM))
          return heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
+
     if (!_SIZE)
         return malloc(size);
 
     if ((unsigned char *)_ptr + size > _buff + _SIZE) {
-	Serial.println("MEM out of memory");
+	Log.println("JSON Allocator - out of memory");
 	return NULL;
     };
 
@@ -58,7 +64,12 @@ public:
     if (ptr != _buff)
 	return;
 
-    Serial.printf("MEM cleanse -- peak %u\n", (unsigned char *)_ptr - _buff);
+
+    if ((unsigned char *)_ptr - _buff > _max)
+	_max = (unsigned char *)_ptr - _buff;
+
+    Debug.printf("JSON Allocator - used %u; peak %u\n", (unsigned char *)_ptr - _buff, _max);
+
     _ptr = _buff;
   }
 

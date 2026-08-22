@@ -5,8 +5,8 @@
 #include <strings.h>
 #include <sys/types.h>
 #include <assert.h>
-#include <FS.h>
 #include <SPIFFS.h>
+#include <FS.h>
 
 #include <mbedtls/sha256.h>
 #include <mbedtls/aes.h>
@@ -26,50 +26,14 @@ static void prepareCache(bool wipe) {
     Log.println("Filesystem ready.");
 };
 
-void ApprovalAPI::readCache() {
-    File f = SPIFFS.open(TAGBINFILE, "r");
-    if (!f) {
-        Log.println("No cache yet");
-        return;
-    };
-    size_t len = f.size();
-    const unsigned char * tmp = (const unsigned char *)malloc(len);
-    if (!tmp) {
-        Log.println("Cache malloc failed.");
-        return;
-    };
-    size_t n = f.read((uint8_t*)tmp,len);
-    f.close();
-
-    if (n != len)
-	Log.printf("Cache file %s read failed: %d/%d!=%d", TAGBINFILE, errno,n,len);
-    else if (import(tmp,len))
-	return;  // Import takes over responsibility for the malloced buffer
-    else 
-    	Log.printf("Cache import %s failed\n", TAGBINFILE);
-
-    free((void*)tmp);
-}
-
-void ApprovalAPI::writeCache() {
-    File f = SPIFFS.open(TAGBINFILE, "w");
-    if (!f) {
-        Log.println("Failed to open cache for writing");
-        return;
-    }
-    size_t l = f.write((uint8_t*)blob,blob_len);
-    f.close();
-    
-    if (l != blob_len) {
-        Log.println("Cache writing failed. Deleting corrupted file.");
-        SPIFFS.remove(TAGBINFILE);
-    }
-    Debug.printf("Wrote tag bin to cache %s\n", TAGBINFILE);
+bool ApprovalAPI::import(const char * filename) {
+    File f = SPIFFS.open(filename,"r");
+    return f ? ApprovalBINFile::import(&f) : false;
 }
 
 void ApprovalAPI::begin() {
     prepareCache(false);
-    readCache();
+    _valid = import(TAGBINFILE);
 };
 
 void ApprovalAPI::scheduleImmediateUpdate() {
@@ -152,32 +116,55 @@ void ApprovalAPI::updateTagDB() {
     char url[256];
     char tmp[64];
     snprintf(url,sizeof(url), ACL_URL PATH_GETTAGS "/%s", _argencode(tmp,sizeof(tmp),machine));
-    
-    unsigned char * buff = NULL;
-    size_t len = 32 * 1024; // ~1k/10 active users -- so enough for 300+ users.
-    int n = _restAPI->get(url,&len,&buff);
-    if (n <= 0) {
-        Log.printf("Failed to load bintags from <%s>\n", url);
-        goto exit;
-    };
 
-    // Note: import will claim the buffer and manage it.
-    if (import(buff,len)) {
-        writeCache();
+    SPIFFS.remove(TAGBINFILE_NEW); // just in case - do not check for errors.
+
+    File f = SPIFFS.open(TAGBINFILE_NEW, "w");
+    if (!f) {
+        Log.println("Failed to open temp file for writing"); 
+        return;
+    }
+    bool ret = _restAPI->getStream(url, "", &f);
+    f.close();
+
+    if (!ret) {
+        Log.println("Failed to fetch bintags");
 	return;
     };
 
-    Log.println("Failed to import bintags");
-exit:
-    if (buff) free((void*)buff);
+    _valid = false;
+    if (!import(TAGBINFILE_NEW)) {
+        Log.println("Failed to import, attempt fallback to old");
+	_valid = import(TAGBINFILE);
+        return;
+    };
+
+    SPIFFS.remove(TAGBINFILE_OLD);
+    SPIFFS.rename(TAGBINFILE,TAGBINFILE_OLD);
+    SPIFFS.rename(TAGBINFILE_NEW,TAGBINFILE);
+
+    Log.println("Updated tag db");
+    _valid = true;
+
     return;
 }
 
-void ApprovalAPI::status(JsonObject & out) {
+ApprovalEntry * ApprovalAPI::getEntry(const char * tag) {
+    if (!_valid) {
+	Log.println("Cannot yet approve - no tag file\n");
+	return NULL;
+    };
+    File f = SPIFFS.open(TAGBINFILE,"r");
+    if (!f) {
+	Log.println("Cannot yet approve - could not open tag file\n");
+	return NULL;
+    };
+    return ApprovalBINFile::getEntry(&f,tag); // we rely on the destructor to close the file.
+}
 
+void ApprovalAPI::status(JsonObject & out) {
     // JsonObject r = report["bintags"].to<JsonObject>();
     // r["id"] = getIdentifier();
-
     report(out);
 };
 
@@ -194,10 +181,11 @@ void ApprovalAPI::report(JsonObject & report) {
     r["bintag_date"] = buff;
     r["id"] = getIdentifier();
     r["ntags"] = getNumberOfTags();
+    r["version"] = versionStr();
 };
 
 bool ApprovalAPI::canApprove() {
-    return blob ? true : false;
+    return _valid;
 }
 
 void ApprovalAPI::sendBestEffortTagApproved(const char * tag) {

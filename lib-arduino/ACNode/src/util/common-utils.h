@@ -6,6 +6,9 @@
 
 #include <ExpandedGPIO.h>
 
+// Separated out for testing
+#include "util/hex-util.h"
+
 #ifndef SHA256_BLOCK_SIZE
 #define SHA256_BLOCK_SIZE (32)
 #endif
@@ -55,7 +58,5 @@ extern double coreTemp();
 #define safestrncpy(dst,src,n) { strncpy(dst,src,n); dst[n-1]='\0'; }
 
 char *_argencode(char *dst, size_t n, const char *src);
-char * sha256toHEX(unsigned char sha256[256 / 8], char buff[256 / 4 + 1]);
 String encodeargs(std::vector<String> pairs, bool skipEmpty);
-
 #endif

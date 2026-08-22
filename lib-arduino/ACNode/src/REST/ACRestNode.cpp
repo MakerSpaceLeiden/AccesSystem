@@ -79,7 +79,7 @@ void ACNodeRest::pop() {
     // Keep the world pro-actively informed of state changes (push).
     //
     machinestate.addOnChangeCallback(MachineState::ALL_STATES, [&](MachineState::machinestate_t last, MachineState::machinestate_t current) -> void {
-	reportStateChange();
+	// reportStateChange();
     });
 
     machinestate.setState(MachineState::BOOTING);
@@ -147,8 +147,9 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
         	_approvedTagsToSent[_approvedTagsToSentQueued++] = ApprovalEntryWithTag(e,tag);
 
         // Is this a take over of an active machine ? then do a superfluis report.
-        if (machinestate > MachineState::WAITINGFORCARD)
-		reportStateChange();
+	//
+ //       if (machinestate > MachineState::CHECKINGCARD)
+//		reportStateChange();
 
         _approve++;
         return;

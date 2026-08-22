@@ -86,12 +86,14 @@ int RestAPI::get(const char *url, size_t * maxbufflenp, unsigned char ** buffp, 
     return -1;
 }
 
-NetworkClient * RestAPI::getStream(const char *url, String encodedpostargs) {
-	//	NetworkClient *stream  = http.getStreamPtr();
-	// XXX
-	//return stream;
-	return NULL;
-};
+bool RestAPI::getStream(const char *url,String encodedpostargs, Stream * out) {
+    rest_ret_t ret = raw_rest(_terminalName, url, encodedpostargs,[out](unsigned char *data, size_t len) -> size_t {
+        return out ? out->write(data,len) : len;
+    });
+    if (ret == NOERROR) rest_ok++; else rest_err++;
+    return ret == NOERROR;
+    
+}
 
 bool RestAPI::rest(const char *url,String encodedpostargs) {
     rest_ret_t ret = ERR_FATAL;
