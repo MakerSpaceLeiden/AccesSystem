@@ -57,7 +57,7 @@ const char *doorstate_label[] = {
 #error "Unexpected partition table; may break OTA"
 #endif
 #ifndef ARDUINO_ESP32_WROOM_DA
-#error "Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
+#error "White/Black/Blue Hardware is expected to be an ESP32 WROOM-DA"
 #endif
 
 #define MACHINE "olgabuiten"
@@ -378,7 +378,7 @@ void loop() {
     Debug.printf(" (%d%s)",
                  doorstate,
                  forced_night ? ",Forced" : "");
-    Debug.printf("[%s]",
+    Debug.printf(", [%s]",
                  node.machinestate.label());
     Debug.printf(", %llu seconds",
                  0 + node.machinestate.secondsInThisState());
