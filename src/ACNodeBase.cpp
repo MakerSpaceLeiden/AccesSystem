@@ -29,7 +29,7 @@ SET_LOOP_TASK_STACK_SIZE(16*1024);
 
 #include "WhiteNodeIndexPage.h"
 
-#include "jsonAllocator.h"
+#include "util/jsonAllocator.h"
 
 beat_t beatCounter = 0;      // My own timestamp - manually kept due to SPI timing issues.
 

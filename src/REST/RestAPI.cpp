@@ -1,5 +1,5 @@
 #include "REST/RestAPI.h"
-#include "jsonAllocator.h"
+#include "util/jsonAllocator.h"
 
 #include "selfsign.h"
 #include "rest.h"

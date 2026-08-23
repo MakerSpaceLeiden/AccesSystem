@@ -2,7 +2,7 @@
 
 #include "REST/jwt.h"
 #include "REST/selfsign.h"	// for SHA256 hex conversion routine
-#include "jsonAllocator.h"
+#include "util/jsonAllocator.h"
 
 
 #include <mbedtls/base64.h>

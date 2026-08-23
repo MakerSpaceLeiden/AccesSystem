@@ -5,7 +5,7 @@
 
 #include "util/common-utils.h"
 #include "rest.h"
-#include "jsonAllocator.h"
+#include "util/jsonAllocator.h"
 
 #ifndef PAY_URL
 #define PAY_URL "https://my.crm.local:443/pettycash/api"

@@ -1,7 +1,7 @@
 #include "REST/ACRestNode.h"
 #include "REST/rest.h"
 
-#include "jsonAllocator.h"
+#include "util/jsonAllocator.h"
 
 #include <ESPAsyncWebServer.h>
 
@@ -234,7 +234,7 @@ void ACNodeRest::loop() {
     super::loop();
 
     static unsigned lst = 0;
-    if (!(machinestate.isStable() && machinestate.backgroundTaskOk() && && machinestate.secondsInThisState() >= 1 && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 3000))
+    if (!(machinestate.isStable() && machinestate.backgroundTaskOk() && machinestate.secondsInThisState() >= 1 && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 3000))
 	return;
 
     if (_unknownTagsToSentQueued) {

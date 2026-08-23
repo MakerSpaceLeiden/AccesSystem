@@ -1,5 +1,5 @@
-#include "jsonAllocator.h"
+#include "util/jsonAllocator.h"
 
 // We see actual peaks at around 3.9-4 kByte.
 //
-SpiRamAllocator jsonAllocator(6 * 1024);
+SpiRamAllocator jsonAllocator(5 * 1024);
