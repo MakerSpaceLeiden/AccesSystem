@@ -131,11 +131,15 @@ bool ApprovalBINFile::import(File *f) {
             return false;
         };
 
+#ifndef CI_TEST
         char buff[256 /4 +1];
         Debug_printf("binfile sha256: %s\n", sha256toHEX(_sha256,buff));
+#endif
 
         if (bcmp(sha256, _sha256, 32)) {
+#ifndef CI_TEST
             Debug_printf("receivd sha256: %s\n", sha256toHEX(sha256, buff));
+#endif
             Log_printf("Tagblob corrupted on sha256\n");
             return false;
         };
@@ -150,7 +154,7 @@ bool ApprovalBINFile::import(File *f) {
     ctime_r((const time_t *) &datadate,buff);
     buff[19] = '\0';
 
-    Log_printf("Loaded %u TAGs with ID 0x%08lx, size %u, version %s, dated %s\n",
+    Log_printf("Loaded %zu TAGs with ID 0x%08lx, size %zu, version %s, dated %s\n",
                ntags, identifier, f->size(), versionStr(newversion), buff);
 };
     
@@ -262,12 +266,14 @@ ApprovalEntry * ApprovalBINFile::getEntry(File*f, const char * tag) {
     mbedtls_sha256_finish(&sha_ctx, uiv);
 
 #ifdef TEST 
+#ifndef CI_TEST
     {
 	char buff[256];
         Debug_printf("Saltkey:	%s\n", sha256toHEX(saltkey,buff));
-        Debug_printf("Deckey:		%s\n", sha256toHEX(dec,buff));
-        Debug_printf("uiv:		%s\n", sha256toHEX(uiv,buff));
+        Debug_printf("Deckey:		%s (AES,CBC, padded)\n", sha256toHEX(dec,buff));
+        Debug_printf("UIV:		%s (AES,CBC, padded)\n", sha256toHEX(uiv,buff));
     };
+#endif
 #endif
     
     unsigned char plaintext[256]; // worst case, avoids a malloc.
@@ -328,16 +334,21 @@ ApprovalEntry * ApprovalBINFile::getEntry(File*f, const char * tag) {
 }
 
 #ifdef TEST
+#ifndef CI_TEST
+#include "util/hex-util.cpp"
+
 void ApprovalBINFile::debug_dump() {
 	char buff[256];
 	Debug_printf("Version:	%s\n", versionStr());
-	Debug_printf("Tags:		%d,(%ld bytes, %ld #)\n", ntags, len_tag, len_tag/TAG_ENTRY_SIZE);
+	Debug_printf("Tags:		%zu,(%ld bytes, %ld #)\n", ntags, len_tag, len_tag/TAG_ENTRY_SIZE);
 	Debug_printf("Users:		%ld bytes\n", len_mem);
 
         Debug_printf("Salt:		%s\n",  sha256toHEX(salt,buff));
         Debug_printf("Keysalt:	%s\n",  sha256toHEX(keysalt,buff));
         Debug_printf("IV Seed:	%s\n",  sha256toHEX(ivs,buff));
 }
+#endif
+
 
 #include <iostream>
 #include <list>
@@ -438,7 +449,7 @@ const unsigned char testfile[] = {
 /* Install mbedTLS somewhere and set MBEDDIR to its location (eg. /opt/local or /usr/local) and then
  * compile with
  *
- *    cd ..; c++ -o test -L$MBEDDIR/lib -lmbedcrypto -I$MBEDDIR/include -I. -DTEST=1 REST/ApprovalBINFile.cpp && ./test
+ *    cd ..; c++ -o test-binparse -L$MBEDDIR/lib -lmbedcrypto -I$MBEDDIR/include -I. -DTEST=1 REST/ApprovalBINFile.cpp && ./test
  *
  * and it should output
  *
@@ -450,7 +461,6 @@ const unsigned char testfile[] = {
  *   
  */
 
-#include "util/hex-util.cpp"
 
 int main(int argc, char ** argv) {
     ApprovalBINFile api;
@@ -483,7 +493,9 @@ int main(int argc, char ** argv) {
     }
     assert(api.import(f));
 
+#ifndef CI_TEST
     api.debug_dump();
+#endif
    
     while(1) {
         ApprovalEntry * e = api.getEntry(f, tag);

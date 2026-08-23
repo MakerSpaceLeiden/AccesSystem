@@ -8,3 +8,5 @@ keydb.txt
 *.priv
 *.private
 venv
+test-binparse
+*.DSYM

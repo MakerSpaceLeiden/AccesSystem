@@ -125,8 +125,8 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
     
     ApprovalEntry * e = _approvalAPI->getEntry(tag);
 
-    if (e) Debug.printf("User: %s, (has=%x & needs=%x) = %x ==> %d (%s)\n",
-                 e->name,e->has, e->needs,e->has & e->needs, (e->has & e->needs) == e->needs, e->status() );
+    if (e) Debug.printf("User: %s, (has=%x & needs=%x) == %x ==> %s (%s)\n",
+                 e->name,e->has, e->needs,e->has & e->needs, e->ok() ? "true" : "false", e->status() );
 
     if (e && e->ok()) {
         Log.printf("Received OK to %s on %s for %s\n", machine, operation ? operation : "power" , e->name);
@@ -143,12 +143,15 @@ void ACNodeRest::request_approval(const char * tag, const char * operation, cons
 
 	// Do not send it again if it is already in our list to send.
         // if (std::find(std::begin(_approvedTagsToSent), std::end( _approvedTagsToSent), t) != std::end( _approvedTagsToSent))
+	//
 	if (_approvedTagsToSentQueued < MAX_QUEUED)
         	_approvedTagsToSent[_approvedTagsToSentQueued++] = ApprovalEntryWithTag(e,tag);
+        else
+		Log.println("Too many tags queued for submission, skipping.");
 
-        // Is this a take over of an active machine ? then do a superfluis report.
+        // Is this a take over of an active machine ? then do a superfluous report.
 	//
- //       if (machinestate > MachineState::CHECKINGCARD)
+//      if (machinestate > MachineState::CHECKINGCARD)
 //		reportStateChange();
 
         _approve++;
@@ -231,7 +234,7 @@ void ACNodeRest::loop() {
     super::loop();
 
     static unsigned lst = 0;
-    if (!(machinestate.isStable() && machinestate.backgroundTaskOk() && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 5000))
+    if (!(machinestate.isStable() && machinestate.backgroundTaskOk() && && machinestate.secondsInThisState() >= 1 && millis()-lst > TAG_SEND_INTERVAL && millis() - _lastApprovalTime > 3000))
 	return;
 
     if (_unknownTagsToSentQueued) {
@@ -249,7 +252,7 @@ void ACNodeRest::loop() {
         _approvalAPI->sendBestEffortTagApproved(et.tag);
 
 	// MQTT old style
-	{
+	if (0) {
 	        JsonDocument payload(&jsonAllocator);
 	        payload["name"] = et.e.name;
 	        payload["machine"] = machine;
@@ -291,20 +294,34 @@ void ACNodeRest::loop() {
 	lst = millis();
     };
 
+    // Reboot for memory fragmentation reasons; may perhaps no longer
+    // be needed now that we've moved the largest block off to a file.
+    //
+    if (!machinestate.safeForOTA())
+	return; // in some active/machine using state
+
+    if (machinestate.secondsInThisState() < 3600)
+	return; // someone interacted with uss too recently
+
+    if (uptimeInSeconds() < 5*3600)
+	return; // not yet up long enough to consider rebooting
+
     // We have issues with heap fragmentation if we do regular https calls. At some
     // point - we cannot find a 32k block of contineous memory in the 300k or so free
     // at that time. We can only get rid of these AFAIK with a reboot.
     //
+    if (heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < 32 * 1024) {
+              Log.println("Automatic reboot initiated as there is less than 32k cont. malloc() space");
+              machinestate = MachineState::REBOOT;
+    };
+    
     // Check if we need to reboot -- we do this every 3rd day; between 3am and 7am
-    // in the morning if we've been idle for at 60 minutes.
+    // in the morning.
     //
     time_t now = time(NULL);
     struct tm * t = localtime(&now);
     if ((t->tm_yday % 3 == 0) &&
-        (t->tm_hour >= 3) &&  (t->tm_hour <= 7) &&
-        machinestate.safeForOTA() &&
-        (machinestate.secondsInThisState() > 3600) && 
-        (uptimeInSeconds() > 5*3600)) {
+        (t->tm_hour >= 3) &&  (t->tm_hour <= 7)) {
               Log.println("Automatic 3rd day nightly reboot initiated");
               machinestate = MachineState::REBOOT;
     }
